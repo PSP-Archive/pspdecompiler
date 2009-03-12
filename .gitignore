@@ -1,0 +1,6 @@
+*.o
+.project
+.cproject
+.settings
+pspdecompiler
+
