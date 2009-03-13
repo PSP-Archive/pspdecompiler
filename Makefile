@@ -4,7 +4,7 @@ CC=gcc
 CFLAGS=	-O2 -g -Wall -ansi -pedantic
 LIBS = 
 
-OBJS = disasm.o hash.o utils.o main.o
+OBJS = disasm.o prx.o hash.o utils.o main.o
 TARGET = pspdecompiler
 
 all:	$(TARGET)

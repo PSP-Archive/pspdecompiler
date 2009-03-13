@@ -19,6 +19,9 @@ void *hashtable_search (struct hashtable *ht, void *key, void **key_found);
 void *hashtable_remove (struct hashtable *ht, void *key, void **key_found);
 void hashtable_traverse (struct hashtable *ht, traversefunction traversefn);
 
+int hashtable_pointer_compare (void *key1, void *key2);
+int hashtable_string_compare (void *key1, void *key2);
+
 unsigned int hash_bytes (unsigned char *key, size_t len);
 unsigned int hash_string (char *key);
 

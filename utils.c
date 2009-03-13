@@ -18,7 +18,6 @@ void error (const char *fmt, ...)
 {
   va_list ap;
   va_start (ap, fmt);
-  fprintf (stderr, "error: ");
   vfprintf (stderr, fmt, ap);
   fprintf (stderr, "\n");
   va_end (ap);
@@ -28,7 +27,6 @@ void xerror (const char *fmt, ...)
 {
   va_list ap;
   va_start (ap, fmt);
-  fprintf (stderr, "error: ");
   vfprintf (stderr, fmt, ap);
   fprintf (stderr, ": %s\n", strerror (errno));
   va_end (ap);
@@ -62,7 +60,7 @@ void xfatal (const char *fmt, ...)
 void *xmalloc (size_t size)
 {
   void *ptr = malloc (size);
-  if (!ptr) fatal ("memory exhausted");
+  if (!ptr) fatal (__FILE__ ": memory exhausted");
   return ptr;
 }
 
@@ -76,19 +74,19 @@ void *read_file (const char *path, size_t *size)
 
   fp = fopen (path, "rb");
   if (!fp) {
-    xerror ("can't open file `%s'", path);
+    xerror (__FILE__ ": can't open file `%s'", path);
     return NULL;
   }
 
   if (fseek (fp, 0L, SEEK_END)) {
-    xerror ("can't seek file `%s'", path);
+    xerror (__FILE__ ": can't seek file `%s'", path);
     fclose (fp);
     return NULL;
   }
 
   r = ftell (fp);
   if (r == -1) {
-    xerror ("can't get file size of `%s'", path);
+    xerror (__FILE__ ": can't get file size of `%s'", path);
     fclose (fp);
     return NULL;
   }
@@ -101,7 +99,7 @@ void *read_file (const char *path, size_t *size)
   fclose (fp);
 
   if (read_return != file_size) {
-    error ("can't fully read file `%s'", path);
+    error (__FILE__ ": can't fully read file `%s'", path);
     free (buffer);
     return NULL;
   }

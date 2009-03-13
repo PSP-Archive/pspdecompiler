@@ -9,8 +9,7 @@
 
 #define INDEX_FOR(hash, size) ((hash) & ((size) - 1))
 
-struct entry
-{
+struct entry {
   void *key, *value;
   unsigned int hash;
   struct entry *next;
@@ -180,7 +179,15 @@ void hashtable_traverse (struct hashtable *ht, traversefunction traversefn)
   }
 }
 
+int hashtable_pointer_compare (void *key1, void *key2)
+{
+  return (key1 == key2);
+}
 
+int hashtable_string_compare (void *key1, void *key2)
+{
+  return (strcmp (key1, key2) == 0);
+}
 
 unsigned int hash_bytes (unsigned char *key, size_t len)
 {
