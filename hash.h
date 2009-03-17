@@ -23,6 +23,6 @@ int hashtable_pointer_compare (void *key1, void *key2);
 int hashtable_string_compare (void *key1, void *key2);
 
 unsigned int hash_bytes (unsigned char *key, size_t len);
-unsigned int hash_string (char *key);
+unsigned int hash_string (void *key);
 
 #endif /* __HASH_H */

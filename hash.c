@@ -49,7 +49,8 @@ void hashtable_destroy (struct hashtable *ht, traversefunction destroyfn)
   for (i = 0; i < ht->tablelength; i++) {
     for (e = ht->table[i]; e; e = ne) {
       ne = e->next;
-      destroyfn (e->key, e->value);
+      if (destroyfn)
+        destroyfn (e->key, e->value);
       free (e);
     }
   }
@@ -207,7 +208,7 @@ unsigned int hash_bytes (unsigned char *key, size_t len)
   return hash;
 }
 
-unsigned int hash_string (char *key)
+unsigned int hash_string (void *key)
 {
   unsigned int hash = 0;
   unsigned char *bytes = (unsigned char *) key;

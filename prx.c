@@ -3,12 +3,14 @@
 #include <string.h>
 
 #include "prx.h"
+#include "hash.h"
 #include "utils.h"
 
-#define ELF_HEADER_SIZE       52
-#define ELF_MACHINE_MIPS       8
-#define ELF_VERSION_CURRENT    1
-#define ELF_PRX_FLAGS 0x10A23000
+#define ELF_HEADER_SIZE              52
+#define ELF_SECTION_HEADER_ENT_SIZE  40
+#define ELF_PROGRAM_HEADER_ENT_SIZE  32
+#define ELF_PRX_FLAGS                (ELF_FLAGS_MIPS_ARCH2 | ELF_FLAGS_MACH_ALLEGREX | ELF_FLAGS_MACH_ALLEGREX)
+#define PRX_MODULE_INFO_SIZE
 
 
 static const uint8 *elf_bytes;
@@ -57,61 +59,101 @@ void set_position (size_t pos)
 }
 
 static
-const uint8 *get_pointer_offset (size_t offset)
+const uint8 *get_pointer (size_t offset)
 {
   return &elf_bytes[offset];
 }
 
 
 static
-int check_elf_header (struct ElfHeader *elf_header)
+int check_section_header (struct elf_section *section, uint32 index)
 {
-  Elf32_Word table_size;
+  if (section->offset >= elf_size ||
+      (section->type != SHT_NOBITS && (section->size > elf_size ||
+      (section->offset + section->size) > elf_size))) {
+    error (__FILE__ ": wrong section offset/size (section %d)", index);
+    return 0;
+  }
 
-  if (memcmp (elf_header->e_ident, valid_ident, sizeof (valid_ident))) {
+  return 1;
+}
+
+static
+int check_program_header (struct elf_program *program, uint32 index)
+{
+  if (program->offset >= elf_size ||
+      program->filesz > elf_size ||
+      (program->offset + program->filesz) > elf_size) {
+    error (__FILE__ ": wrong program offset/size (program %d)", index);
+    return 0;
+  }
+  return 1;
+}
+
+static
+int check_elf_header (struct prx *p)
+{
+  uint32 table_size;
+
+  if (memcmp (p->ident, valid_ident, sizeof (valid_ident))) {
     error (__FILE__ ": invalid identification for ELF/PRX");
     return 0;
   }
 
-  if (elf_header->e_type != ELF_PRX_TYPE) {
-    error (__FILE__ ": not a PRX file");
+  if (p->type != ELF_PRX_TYPE) {
+    error (__FILE__ ": not a PRX file (0x%04X)", p->type);
     return 0;
   }
 
-  if (elf_header->e_machine != ELF_MACHINE_MIPS) {
-    error (__FILE__ ": not a valid PRX file (machine is not MIPS)");
+  if (p->machine != ELF_MACHINE_MIPS) {
+    error (__FILE__ ": machine is not MIPS (0x%04X)", p->machine);
     return 0;
   }
 
-  if (elf_header->e_version != ELF_VERSION_CURRENT) {
-    error (__FILE__ ": not a valid PRX file (version is not EV_CURRENT)");
+  if (p->version != ELF_VERSION_CURRENT) {
+    error (__FILE__ ": version is not EV_CURRENT (0x%08X)", p->version);
     return 0;
   }
 
-  if (elf_header->e_ehsize != ELF_HEADER_SIZE) {
-    error (__FILE__ ": wrong ELF header size");
+  if (p->ehsize != ELF_HEADER_SIZE) {
+    error (__FILE__ ": wrong ELF header size (%u)", p->ehsize);
     return 0;
   }
 
-  if ((elf_header->e_flags & ELF_PRX_FLAGS) != ELF_PRX_FLAGS) {
-    error (__FILE__ ": wrong ELF flags");
+  if ((p->flags & ELF_PRX_FLAGS) != ELF_PRX_FLAGS) {
+    error (__FILE__ ": wrong ELF flags (0x%08X)", p->flags);
     return 0;
   }
 
-  table_size = elf_header->e_phentsize;
-  table_size *= (Elf32_Word) elf_header->e_phnum;
-  if (elf_header->e_phoff >= elf_header->size ||
-      table_size > elf_header->size ||
-      (elf_header->e_phoff + table_size) > elf_header->size) {
+  if (p->phnum && p->phentsize != ELF_PROGRAM_HEADER_ENT_SIZE) {
+    error (__FILE__ ": wrong ELF program header entity size (%u)", p->phentsize);
+    return 0;
+  }
+
+  if (!p->phnum) {
+    error (__FILE__ ": PRX has no programs");
+    return 0;
+  }
+
+  table_size = p->phentsize;
+  table_size *= (uint32) p->phnum;
+  if (p->phoff >= p->size ||
+      table_size > p->size ||
+      (p->phoff + table_size) > p->size) {
     error (__FILE__ ": wrong ELF program header table offset/size");
     return 0;
   }
 
-  table_size = elf_header->e_shentsize;
-  table_size *= (Elf32_Word) elf_header->e_shnum;
-  if (elf_header->e_shoff >= elf_header->size ||
-      table_size > elf_header->size ||
-      (elf_header->e_shoff + table_size) > elf_header->size) {
+  if (p->shnum && p->shentsize != ELF_SECTION_HEADER_ENT_SIZE) {
+    error (__FILE__ ": wrong ELF section header entity size (%u)", p->shentsize);
+    return 0;
+  }
+
+  table_size = p->shentsize;
+  table_size *= (uint32) p->shnum;
+  if (p->shoff >= p->size ||
+      table_size > p->size ||
+      (p->shoff + table_size) > p->size) {
     error (__FILE__ ": wrong ELF section header table offset/size");
     return 0;
   }
@@ -121,127 +163,144 @@ int check_elf_header (struct ElfHeader *elf_header)
 }
 
 static
-int check_section_header (struct ElfSection *section, Elf32_Word index)
+void free_sections (struct prx *p)
 {
-  if (section->sh_offset >= elf_size ||
-      (section->sh_type != SHT_NOBITS && (section->sh_size > elf_size ||
-      (section->sh_offset + section->sh_size) > elf_size))) {
-    error (__FILE__ ": wrong section offset/size (section %d)", index);
-    return 0;
-  }
-
-  return 1;
+  if (p->sections)
+    free (p->sections);
+  p->sections = NULL;
+  if (p->secbyname)
+    hashtable_destroy (p->secbyname, NULL);
+  p->secbyname = NULL;
 }
 
 static
-int check_program_header (struct ElfProgram *program, Elf32_Word index)
+void free_programs (struct prx *p)
 {
-  if (program->p_offset >= elf_size ||
-      program->p_filesz > elf_size ||
-      (program->p_offset + program->p_filesz) > elf_size) {
-    error (__FILE__ ": wrong program offset/size (program %d)", index);
-    return 0;
-  }
-
-  return 1;
+  if (p->programs)
+    free (p->programs);
+  p->programs = NULL;
 }
 
 static
-int load_sections (struct ElfHeader *elf_header)
+void free_prx (struct prx *p)
 {
-  struct ElfSection *sections;
-  Elf32_Word idx;
+  free_sections (p);
+  free_programs (p);
+  if (p->data)
+    free ((void *) p->data);
+  p->data = NULL;
+  free (p);
+}
 
-  sections = xmalloc (elf_header->e_shnum * sizeof (struct ElfSection));
-  elf_header->sections = sections;
 
-  set_position (elf_header->e_shoff);
-  for (idx = 0; idx < elf_header->e_shnum; idx++) {
+static
+int load_sections (struct prx *p)
+{
+  struct elf_section *sections;
+  uint32 idx;
 
-    sections[idx].sh_name = read_uint32_le ();
-    sections[idx].sh_type = read_uint32_le ();
-    sections[idx].sh_flags = read_uint32_le ();
-    sections[idx].sh_addr = read_uint32_le ();
-    sections[idx].sh_offset = read_uint32_le ();
-    sections[idx].sh_size = read_uint32_le ();
-    sections[idx].sh_link = read_uint32_le ();
-    sections[idx].sh_info = read_uint32_le ();
-    sections[idx].sh_addralign = read_uint32_le ();
-    sections[idx].sh_entsize = read_uint32_le ();
+  p->sections = NULL;
+  p->secbyname = hashtable_create (64, &hash_string, &hashtable_string_compare);
+  if (p->shnum == 0) return 1;
 
-    if (!check_section_header (&sections[idx], idx)) {
-      free (sections);
-      elf_header->sections = NULL;
+  sections = xmalloc (p->shnum * sizeof (struct elf_section));
+  p->sections = sections;
+
+  set_position (p->shoff);
+  for (idx = 0; idx < p->shnum; idx++) {
+
+    sections[idx].idxname = read_uint32_le ();
+    sections[idx].type = read_uint32_le ();
+    sections[idx].flags = read_uint32_le ();
+    sections[idx].addr = read_uint32_le ();
+    sections[idx].offset = read_uint32_le ();
+    sections[idx].size = read_uint32_le ();
+    sections[idx].link = read_uint32_le ();
+    sections[idx].info = read_uint32_le ();
+    sections[idx].addralign = read_uint32_le ();
+    sections[idx].entsize = read_uint32_le ();
+
+    if (!check_section_header (&sections[idx], idx))
       return 0;
-    }
 
-    sections[idx].raw_data = get_pointer_offset (sections[idx].sh_offset);
+    sections[idx].data = get_pointer (sections[idx].offset);
   }
 
-  if (elf_header->e_shstrndx > 0) {
-    if (sections[elf_header->e_shstrndx].sh_type == SHT_STRTAB) {
-      char *strings = (char *) sections[elf_header->e_shstrndx].raw_data;
-      Elf32_Word max_index = sections[elf_header->e_shstrndx].sh_size;
+  if (p->shstrndx > 0) {
+    if (sections[p->shstrndx].type == SHT_STRTAB) {
+      char *strings = (char *) sections[p->shstrndx].data;
+      uint32 max_index = sections[p->shstrndx].size;
       if (max_index > 0) {
 
         if (strings[max_index - 1] != '\0') {
           error (__FILE__ ": string table section not terminated with null byte");
-          free (sections);
-          elf_header->sections = NULL;
           return 0;
         }
 
-        for (idx = 0; idx < elf_header->e_shnum; idx++) {
-          if (sections[idx].sh_name < max_index) {
-            sections[idx].name = &strings[sections[idx].sh_name];
+        for (idx = 0; idx < p->shnum; idx++) {
+          if (sections[idx].idxname < max_index) {
+            sections[idx].name = &strings[sections[idx].idxname];
           } else {
             error (__FILE__ ": invalid section name");
-            free (sections);
-            elf_header->sections = NULL;
             return 0;
           }
+        }
+        for (idx = 0; idx < p->shnum; idx++) {
+          hashtable_insert (p->secbyname, (void *) sections[idx].name, &sections[idx]);
         }
       }
     }
   }
+
   return 1;
 }
 
 static
-int load_programs (struct ElfHeader *elf_header)
+int load_programs (struct prx *p)
 {
-  struct ElfProgram *programs;
-  Elf32_Word idx;
+  struct elf_program *programs;
+  uint32 idx;
 
-  programs = xmalloc (elf_header->e_phnum * sizeof (struct ElfProgram));
-  elf_header->programs = programs;
+  programs = xmalloc (p->phnum * sizeof (struct elf_program));
+  p->programs = programs;
 
-  set_position (elf_header->e_phoff);
-  for (idx = 0; idx < elf_header->e_phnum; idx++) {
-    programs[idx].p_type = read_uint32_le ();
-    programs[idx].p_offset = read_uint32_le ();
-    programs[idx].p_vaddr = read_uint32_le ();
-    programs[idx].p_paddr = read_uint32_le ();
-    programs[idx].p_filesz = read_uint32_le ();
-    programs[idx].p_memsz = read_uint32_le ();
-    programs[idx].p_flags = read_uint32_le ();
-    programs[idx].p_align = read_uint32_le ();
+  set_position (p->phoff);
+  for (idx = 0; idx < p->phnum; idx++) {
+    programs[idx].type = read_uint32_le ();
+    programs[idx].offset = read_uint32_le ();
+    programs[idx].vaddr = read_uint32_le ();
+    programs[idx].paddr = read_uint32_le ();
+    programs[idx].filesz = read_uint32_le ();
+    programs[idx].memsz = read_uint32_le ();
+    programs[idx].flags = read_uint32_le ();
+    programs[idx].align = read_uint32_le ();
 
-    if (!check_program_header (&programs[idx], idx)) {
-      free (programs);
-      elf_header->programs = NULL;
+    if (!check_program_header (&programs[idx], idx))
       return 0;
-    }
 
-    programs[idx].raw_data = get_pointer_offset (programs[idx].p_offset);
+    programs[idx].data = get_pointer (programs[idx].offset);
   }
 
   return 1;
 }
 
-struct ElfHeader *load_prx (const char *path)
+static
+int load_module_info (struct prx *p)
 {
-  struct ElfHeader *elf_header;
+  struct elf_section *s;
+  s = hashtable_search (p->secbyname, PRX_MODULE_INFO, NULL);
+  p->modinfo = NULL;
+  if (s) {
+    p->modinfo = (struct prx_modinfo *) xmalloc (sizeof (struct prx_modinfo));
+    return 1;
+  }
+  return 0;
+}
+
+
+struct prx *load_prx (const char *path)
+{
+  struct prx *p;
   elf_bytes = read_file (path, &elf_size);
   if (!elf_bytes) return NULL;
 
@@ -252,46 +311,49 @@ struct ElfHeader *load_prx (const char *path)
     return NULL;
   }
 
-  elf_header = xmalloc (sizeof (struct ElfHeader));
-  elf_header->size = elf_size;
-  elf_header->raw_data = elf_bytes;
+  p = xmalloc (sizeof (struct prx));
+  p->size = elf_size;
+  p->data = elf_bytes;
 
-  read_bytes (elf_header->e_ident, ELF_HEADER_IDENT);
-  elf_header->e_type = read_uint16_le ();
-  elf_header->e_machine = read_uint16_le ();
+  read_bytes (p->ident, ELF_HEADER_IDENT);
+  p->type = read_uint16_le ();
+  p->machine = read_uint16_le ();
 
-  elf_header->e_version = read_uint32_le ();
-  elf_header->e_entry = read_uint32_le ();
-  elf_header->e_phoff = read_uint32_le ();
-  elf_header->e_shoff = read_uint32_le ();
-  elf_header->e_flags = read_uint32_le ();
-  elf_header->e_ehsize = read_uint16_le ();
-  elf_header->e_phentsize = read_uint16_le ();
-  elf_header->e_phnum = read_uint16_le ();
-  elf_header->e_shentsize = read_uint16_le ();
-  elf_header->e_shnum = read_uint16_le ();
-  elf_header->e_shstrndx = read_uint16_le ();
+  p->version = read_uint32_le ();
+  p->entry = read_uint32_le ();
+  p->phoff = read_uint32_le ();
+  p->shoff = read_uint32_le ();
+  p->flags = read_uint32_le ();
+  p->ehsize = read_uint16_le ();
+  p->phentsize = read_uint16_le ();
+  p->phnum = read_uint16_le ();
+  p->shentsize = read_uint16_le ();
+  p->shnum = read_uint16_le ();
+  p->shstrndx = read_uint16_le ();
 
-  if (!check_elf_header (elf_header)) {
-    free ((void *) elf_bytes);
-    free (elf_header);
+  if (!check_elf_header (p)) {
+    free_prx (p);
     elf_bytes = NULL;
     return NULL;
   }
 
-  if (!load_sections (elf_header)) {
-    free ((void *) elf_bytes);
-    free (elf_header);
+  if (!load_sections (p)) {
+    free_prx (p);
     elf_bytes = NULL;
     return NULL;
   }
 
-  if (!load_programs (elf_header)) {
-    free ((void *) elf_bytes);
-    free (elf_header);
+  if (!load_programs (p)) {
+    free_prx (p);
     elf_bytes = NULL;
     return NULL;
   }
 
-  return elf_header;
+  if (!load_module_info (p)) {
+    free_prx (p);
+    elf_bytes = NULL;
+    return NULL;
+  }
+
+  return p;
 }
