@@ -8,9 +8,9 @@
 #define ELF_PRX_TYPE            0xFFA0
 #define ELF_MACHINE_MIPS        8
 #define ELF_VERSION_CURRENT     1
-#define ELF_FLAGS_MIPS_ARCH2    0x10000000
 #define ELF_FLAGS_MACH_ALLEGREX 0x00A20000
 #define ELF_FLAGS_ABI_EABI32    0x00003000
+#define ELF_FLAGS_MIPS_ARCH2    0x10000000
 
 
 /* Structure to hold prx header data */
@@ -31,7 +31,7 @@ struct prx
   uint16 shnum;
   uint16 shstrndx;
 
-  size_t size;
+  uint32 size;
   const uint8 *data;
 
   struct elf_section *sections;
@@ -107,7 +107,7 @@ struct elf_program
   uint32 flags;
   uint32 align;
 
-  const uint8  *data;
+  const uint8 *data;
 };
 
 #define PRX_MODULE_INFO       ".rodata.sceModuleInfo"
@@ -116,12 +116,12 @@ struct prx_modinfo {
 
   uint16 attributes;
   uint16 version;
-  char   *name;
+  const char *name;
   uint32 gp;
   uint32 libent;
   uint32 libentbtm;
   uint32 libstub;
-  uint32 libstupbtm;
+  uint32 libstubbtm;
 };
 
 
@@ -159,5 +159,7 @@ struct prx_modinfo {
 #define STT_HIPROC  15
 
 struct prx *load_prx (const char *path);
+void free_prx (struct prx *p);
+void print_prx (struct prx *p);
 
 #endif /* __PRX_H */

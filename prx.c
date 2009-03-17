@@ -10,11 +10,7 @@
 #define ELF_SECTION_HEADER_ENT_SIZE  40
 #define ELF_PROGRAM_HEADER_ENT_SIZE  32
 #define ELF_PRX_FLAGS                (ELF_FLAGS_MIPS_ARCH2 | ELF_FLAGS_MACH_ALLEGREX | ELF_FLAGS_MACH_ALLEGREX)
-#define PRX_MODULE_INFO_SIZE
-
-
-static const uint8 *elf_bytes;
-static size_t elf_pos, elf_size;
+#define PRX_MODULE_INFO_SIZE         52
 
 
 static const uint8 valid_ident[] = {
@@ -26,51 +22,32 @@ static const uint8 valid_ident[] = {
 };
 
 static
-uint32 read_uint32_le (void)
+uint32 read_uint32_le (const uint8 *bytes)
 {
   uint32 r;
-  r  = elf_bytes[elf_pos++];
-  r |= elf_bytes[elf_pos++] << 8;
-  r |= elf_bytes[elf_pos++] << 16;
-  r |= elf_bytes[elf_pos++] << 24;
+  r  = *bytes++;
+  r |= *bytes++ << 8;
+  r |= *bytes++ << 16;
+  r |= *bytes++ << 24;
   return r;
 }
 
 static
-uint16 read_uint16_le (void)
+uint16 read_uint16_le (const uint8 *bytes)
 {
   uint16 r;
-  r  = elf_bytes[elf_pos++];
-  r |= elf_bytes[elf_pos++] << 8;
+  r  = *bytes++;
+  r |= *bytes++ << 8;
   return r;
 }
 
 static
-void read_bytes (uint8 *out, size_t size)
+int check_section_header (struct prx *p, uint32 index)
 {
-  memcpy (out, &elf_bytes[elf_pos], size);
-  elf_pos += size;
-}
-
-static
-void set_position (size_t pos)
-{
-  elf_pos = pos;
-}
-
-static
-const uint8 *get_pointer (size_t offset)
-{
-  return &elf_bytes[offset];
-}
-
-
-static
-int check_section_header (struct elf_section *section, uint32 index)
-{
-  if (section->offset >= elf_size ||
-      (section->type != SHT_NOBITS && (section->size > elf_size ||
-      (section->offset + section->size) > elf_size))) {
+  struct elf_section *section = &p->sections[index];
+  if (section->offset >= p->size ||
+      (section->type != SHT_NOBITS && (section->size > p->size ||
+      (section->offset + section->size) > p->size))) {
     error (__FILE__ ": wrong section offset/size (section %d)", index);
     return 0;
   }
@@ -79,11 +56,12 @@ int check_section_header (struct elf_section *section, uint32 index)
 }
 
 static
-int check_program_header (struct elf_program *program, uint32 index)
+int check_program_header (struct prx *p, uint32 index)
 {
-  if (program->offset >= elf_size ||
-      program->filesz > elf_size ||
-      (program->offset + program->filesz) > elf_size) {
+  struct elf_program *program = &p->programs[index];
+  if (program->offset >= p->size ||
+      program->filesz > p->size ||
+      (program->offset + program->filesz) > p->size) {
     error (__FILE__ ": wrong program offset/size (program %d)", index);
     return 0;
   }
@@ -163,41 +141,11 @@ int check_elf_header (struct prx *p)
 }
 
 static
-void free_sections (struct prx *p)
-{
-  if (p->sections)
-    free (p->sections);
-  p->sections = NULL;
-  if (p->secbyname)
-    hashtable_destroy (p->secbyname, NULL);
-  p->secbyname = NULL;
-}
-
-static
-void free_programs (struct prx *p)
-{
-  if (p->programs)
-    free (p->programs);
-  p->programs = NULL;
-}
-
-static
-void free_prx (struct prx *p)
-{
-  free_sections (p);
-  free_programs (p);
-  if (p->data)
-    free ((void *) p->data);
-  p->data = NULL;
-  free (p);
-}
-
-
-static
 int load_sections (struct prx *p)
 {
   struct elf_section *sections;
   uint32 idx;
+  uint32 offset;
 
   p->sections = NULL;
   p->secbyname = hashtable_create (64, &hash_string, &hashtable_string_compare);
@@ -206,24 +154,26 @@ int load_sections (struct prx *p)
   sections = xmalloc (p->shnum * sizeof (struct elf_section));
   p->sections = sections;
 
-  set_position (p->shoff);
+  offset = p->shoff;
   for (idx = 0; idx < p->shnum; idx++) {
 
-    sections[idx].idxname = read_uint32_le ();
-    sections[idx].type = read_uint32_le ();
-    sections[idx].flags = read_uint32_le ();
-    sections[idx].addr = read_uint32_le ();
-    sections[idx].offset = read_uint32_le ();
-    sections[idx].size = read_uint32_le ();
-    sections[idx].link = read_uint32_le ();
-    sections[idx].info = read_uint32_le ();
-    sections[idx].addralign = read_uint32_le ();
-    sections[idx].entsize = read_uint32_le ();
+    sections[idx].idxname = read_uint32_le (&p->data[offset]);
+    sections[idx].type = read_uint32_le (&p->data[offset+4]);
+    sections[idx].flags = read_uint32_le (&p->data[offset+8]);
+    sections[idx].addr = read_uint32_le (&p->data[offset+12]);
+    sections[idx].offset = read_uint32_le (&p->data[offset+16]);
+    sections[idx].size = read_uint32_le (&p->data[offset+20]);
+    sections[idx].link = read_uint32_le (&p->data[offset+24]);
+    sections[idx].info = read_uint32_le (&p->data[offset+28]);
+    sections[idx].addralign = read_uint32_le (&p->data[offset+32]);
+    sections[idx].entsize = read_uint32_le (&p->data[offset+36]);
 
-    if (!check_section_header (&sections[idx], idx))
+    sections[idx].data = &p->data[sections[idx].offset];
+
+    if (!check_section_header (p, idx))
       return 0;
 
-    sections[idx].data = get_pointer (sections[idx].offset);
+    offset += p->shentsize;
   }
 
   if (p->shstrndx > 0) {
@@ -260,25 +210,28 @@ int load_programs (struct prx *p)
 {
   struct elf_program *programs;
   uint32 idx;
+  uint32 offset;
 
   programs = xmalloc (p->phnum * sizeof (struct elf_program));
   p->programs = programs;
 
-  set_position (p->phoff);
+  offset = p->phoff;
   for (idx = 0; idx < p->phnum; idx++) {
-    programs[idx].type = read_uint32_le ();
-    programs[idx].offset = read_uint32_le ();
-    programs[idx].vaddr = read_uint32_le ();
-    programs[idx].paddr = read_uint32_le ();
-    programs[idx].filesz = read_uint32_le ();
-    programs[idx].memsz = read_uint32_le ();
-    programs[idx].flags = read_uint32_le ();
-    programs[idx].align = read_uint32_le ();
+    programs[idx].type = read_uint32_le (&p->data[offset]);
+    programs[idx].offset = read_uint32_le (&p->data[offset+4]);
+    programs[idx].vaddr = read_uint32_le (&p->data[offset+8]);
+    programs[idx].paddr = read_uint32_le (&p->data[offset+12]);
+    programs[idx].filesz = read_uint32_le (&p->data[offset+16]);
+    programs[idx].memsz = read_uint32_le (&p->data[offset+20]);
+    programs[idx].flags = read_uint32_le (&p->data[offset+24]);
+    programs[idx].align = read_uint32_le (&p->data[offset+28]);
 
-    if (!check_program_header (&programs[idx], idx))
+    programs[idx].data = &p->data[programs[idx].offset];
+
+    if (!check_program_header (p, idx))
       return 0;
 
-    programs[idx].data = get_pointer (programs[idx].offset);
+    offset += p->phentsize;
   }
 
   return 1;
@@ -288,10 +241,22 @@ static
 int load_module_info (struct prx *p)
 {
   struct elf_section *s;
+  struct prx_modinfo *info;
   s = hashtable_search (p->secbyname, PRX_MODULE_INFO, NULL);
   p->modinfo = NULL;
   if (s) {
-    p->modinfo = (struct prx_modinfo *) xmalloc (sizeof (struct prx_modinfo));
+    uint32 offset = s->offset;
+
+    info = (struct prx_modinfo *) xmalloc (sizeof (struct prx_modinfo));
+    p->modinfo = info;
+    info->attributes = read_uint16_le (&p->data[offset]);
+    info->version = read_uint16_le (&p->data[offset+2]);
+    info->name = (const char *) &p->data[offset+4];
+    info->gp = read_uint32_le (&p->data[offset+32]);
+    info->libent = read_uint32_le (&p->data[offset+36]);
+    info->libentbtm = read_uint32_le (&p->data[offset+40]);
+    info->libstub = read_uint32_le (&p->data[offset+44]);
+    info->libstubbtm = read_uint32_le (&p->data[offset+48]);
     return 1;
   }
   return 0;
@@ -301,13 +266,15 @@ int load_module_info (struct prx *p)
 struct prx *load_prx (const char *path)
 {
   struct prx *p;
+  uint8 *elf_bytes;
+  size_t elf_size;
   elf_bytes = read_file (path, &elf_size);
+
   if (!elf_bytes) return NULL;
 
   if (elf_size < ELF_HEADER_SIZE) {
     error (__FILE__ ": elf size too short");
     free ((void *) elf_bytes);
-    elf_bytes = NULL;
     return NULL;
   }
 
@@ -315,45 +282,139 @@ struct prx *load_prx (const char *path)
   p->size = elf_size;
   p->data = elf_bytes;
 
-  read_bytes (p->ident, ELF_HEADER_IDENT);
-  p->type = read_uint16_le ();
-  p->machine = read_uint16_le ();
+  memcpy (p->ident, p->data, ELF_HEADER_IDENT);
+  p->type = read_uint16_le (&p->data[ELF_HEADER_IDENT]);
+  p->machine = read_uint16_le (&p->data[ELF_HEADER_IDENT+2]);
 
-  p->version = read_uint32_le ();
-  p->entry = read_uint32_le ();
-  p->phoff = read_uint32_le ();
-  p->shoff = read_uint32_le ();
-  p->flags = read_uint32_le ();
-  p->ehsize = read_uint16_le ();
-  p->phentsize = read_uint16_le ();
-  p->phnum = read_uint16_le ();
-  p->shentsize = read_uint16_le ();
-  p->shnum = read_uint16_le ();
-  p->shstrndx = read_uint16_le ();
+  p->version = read_uint32_le (&p->data[ELF_HEADER_IDENT+4]);
+  p->entry = read_uint32_le (&p->data[ELF_HEADER_IDENT+8]);
+  p->phoff = read_uint32_le (&p->data[ELF_HEADER_IDENT+12]);
+  p->shoff = read_uint32_le (&p->data[ELF_HEADER_IDENT+16]);
+  p->flags = read_uint32_le (&p->data[ELF_HEADER_IDENT+20]);
+  p->ehsize = read_uint16_le (&p->data[ELF_HEADER_IDENT+24]);
+  p->phentsize = read_uint16_le (&p->data[ELF_HEADER_IDENT+26]);
+  p->phnum = read_uint16_le (&p->data[ELF_HEADER_IDENT+28]);
+  p->shentsize = read_uint16_le (&p->data[ELF_HEADER_IDENT+30]);
+  p->shnum = read_uint16_le (&p->data[ELF_HEADER_IDENT+32]);
+  p->shstrndx = read_uint16_le (&p->data[ELF_HEADER_IDENT+34]);
 
   if (!check_elf_header (p)) {
     free_prx (p);
-    elf_bytes = NULL;
     return NULL;
   }
 
   if (!load_sections (p)) {
     free_prx (p);
-    elf_bytes = NULL;
     return NULL;
   }
 
   if (!load_programs (p)) {
     free_prx (p);
-    elf_bytes = NULL;
     return NULL;
   }
 
   if (!load_module_info (p)) {
     free_prx (p);
-    elf_bytes = NULL;
     return NULL;
   }
 
   return p;
+}
+
+static
+void free_sections (struct prx *p)
+{
+  if (p->sections)
+    free (p->sections);
+  p->sections = NULL;
+  if (p->secbyname)
+    hashtable_destroy (p->secbyname, NULL);
+  p->secbyname = NULL;
+}
+
+static
+void free_programs (struct prx *p)
+{
+  if (p->programs)
+    free (p->programs);
+  p->programs = NULL;
+}
+
+static
+void free_module_info (struct prx *p)
+{
+  if (p->modinfo)
+    free (p->modinfo);
+  p->modinfo = NULL;
+}
+
+void free_prx (struct prx *p)
+{
+  free_sections (p);
+  free_programs (p);
+  free_module_info (p);
+  if (p->data)
+    free ((void *) p->data);
+  p->data = NULL;
+  free (p);
+}
+
+static
+void print_section (struct prx *p, uint32 idx)
+{
+  struct elf_section *section = &p->sections[idx];
+  const char *type;
+
+  switch (section->type) {
+  case SHT_DYNAMIC: type = "DYNAMIC"; break;
+  case SHT_NOBITS: type = "NOBITS"; break;
+  case SHT_PRXRELOC: type = "PRXRELOC"; break;
+  case SHT_STRTAB: type = "STRTAB"; break;
+  case SHT_PROGBITS: type = "PROGBITS"; break;
+  case SHT_NULL: type = "NULL"; break;
+  default: type = "";
+  }
+  report ("  [%2d] %28s %10s %08X %08X %08X\n",
+      idx, section->name, type, section->addr, section->offset, section->size);
+}
+
+static
+void print_program (struct prx *p, uint32 idx)
+{
+  struct elf_program *program = &p->programs[idx];
+  const char *type;
+
+  switch (program->type) {
+  case PT_LOAD: type = "LOAD"; break;
+  default: type = "";
+  }
+  report ("  %10s 0x%08X 0x%08X 0x%08X 0x%08X\n",
+      type, program->offset, program->vaddr, program->paddr, program->filesz);
+}
+
+void print_prx (struct prx *p)
+{
+  uint32 idx;
+  report ("ELF header:\n");
+  report ("  Entry point address:        0x%08X\n", p->entry);
+  report ("  Start of program headers:   0x%08X\n", p->phoff);
+  report ("  Start of section headers:   0x%08X\n", p->shoff);
+  report ("  Number of programs:           %8d\n", p->phnum);
+  report ("  Number of sections:           %8d\n", p->shnum);
+
+  report ("\nSection Headers:\n");
+  report ("  [Nr]            Name                  Type    Addr      Off      Size   ES Flg Lk Inf Al\n");
+
+  for (idx = 0; idx < p->shnum; idx++) {
+    print_section (p, idx);
+  }
+
+  report ("\nProgram Headers:\n");
+  report ("  Type           Offset   VirtAddr   PhysAddr   FileSiz MemSiz  Flg Align\n");
+
+  for (idx = 0; idx < p->phnum; idx++) {
+    print_program (p, idx);
+  }
+
+  report ("\n");
 }
