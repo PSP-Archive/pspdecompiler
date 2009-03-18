@@ -100,7 +100,7 @@
 #define VFPU_MASK_ROT_NEG       0x1
 
 
-struct Instruction
+struct allegrex_instruction
 {
   const char *name;
   unsigned int opcode;
@@ -122,7 +122,7 @@ struct Instruction
 #define ADDR_TYPE_26   2
 #define ADDR_TYPE_REG  3
 
-static struct Instruction g_inst[] =
+static struct allegrex_instruction instructions[] =
 {
   /* Macro instructions */
   { "nop",        0x00000000, 0xFFFFFFFF, "",       ADDR_TYPE_NONE, 0 },
@@ -244,46 +244,46 @@ static struct Instruction g_inst[] =
   { "wsbw",        0x7C0000E0, 0xFFE007FF, "%d, %t",     ADDR_TYPE_NONE, INSTR_TYPE_PSP },
 
   /* FPU instructions */
-  {"abs.s",        0x46000005, 0xFFFF003F, "%D, %S",     ADDR_TYPE_NONE, 0 },
-  {"add.s",        0x46000000, 0xFFE0003F, "%D, %S, %T", ADDR_TYPE_NONE, 0 },
-  {"bc1f",         0x45000000, 0xFFFF0000, "%O",         ADDR_TYPE_16,   INSTR_TYPE_B },
-  {"bc1fl",        0x45020000, 0xFFFF0000, "%O",         ADDR_TYPE_16,   INSTR_TYPE_B },
-  {"bc1t",         0x45010000, 0xFFFF0000, "%O",         ADDR_TYPE_16,   INSTR_TYPE_B },
-  {"bc1tl",        0x45030000, 0xFFFF0000, "%O",         ADDR_TYPE_16,   INSTR_TYPE_B },
-  {"c.f.s",        0x46000030, 0xFFE007FF, "%S, %T",     ADDR_TYPE_NONE, 0 },
-  {"c.un.s",       0x46000031, 0xFFE007FF, "%S, %T",     ADDR_TYPE_NONE, 0 },
-  {"c.eq.s",       0x46000032, 0xFFE007FF, "%S, %T",     ADDR_TYPE_NONE, 0 },
-  {"c.ueq.s",      0x46000033, 0xFFE007FF, "%S, %T",     ADDR_TYPE_NONE, 0 },
-  {"c.olt.s",      0x46000034, 0xFFE007FF, "%S, %T",     ADDR_TYPE_NONE, 0 },
-  {"c.ult.s",      0x46000035, 0xFFE007FF, "%S, %T",     ADDR_TYPE_NONE, 0 },
-  {"c.ole.s",      0x46000036, 0xFFE007FF, "%S, %T",     ADDR_TYPE_NONE, 0 },
-  {"c.ule.s",      0x46000037, 0xFFE007FF, "%S, %T",     ADDR_TYPE_NONE, 0 },
-  {"c.sf.s",       0x46000038, 0xFFE007FF, "%S, %T",     ADDR_TYPE_NONE, 0 },
-  {"c.ngle.s",     0x46000039, 0xFFE007FF, "%S, %T",     ADDR_TYPE_NONE, 0 },
-  {"c.seq.s",      0x4600003A, 0xFFE007FF, "%S, %T",     ADDR_TYPE_NONE, 0 },
-  {"c.ngl.s",      0x4600003B, 0xFFE007FF, "%S, %T",     ADDR_TYPE_NONE, 0 },
-  {"c.lt.s",       0x4600003C, 0xFFE007FF, "%S, %T",     ADDR_TYPE_NONE, 0 },
-  {"c.nge.s",      0x4600003D, 0xFFE007FF, "%S, %T",     ADDR_TYPE_NONE, 0 },
-  {"c.le.s",       0x4600003E, 0xFFE007FF, "%S, %T",     ADDR_TYPE_NONE, 0 },
-  {"c.ngt.s",      0x4600003F, 0xFFE007FF, "%S, %T",     ADDR_TYPE_NONE, 0 },
-  {"ceil.w.s",     0x4600000E, 0xFFFF003F, "%D, %S",     ADDR_TYPE_NONE, 0 },
-  {"cfc1",         0x44400000, 0xFFE007FF, "%t, %p",     ADDR_TYPE_NONE, 0 },
-  {"ctc1",         0x44c00000, 0xFFE007FF, "%t, %p",     ADDR_TYPE_NONE, 0 },
-  {"cvt.s.w",      0x46800020, 0xFFFF003F, "%D, %S",     ADDR_TYPE_NONE, 0 },
-  {"cvt.w.s",      0x46000024, 0xFFFF003F, "%D, %S",     ADDR_TYPE_NONE, 0 },
-  {"div.s",        0x46000003, 0xFFE0003F, "%D, %S, %T", ADDR_TYPE_NONE, 0 },
-  {"floor.w.s",    0x4600000F, 0xFFFF003F, "%D, %S",     ADDR_TYPE_NONE, 0 },
-  {"lwc1",         0xc4000000, 0xFC000000, "%T, %o",     ADDR_TYPE_NONE, 0 },
-  {"mfc1",         0x44000000, 0xFFE007FF, "%t, %1",     ADDR_TYPE_NONE, 0 },
-  {"mov.s",        0x46000006, 0xFFFF003F, "%D, %S",     ADDR_TYPE_NONE, 0 },
-  {"mtc1",         0x44800000, 0xFFE007FF, "%t, %1",     ADDR_TYPE_NONE, 0 },
-  {"mul.s",        0x46000002, 0xFFE0003F, "%D, %S, %T", ADDR_TYPE_NONE, 0 },
-  {"neg.s",        0x46000007, 0xFFFF003F, "%D, %S",     ADDR_TYPE_NONE, 0 },
-  {"round.w.s",    0x4600000C, 0xFFFF003F, "%D, %S",     ADDR_TYPE_NONE, 0 },
-  {"sqrt.s",       0x46000004, 0xFFFF003F, "%D, %S",     ADDR_TYPE_NONE, 0 },
-  {"sub.s",        0x46000001, 0xFFE0003F, "%D, %S, %T", ADDR_TYPE_NONE, 0 },
-  {"swc1",         0xe4000000, 0xFC000000, "%T, %o",     ADDR_TYPE_NONE, 0 },
-  {"trunc.w.s",    0x4600000D, 0xFFFF003F, "%D, %S",     ADDR_TYPE_NONE, 0 },
+  { "abs.s",        0x46000005, 0xFFFF003F, "%D, %S",     ADDR_TYPE_NONE, 0 },
+  { "add.s",        0x46000000, 0xFFE0003F, "%D, %S, %T", ADDR_TYPE_NONE, 0 },
+  { "bc1f",         0x45000000, 0xFFFF0000, "%O",         ADDR_TYPE_16,   INSTR_TYPE_B },
+  { "bc1fl",        0x45020000, 0xFFFF0000, "%O",         ADDR_TYPE_16,   INSTR_TYPE_B },
+  { "bc1t",         0x45010000, 0xFFFF0000, "%O",         ADDR_TYPE_16,   INSTR_TYPE_B },
+  { "bc1tl",        0x45030000, 0xFFFF0000, "%O",         ADDR_TYPE_16,   INSTR_TYPE_B },
+  { "c.f.s",        0x46000030, 0xFFE007FF, "%S, %T",     ADDR_TYPE_NONE, 0 },
+  { "c.un.s",       0x46000031, 0xFFE007FF, "%S, %T",     ADDR_TYPE_NONE, 0 },
+  { "c.eq.s",       0x46000032, 0xFFE007FF, "%S, %T",     ADDR_TYPE_NONE, 0 },
+  { "c.ueq.s",      0x46000033, 0xFFE007FF, "%S, %T",     ADDR_TYPE_NONE, 0 },
+  { "c.olt.s",      0x46000034, 0xFFE007FF, "%S, %T",     ADDR_TYPE_NONE, 0 },
+  { "c.ult.s",      0x46000035, 0xFFE007FF, "%S, %T",     ADDR_TYPE_NONE, 0 },
+  { "c.ole.s",      0x46000036, 0xFFE007FF, "%S, %T",     ADDR_TYPE_NONE, 0 },
+  { "c.ule.s",      0x46000037, 0xFFE007FF, "%S, %T",     ADDR_TYPE_NONE, 0 },
+  { "c.sf.s",       0x46000038, 0xFFE007FF, "%S, %T",     ADDR_TYPE_NONE, 0 },
+  { "c.ngle.s",     0x46000039, 0xFFE007FF, "%S, %T",     ADDR_TYPE_NONE, 0 },
+  { "c.seq.s",      0x4600003A, 0xFFE007FF, "%S, %T",     ADDR_TYPE_NONE, 0 },
+  { "c.ngl.s",      0x4600003B, 0xFFE007FF, "%S, %T",     ADDR_TYPE_NONE, 0 },
+  { "c.lt.s",       0x4600003C, 0xFFE007FF, "%S, %T",     ADDR_TYPE_NONE, 0 },
+  { "c.nge.s",      0x4600003D, 0xFFE007FF, "%S, %T",     ADDR_TYPE_NONE, 0 },
+  { "c.le.s",       0x4600003E, 0xFFE007FF, "%S, %T",     ADDR_TYPE_NONE, 0 },
+  { "c.ngt.s",      0x4600003F, 0xFFE007FF, "%S, %T",     ADDR_TYPE_NONE, 0 },
+  { "ceil.w.s",     0x4600000E, 0xFFFF003F, "%D, %S",     ADDR_TYPE_NONE, 0 },
+  { "cfc1",         0x44400000, 0xFFE007FF, "%t, %p",     ADDR_TYPE_NONE, 0 },
+  { "ctc1",         0x44c00000, 0xFFE007FF, "%t, %p",     ADDR_TYPE_NONE, 0 },
+  { "cvt.s.w",      0x46800020, 0xFFFF003F, "%D, %S",     ADDR_TYPE_NONE, 0 },
+  { "cvt.w.s",      0x46000024, 0xFFFF003F, "%D, %S",     ADDR_TYPE_NONE, 0 },
+  { "div.s",        0x46000003, 0xFFE0003F, "%D, %S, %T", ADDR_TYPE_NONE, 0 },
+  { "floor.w.s",    0x4600000F, 0xFFFF003F, "%D, %S",     ADDR_TYPE_NONE, 0 },
+  { "lwc1",         0xc4000000, 0xFC000000, "%T, %o",     ADDR_TYPE_NONE, 0 },
+  { "mfc1",         0x44000000, 0xFFE007FF, "%t, %1",     ADDR_TYPE_NONE, 0 },
+  { "mov.s",        0x46000006, 0xFFFF003F, "%D, %S",     ADDR_TYPE_NONE, 0 },
+  { "mtc1",         0x44800000, 0xFFE007FF, "%t, %1",     ADDR_TYPE_NONE, 0 },
+  { "mul.s",        0x46000002, 0xFFE0003F, "%D, %S, %T", ADDR_TYPE_NONE, 0 },
+  { "neg.s",        0x46000007, 0xFFFF003F, "%D, %S",     ADDR_TYPE_NONE, 0 },
+  { "round.w.s",    0x4600000C, 0xFFFF003F, "%D, %S",     ADDR_TYPE_NONE, 0 },
+  { "sqrt.s",       0x46000004, 0xFFFF003F, "%D, %S",     ADDR_TYPE_NONE, 0 },
+  { "sub.s",        0x46000001, 0xFFE0003F, "%D, %S, %T", ADDR_TYPE_NONE, 0 },
+  { "swc1",         0xe4000000, 0xFC000000, "%T, %o",     ADDR_TYPE_NONE, 0 },
+  { "trunc.w.s",    0x4600000D, 0xFFFF003F, "%D, %S",     ADDR_TYPE_NONE, 0 },
 
         /* VPU instructions */
   { "bvf",         0x49000000, 0xFFE30000, "%Zc, %O",       ADDR_TYPE_16, INSTR_TYPE_PSP | INSTR_TYPE_B }, /* [hlide] %Z -> %Zc */
@@ -931,7 +931,7 @@ int print_cop2 (int reg, char *output)
 
 
 static
-void decode_instruction (struct Instruction *insn, unsigned int opcode, unsigned int PC)
+void decode_instruction (struct allegrex_instruction *insn, unsigned int opcode, unsigned int PC)
 {
   int i = 0, len = 0, vmmul = 0;
   unsigned int data = opcode;
@@ -1087,9 +1087,9 @@ char *allegrex_disassemble (unsigned int opcode, unsigned int PC)
 {
   int i;
 
-  for (i = 0; i < sizeof (g_inst) / sizeof (struct Instruction); i++) {
-    if ((g_inst[i].mask & opcode) == g_inst[i].opcode) {
-      decode_instruction (&g_inst[i], opcode, PC);
+  for (i = 0; i < sizeof (instructions) / sizeof (struct allegrex_instruction); i++) {
+    if ((instructions[i].mask & opcode) == instructions[i].opcode) {
+      decode_instruction (&instructions[i], opcode, PC);
       break;
     }
   }
@@ -1099,14 +1099,48 @@ char *allegrex_disassemble (unsigned int opcode, unsigned int PC)
 #ifdef TEST_DISASSEMBLE
 
 #include <stdlib.h>
-int main (int argc, char **argv)
+
+int main2 (int argc, char **argv)
 {
   int i;
-  for (i = 0; i < sizeof (g_inst) / sizeof (struct Instruction); i++) {
+
+  for (i = 0; i < sizeof (instructions) / sizeof (struct allegrex_instruction); i++) {
     unsigned int opcode = rand ();
-    opcode = (opcode & (~g_inst[i].mask)) | g_inst[i].opcode;
-    printf ("%s\n", disassemble (opcode, 4 * i));
+    opcode = (opcode & (~instructions[i].mask)) | instructions[i].opcode;
+    printf ("%s\n", allegrex_disassemble (opcode, 4 * i));
   }
+
+  return 0;
+}
+#include <string.h>
+
+int main (int argc, char **argv)
+{
+  FILE *fp = fopen ("disasm.c", "r");
+  char buffer[1024];
+  char buf2[512];
+  int i = 0;
+
+  while (1) {
+    char *s = fgets (buffer, sizeof (buffer), fp);
+    if (!s) break;
+    if (strncmp (s, "  { \"", 5) == 0) {
+      int j = 0;
+      while (s[5+j] != '"') {
+        char c = s[5+j];
+        if (c == '.') {  c = '_';  }
+        else c = toupper (c);
+        buf2[j] = c;
+        j++;
+      }
+      buf2[j] = ',';
+      buf2[j+1] = '\0';
+      printf ("  { I_%-16s \"%s", buf2, &s[5]);
+    } else {
+      printf ("%s", s);
+    }
+  }
+  fclose (fp);
   return 0;
 }
 
