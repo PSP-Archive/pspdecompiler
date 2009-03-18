@@ -1,18 +1,28 @@
 #ifndef __ANALYSER_H
 #define __ANALYSER_H
 
+#include "allegrex.h"
 
-#define JTYPE_BRANCH 0x01
-#define JTYPE_LIKELY 0x02
-#define JTYPE_LINK   0x04
+enum allegrex_jumptype {
+  JTYPE_NONE,
+  JTYPE_BRANCH,
+  JTYPE_BRANCHLIKELY,
+  JTYPE_BRANCHANDLINK,
+  JTYPE_BRANCHANDLINKLIKELY,
+  JTYPE_JUMP,
+  JTYPE_JUMPANDLINK,
+  JTYPE_JUMPREGISTER,
+  JTYPE_JUMPANDLINKREGISTER
+};
 
 struct code_position {
-  uint32 opcode;
-
-  int jumptype;
+  uint32 opc;
+  enum allegrex_itype itype;
+  enum allegrex_jumptype jumptype;
   struct code_position *target;
-  struct code_position *next_jump;
-  struct code_position *next_call;
+  struct code_position *jumprefs;
+  struct code_position *callrefs;
+  struct code_position *next;
 };
 
 #endif /* __ANALYSER_H
