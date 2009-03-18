@@ -1,5 +1,5 @@
-#ifndef __DISASM_H
-#define __DISASM_H
+#ifndef __ALLEGREX_H
+#define __ALLEGREX_H
 
 enum allegrex_itype {
          I_ADD=16,           I_ADDI,          I_ADDIU,           I_ADDU,
@@ -110,5 +110,5 @@ enum allegrex_itype {
 char *allegrex_disassemble (unsigned int opcode, unsigned int PC);
 enum allegrex_itype allegrex_get_itype (unsigned int opcode);
 
-#endif /* __DISASM_H */
+#endif /* __ALLEGREX_H */
 

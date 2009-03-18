@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <ctype.h>
 
-#include "disasm.h"
+#include "allegrex.h"
 
 /* Format codes
  * %d - Rd
