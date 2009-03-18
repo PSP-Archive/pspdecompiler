@@ -1,7 +1,7 @@
 #ifndef __ALLEGREX_H
 #define __ALLEGREX_H
 
-enum allegrex_itype {
+enum insn_type {
          I_ADD=16,           I_ADDI,          I_ADDIU,           I_ADDU,
             I_AND,           I_ANDI,            I_BEQ,           I_BEQL,
            I_BGEZ,         I_BGEZAL,          I_BGEZL,           I_BGTZ,
@@ -108,7 +108,7 @@ enum allegrex_itype {
 };
 
 char *allegrex_disassemble (unsigned int opcode, unsigned int PC);
-enum allegrex_itype allegrex_get_itype (unsigned int opcode);
+enum insn_type allegrex_insn_type (unsigned int opcode);
 
 #endif /* __ALLEGREX_H */
 

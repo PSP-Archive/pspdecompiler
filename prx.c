@@ -11,6 +11,8 @@
 #define ELF_PROGRAM_HEADER_ENT_SIZE  32
 #define ELF_PRX_FLAGS                (ELF_FLAGS_MIPS_ARCH2 | ELF_FLAGS_MACH_ALLEGREX | ELF_FLAGS_MACH_ALLEGREX)
 #define PRX_MODULE_INFO_SIZE         52
+#define PRX_MODULE_IMPORT_SIZE       20
+#define PRX_MODULE_EXPORT_SIZE       16
 
 
 static const uint8 valid_ident[] = {
@@ -45,10 +47,24 @@ static
 int check_section_header (struct prx *p, uint32 index)
 {
   struct elf_section *section = &p->sections[index];
+
   if (section->offset >= p->size ||
       (section->type != SHT_NOBITS && (section->size > p->size ||
       (section->offset + section->size) > p->size))) {
     error (__FILE__ ": wrong section offset/size (section %d)", index);
+    return 0;
+  }
+
+  switch (section->type) {
+  case SHT_DYNAMIC:
+  case SHT_NOBITS:
+  case SHT_PRXRELOC:
+  case SHT_STRTAB:
+  case SHT_PROGBITS:
+  case SHT_NULL:
+    break;
+  default:
+    error (__FILE__ ": invalid section type 0x$08X (section %d)", section->type, index);
     return 0;
   }
 
@@ -64,6 +80,51 @@ int check_program_header (struct prx *p, uint32 index)
       (program->offset + program->filesz) > p->size) {
     error (__FILE__ ": wrong program offset/size (program %d)", index);
     return 0;
+  }
+
+  switch (program->type) {
+  case PT_LOAD:
+  case PT_PRX:
+    break;
+  default:
+    error (__FILE__ ": invalid program type 0x$08X (program %d)", program->type, index);
+    return 0;
+  }
+
+  return 1;
+}
+
+static
+int check_module_info (struct prx *p)
+{
+  struct prx_modinfo *info = p->modinfo;
+  if (info->name[27]) {
+    error (__FILE__ ": module name is not null terminated\n");
+    return 0;
+  }
+  if (info->libent) {
+    if (info->libentbtm < info->libent ||
+        info->libent >= p->size ||
+        info->libentbtm >= p->size) {
+      error (__FILE__ ": invalid library entry (0x%08X - 0x%08X)", info->libent, info->libentbtm);
+      return 0;
+    }
+    if ((info->libentbtm - info->libent) % PRX_MODULE_EXPORT_SIZE) {
+      error (__FILE__ ": invalid size for exports (%u)", info->libentbtm - info->libent);
+      return 0;
+    }
+  }
+  if (info->libstub) {
+    if (info->libstubbtm < info->libstub ||
+        info->libstub >= p->size ||
+        info->libstubbtm >= p->size) {
+      error (__FILE__ ": invalid stubs (0x%08X - 0x%08X)", info->libstub, info->libstubbtm);
+      return 0;
+    }
+    if ((info->libstubbtm - info->libstub) % PRX_MODULE_IMPORT_SIZE) {
+      error (__FILE__ ": invalid size for imports (%u)", info->libstubbtm - info->libstub);
+      return 0;
+    }
   }
   return 1;
 }
@@ -238,6 +299,52 @@ int load_programs (struct prx *p)
 }
 
 static
+int load_module_imports (struct prx *p)
+{
+  uint32 i = 0, offset;
+  struct prx_modinfo *info = p->modinfo;
+  if (!info->libstub) return 1;
+
+  info->numimports = (info->libstubbtm - info->libstub) / PRX_MODULE_IMPORT_SIZE;
+  info->imports = (struct prx_import *) xmalloc (info->numimports * sizeof (struct prx_import));
+  for (offset = info->libstub + p->programs[0].offset; i < info->numimports; offset += PRX_MODULE_IMPORT_SIZE, i++) {
+    info->imports[i].nameaddr = read_uint32_le (&p->data[offset]);
+    info->imports[i].flags = read_uint16_le (&p->data[offset+4]);
+    info->imports[i].version = read_uint16_le (&p->data[offset+6]);
+    info->imports[i].numstubs = read_uint16_le (&p->data[offset+8]);
+    info->imports[i].stubsize = read_uint16_le (&p->data[offset+10]);
+    info->imports[i].nids = read_uint32_le (&p->data[offset+12]);
+    info->imports[i].funcs = read_uint32_le (&p->data[offset+16]);
+
+    info->imports[i].name = (const char *) &p->data[info->imports[i].nameaddr + p->programs[0].offset];
+  }
+  return 1;
+}
+
+static
+int load_module_exports (struct prx *p)
+{
+  uint32 i = 0, offset;
+  struct prx_modinfo *info = p->modinfo;
+  if (!info->libent) return 1;
+
+  info->numexports = (info->libentbtm - info->libent) / PRX_MODULE_EXPORT_SIZE;
+  info->exports = (struct prx_export *) xmalloc (info->numexports * sizeof (struct prx_export));
+  for (offset = info->libent + p->programs[0].offset; i < info->numexports; offset += PRX_MODULE_EXPORT_SIZE, i++) {
+    info->exports[i].nameaddr = read_uint32_le (&p->data[offset]);
+    info->exports[i].version = read_uint16_le (&p->data[offset+4]);
+    info->exports[i].attributes = read_uint16_le (&p->data[offset+6]);
+    info->exports[i].ndwords = p->data[offset+8];
+    info->exports[i].nvars = p->data[offset+9];
+    info->exports[i].nfuncs = read_uint16_le (&p->data[offset+10]);
+    info->exports[i].funcs = read_uint32_le (&p->data[offset+12]);
+
+    info->exports[i].name = (const char *) &p->data[info->exports[i].nameaddr + p->programs[0].offset];
+  }
+  return 1;
+}
+
+static
 int load_module_info (struct prx *p)
 {
   struct elf_section *s;
@@ -245,14 +352,16 @@ int load_module_info (struct prx *p)
   uint32 offset;
   s = hashtable_search (p->secbyname, PRX_MODULE_INFO, NULL);
   p->modinfo = NULL;
-  if (s) {
-    offset = s->offset;
-  } else {
+  if (p->phnum > 0)
     offset = p->programs[0].paddr & 0x7FFFFFFF;
+  else {
+    error (__FILE__ ": can't find module info for PRX");
+    return 0;
   }
 
   info = (struct prx_modinfo *) xmalloc (sizeof (struct prx_modinfo));
   p->modinfo = info;
+
   info->attributes = read_uint16_le (&p->data[offset]);
   info->version = read_uint16_le (&p->data[offset+2]);
   info->name = (const char *) &p->data[offset+4];
@@ -261,6 +370,15 @@ int load_module_info (struct prx *p)
   info->libentbtm = read_uint32_le (&p->data[offset+40]);
   info->libstub = read_uint32_le (&p->data[offset+44]);
   info->libstubbtm = read_uint32_le (&p->data[offset+48]);
+
+  info->imports = NULL;
+  info->exports = NULL;
+
+  if (!check_module_info (p)) return 0;
+
+  if (!load_module_imports (p)) return 0;
+  if (!load_module_exports (p)) return 0;
+
   return 1;
 }
 
@@ -343,8 +461,28 @@ void free_programs (struct prx *p)
 }
 
 static
+void free_module_imports (struct prx *p)
+{
+  if (!p->modinfo) return;
+  if (p->modinfo->imports)
+    free (p->modinfo->imports);
+  p->modinfo->imports = NULL;
+}
+
+static
+void free_module_exports (struct prx *p)
+{
+  if (!p->modinfo) return;
+  if (p->modinfo->exports)
+    free (p->modinfo->exports);
+  p->modinfo->imports = NULL;
+}
+
+static
 void free_module_info (struct prx *p)
 {
+  free_module_imports (p);
+  free_module_exports (p);
   if (p->modinfo)
     free (p->modinfo);
   p->modinfo = NULL;
@@ -362,42 +500,78 @@ void free_prx (struct prx *p)
 }
 
 static
-void print_section (struct prx *p, uint32 idx)
+void print_sections (struct prx *p)
 {
-  struct elf_section *section = &p->sections[idx];
-  const char *type;
+  uint32 idx;
+  struct elf_section *section;
+  const char *type = "";
 
-  switch (section->type) {
-  case SHT_DYNAMIC: type = "DYNAMIC"; break;
-  case SHT_NOBITS: type = "NOBITS"; break;
-  case SHT_PRXRELOC: type = "PRXRELOC"; break;
-  case SHT_STRTAB: type = "STRTAB"; break;
-  case SHT_PROGBITS: type = "PROGBITS"; break;
-  case SHT_NULL: type = "NULL"; break;
-  default: type = "...";
+  if (!p->shnum) return;
+  report ("\nSection Headers:\n");
+  report ("  [Nr]  Name                        Type       Addr     Off      Size     ES Flg Lk Inf Al\n");
+
+  for (idx = 0; idx < p->shnum; idx++) {
+    section = &p->sections[idx];
+    switch (section->type) {
+    case SHT_DYNAMIC: type = "DYNAMIC"; break;
+    case SHT_NOBITS: type = "NOBITS"; break;
+    case SHT_PRXRELOC: type = "PRXRELOC"; break;
+    case SHT_STRTAB: type = "STRTAB"; break;
+    case SHT_PROGBITS: type = "PROGBITS"; break;
+    case SHT_NULL: type = "NULL"; break;
+    }
+    report ("  [%2d] %-28s %-10s %08X %08X %08X %02d %s%s%s %2d %2d  %2d\n",
+            idx, section->name, type, section->addr, section->offset, section->size,
+            section->entsize, (section->flags & SHF_ALLOC) ? "A" : " ",
+            (section->flags & SHF_EXECINSTR) ? "X" : " ", (section->flags & SHF_WRITE) ? "W" : " ",
+            section->link, section->info, section->addralign);
   }
-  report ("  [%2d] %-28s %-10s %08X %08X %08X %02d %s%s%s %2d %2d  %2d\n",
-      idx, section->name, type, section->addr, section->offset, section->size,
-      section->entsize, (section->flags & SHF_ALLOC) ? "A" : " ",
-      (section->flags & SHF_EXECINSTR) ? "X" : " ", (section->flags & SHF_WRITE) ? "W" : " ",
-      section->link, section->info, section->addralign);
 }
 
 static
-void print_program (struct prx *p, uint32 idx)
+void print_programs (struct prx *p)
 {
-  struct elf_program *program = &p->programs[idx];
-  const char *type;
+  uint32 idx;
+  struct elf_program *program;
+  const char *type = "";
 
-  switch (program->type) {
-  case PT_LOAD: type = "LOAD"; break;
-  case PT_PRX: type = "PRX"; break;
-  default: type = "...";
+  if (!p->phnum) return;
+  report ("\nProgram Headers:\n");
+  report ("  Type  Offset     VirtAddr   PhysAddr   FileSiz    MemSiz     Flg Align\n");
+
+  for (idx = 0; idx < p->phnum; idx++) {
+    program = &p->programs[idx];
+    switch (program->type) {
+    case PT_LOAD: type = "LOAD"; break;
+    case PT_PRX: type = "PRX"; break;
+    }
+
+    report ("  %-5s 0x%08X 0x%08X 0x%08X 0x%08X 0x%08X %s%s%s 0x%02X\n",
+            type, program->offset, program->vaddr, program->paddr, program->filesz,
+            program->memsz, (program->flags & PF_X) ? "X" : " ", (program->flags & PF_R) ? "R" : " ",
+            (program->flags & PF_W) ? "W" : " ", program->align);
   }
-  report ("  %-5s 0x%08X 0x%08X 0x%08X 0x%08X 0x%08X %s%s%s 0x%02X\n",
-      type, program->offset, program->vaddr, program->paddr, program->filesz,
-      program->memsz, (program->flags & PF_X) ? "X" : " ", (program->flags & PF_R) ? "R" : " ",
-      (program->flags & PF_W) ? "W" : " ", program->align);
+}
+
+static
+void print_module_imports (struct prx *p)
+{
+  uint32 idx;
+  report ("\nImports:\n");
+  for (idx = 0; idx < p->modinfo->numimports; idx++) {
+    report ("  %s\n", p->modinfo->imports[idx].name);
+  }
+}
+
+static
+void print_module_exports (struct prx *p)
+{
+  uint32 idx;
+  report ("\nExports:\n");
+  for (idx = 0; idx < p->modinfo->numexports; idx++) {
+    if (p->modinfo->exports[idx].nameaddr)
+      report ("  %s\n", p->modinfo->exports[idx].name);
+  }
 }
 
 static
@@ -415,11 +589,13 @@ void print_module_info (struct prx *p)
   report ("  Library entry bottom:      0x%08X\n", info->libentbtm);
   report ("  Library stubs:             0x%08X\n", info->libstub);
   report ("  Library stubs bottom:      0x%08X\n", info->libstubbtm);
+
+  print_module_imports (p);
+  print_module_exports (p);
 }
 
 void print_prx (struct prx *p)
 {
-  uint32 idx;
   report ("ELF header:\n");
   report ("  Entry point address:        0x%08X\n", p->entry);
   report ("  Start of program headers:   0x%08X\n", p->phoff);
@@ -427,24 +603,8 @@ void print_prx (struct prx *p)
   report ("  Number of programs:           %8d\n", p->phnum);
   report ("  Number of sections:           %8d\n", p->shnum);
 
-  if (p->shnum) {
-    report ("\nSection Headers:\n");
-    report ("  [Nr]  Name                        Type       Addr     Off      Size     ES Flg Lk Inf Al\n");
-
-    for (idx = 0; idx < p->shnum; idx++) {
-      print_section (p, idx);
-    }
-  }
-
-  if (p->phnum) {
-    report ("\nProgram Headers:\n");
-    report ("  Type  Offset     VirtAddr   PhysAddr   FileSiz    MemSiz     Flg Align\n");
-
-    for (idx = 0; idx < p->phnum; idx++) {
-      print_program (p, idx);
-    }
-  }
-
+  print_sections (p);
+  print_programs (p);
   print_module_info (p);
 
   report ("\n");

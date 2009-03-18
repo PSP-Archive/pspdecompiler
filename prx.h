@@ -121,14 +121,47 @@ struct prx_modinfo {
 
   uint16 attributes;
   uint16 version;
-  const char *name;
   uint32 gp;
   uint32 libent;
   uint32 libentbtm;
   uint32 libstub;
   uint32 libstubbtm;
+
+  uint32 numimports;
+  uint32 numexports;
+
+  struct prx_import *imports;
+  struct prx_export *exports;
+
+  const char *name;
 };
 
+struct prx_import {
+
+  uint32 nameaddr;
+  uint16 flags;
+  uint16 version;
+  uint16 numstubs;
+  uint16 stubsize;
+  uint32 nids;
+  uint32 funcs;
+  uint32 vars;
+
+  const char *name;
+
+};
+
+struct prx_export {
+  uint32 nameaddr;
+  uint16 version;
+  uint16 attributes;
+  uint8 ndwords;
+  uint8 nvars;
+  uint16 nfuncs;
+  uint32 funcs;
+  const char *name;
+
+};
 
 
 /* MIPS Reloc Entry Types */

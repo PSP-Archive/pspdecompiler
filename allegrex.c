@@ -104,7 +104,7 @@
 
 struct allegrex_instruction
 {
-  enum allegrex_itype itype;
+  enum insn_type itype;
   const char *name;
   unsigned int opcode;
   unsigned int mask;
@@ -1085,7 +1085,7 @@ char *allegrex_disassemble (unsigned int opcode, unsigned int PC)
   return (char *) buffer;
 }
 
-enum allegrex_itype allegrex_get_itype (unsigned int opcode)
+enum insn_type allegrex_insn_type (unsigned int opcode)
 {
   int i;
 
@@ -1113,6 +1113,5 @@ int main (int argc, char **argv)
 
   return 0;
 }
-#include <string.h>
 
 #endif /* TEST_DISASSEMBLE */
