@@ -95,6 +95,11 @@ struct elf_section
 #define PT_PHDR                 6
 #define PT_LOPROC               0x70000000
 #define PT_HIPROC               0x7fffffff
+#define PT_PRX                  (PT_LOPROC | 0xA1)
+
+#define PF_X                    1
+#define PF_W                    2
+#define PF_R                    4
 
 struct elf_program
 {
@@ -149,14 +154,6 @@ struct prx_modinfo {
 #define ELF32_ST_BIND(i) ((i)>>4)
 #define ELF32_ST_TYPE(i) ((i)&0xf)
 #define ELF32_ST_INFO(b,t) (((b)<<4)+((t)&0xf))
-
-#define STT_NOTYPE   0
-#define STT_OBJECT   1
-#define STT_FUNC     2
-#define STT_SECTION  3
-#define STT_FILE     4
-#define STT_LOPROC  13
-#define STT_HIPROC  15
 
 struct prx *load_prx (const char *path);
 void free_prx (struct prx *p);

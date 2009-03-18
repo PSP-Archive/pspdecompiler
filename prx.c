@@ -242,24 +242,26 @@ int load_module_info (struct prx *p)
 {
   struct elf_section *s;
   struct prx_modinfo *info;
+  uint32 offset;
   s = hashtable_search (p->secbyname, PRX_MODULE_INFO, NULL);
   p->modinfo = NULL;
   if (s) {
-    uint32 offset = s->offset;
-
-    info = (struct prx_modinfo *) xmalloc (sizeof (struct prx_modinfo));
-    p->modinfo = info;
-    info->attributes = read_uint16_le (&p->data[offset]);
-    info->version = read_uint16_le (&p->data[offset+2]);
-    info->name = (const char *) &p->data[offset+4];
-    info->gp = read_uint32_le (&p->data[offset+32]);
-    info->libent = read_uint32_le (&p->data[offset+36]);
-    info->libentbtm = read_uint32_le (&p->data[offset+40]);
-    info->libstub = read_uint32_le (&p->data[offset+44]);
-    info->libstubbtm = read_uint32_le (&p->data[offset+48]);
-    return 1;
+    offset = s->offset;
+  } else {
+    offset = p->programs[0].paddr & 0x7FFFFFFF;
   }
-  return 0;
+
+  info = (struct prx_modinfo *) xmalloc (sizeof (struct prx_modinfo));
+  p->modinfo = info;
+  info->attributes = read_uint16_le (&p->data[offset]);
+  info->version = read_uint16_le (&p->data[offset+2]);
+  info->name = (const char *) &p->data[offset+4];
+  info->gp = read_uint32_le (&p->data[offset+32]);
+  info->libent = read_uint32_le (&p->data[offset+36]);
+  info->libentbtm = read_uint32_le (&p->data[offset+40]);
+  info->libstub = read_uint32_le (&p->data[offset+44]);
+  info->libstubbtm = read_uint32_le (&p->data[offset+48]);
+  return 1;
 }
 
 
@@ -372,10 +374,13 @@ void print_section (struct prx *p, uint32 idx)
   case SHT_STRTAB: type = "STRTAB"; break;
   case SHT_PROGBITS: type = "PROGBITS"; break;
   case SHT_NULL: type = "NULL"; break;
-  default: type = "";
+  default: type = "...";
   }
-  report ("  [%2d] %28s %10s %08X %08X %08X\n",
-      idx, section->name, type, section->addr, section->offset, section->size);
+  report ("  [%2d] %-28s %-10s %08X %08X %08X %02d %s%s%s %2d %2d  %2d\n",
+      idx, section->name, type, section->addr, section->offset, section->size,
+      section->entsize, (section->flags & SHF_ALLOC) ? "A" : " ",
+      (section->flags & SHF_EXECINSTR) ? "X" : " ", (section->flags & SHF_WRITE) ? "W" : " ",
+      section->link, section->info, section->addralign);
 }
 
 static
@@ -386,10 +391,30 @@ void print_program (struct prx *p, uint32 idx)
 
   switch (program->type) {
   case PT_LOAD: type = "LOAD"; break;
-  default: type = "";
+  case PT_PRX: type = "PRX"; break;
+  default: type = "...";
   }
-  report ("  %10s 0x%08X 0x%08X 0x%08X 0x%08X\n",
-      type, program->offset, program->vaddr, program->paddr, program->filesz);
+  report ("  %-5s 0x%08X 0x%08X 0x%08X 0x%08X 0x%08X %s%s%s 0x%02X\n",
+      type, program->offset, program->vaddr, program->paddr, program->filesz,
+      program->memsz, (program->flags & PF_X) ? "X" : " ", (program->flags & PF_R) ? "R" : " ",
+      (program->flags & PF_W) ? "W" : " ", program->align);
+}
+
+static
+void print_module_info (struct prx *p)
+{
+  struct prx_modinfo *info = p->modinfo;
+  if (!info) return;
+
+  report ("\nModule info:\n");
+  report ("  Name: %31s\n", info->name);
+  report ("  Attributes:                    0x%04X\n", info->attributes);
+  report ("  Version:                       0x%04X\n", info->version);
+  report ("  GP:                        0x%08X\n", info->gp);
+  report ("  Library entry:             0x%08X\n", info->libent);
+  report ("  Library entry bottom:      0x%08X\n", info->libentbtm);
+  report ("  Library stubs:             0x%08X\n", info->libstub);
+  report ("  Library stubs bottom:      0x%08X\n", info->libstubbtm);
 }
 
 void print_prx (struct prx *p)
@@ -402,19 +427,25 @@ void print_prx (struct prx *p)
   report ("  Number of programs:           %8d\n", p->phnum);
   report ("  Number of sections:           %8d\n", p->shnum);
 
-  report ("\nSection Headers:\n");
-  report ("  [Nr]            Name                  Type    Addr      Off      Size   ES Flg Lk Inf Al\n");
+  if (p->shnum) {
+    report ("\nSection Headers:\n");
+    report ("  [Nr]  Name                        Type       Addr     Off      Size     ES Flg Lk Inf Al\n");
 
-  for (idx = 0; idx < p->shnum; idx++) {
-    print_section (p, idx);
+    for (idx = 0; idx < p->shnum; idx++) {
+      print_section (p, idx);
+    }
   }
 
-  report ("\nProgram Headers:\n");
-  report ("  Type           Offset   VirtAddr   PhysAddr   FileSiz MemSiz  Flg Align\n");
+  if (p->phnum) {
+    report ("\nProgram Headers:\n");
+    report ("  Type  Offset     VirtAddr   PhysAddr   FileSiz    MemSiz     Flg Align\n");
 
-  for (idx = 0; idx < p->phnum; idx++) {
-    print_program (p, idx);
+    for (idx = 0; idx < p->phnum; idx++) {
+      print_program (p, idx);
+    }
   }
+
+  print_module_info (p);
 
   report ("\n");
 }
