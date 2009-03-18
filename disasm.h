@@ -47,10 +47,8 @@ enum allegrex_itype {
          I_VAVG_Q,         I_VAVG_T,        I_VBFY1_P,        I_VBFY1_Q,
         I_VBFY2_Q,       I_VCMOVF_P,       I_VCMOVF_Q,       I_VCMOVF_S,
        I_VCMOVF_T,       I_VCMOVT_P,       I_VCMOVT_Q,       I_VCMOVT_S,
-       I_VCMOVT_T,         I_VCMP_P,         I_VCMP_P,         I_VCMP_P,
-         I_VCMP_Q,         I_VCMP_Q,         I_VCMP_Q,         I_VCMP_S,
-         I_VCMP_S,         I_VCMP_S,         I_VCMP_T,         I_VCMP_T,
-         I_VCMP_T,         I_VCOS_P,         I_VCOS_Q,         I_VCOS_S,
+       I_VCMOVT_T,     I_VCMP_P=199,     I_VCMP_Q=202,     I_VCMP_S=205,
+     I_VCMP_T=208,         I_VCOS_P,         I_VCOS_Q,         I_VCOS_S,
          I_VCOS_T,         I_VCRS_T,        I_VCRSP_T,         I_VCST_P,
          I_VCST_Q,         I_VCST_S,         I_VCST_T,         I_VDET_P,
          I_VDIV_P,         I_VDIV_Q,         I_VDIV_S,         I_VDIV_T,
@@ -102,14 +100,15 @@ enum allegrex_itype {
         I_VSOCP_P,        I_VSOCP_S,        I_VSQRT_P,        I_VSQRT_Q,
         I_VSQRT_S,        I_VSQRT_T,        I_VSRT1_Q,        I_VSRT2_Q,
         I_VSRT3_Q,        I_VSRT4_Q,         I_VSUB_P,         I_VSUB_Q,
-         I_VSUB_S,         I_VSUB_T,          I_VSYNC,          I_VSYNC,
-       I_VT4444_Q,       I_VT5551_Q,       I_VT5650_Q,        I_VTFM2_P,
-        I_VTFM3_T,        I_VTFM4_Q,        I_VUS2I_P,        I_VUS2I_S,
-          I_VWB_Q,         I_VWBN_S,        I_VZERO_P,        I_VZERO_Q,
-        I_VZERO_S,        I_VZERO_T,          I_MFVME,          I_MTVME
+         I_VSUB_S,         I_VSUB_T,      I_VSYNC=419,       I_VT4444_Q,
+       I_VT5551_Q,       I_VT5650_Q,        I_VTFM2_P,        I_VTFM3_T,
+        I_VTFM4_Q,        I_VUS2I_P,        I_VUS2I_S,          I_VWB_Q,
+         I_VWBN_S,        I_VZERO_P,        I_VZERO_Q,        I_VZERO_S,
+        I_VZERO_T,          I_MFVME,          I_MTVME,        I_INVALID
 };
 
 char *allegrex_disassemble (unsigned int opcode, unsigned int PC);
+enum allegrex_itype allegrex_get_itype (unsigned int opcode);
 
 #endif /* __DISASM_H */
 

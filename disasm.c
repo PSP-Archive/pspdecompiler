@@ -1,6 +1,8 @@
 #include <stdio.h>
 #include <ctype.h>
 
+#include "disasm.h"
+
 /* Format codes
  * %d - Rd
  * %t - Rt
@@ -102,471 +104,458 @@
 
 struct allegrex_instruction
 {
+  enum allegrex_itype itype;
   const char *name;
   unsigned int opcode;
   unsigned int mask;
   const char *fmt;
-  int addrtype;
-  int type;
 };
-
-#define INSTR_TYPE_PSP    1
-#define INSTR_TYPE_B      2
-#define INSTR_TYPE_JUMP   4
-#define INSTR_TYPE_JAL    8
-
-#define INSTR_TYPE_BRANCH (INSTR_TYPE_B | INSTR_TYPE_JUMP | INSTR_TYPE_JAL)
-
-#define ADDR_TYPE_NONE 0
-#define ADDR_TYPE_16   1
-#define ADDR_TYPE_26   2
-#define ADDR_TYPE_REG  3
 
 static struct allegrex_instruction instructions[] =
 {
   /* Macro instructions */
-  { "nop",        0x00000000, 0xFFFFFFFF, "",       ADDR_TYPE_NONE, 0 },
-  { "li",         0x24000000, 0xFFE00000, "%t, %i", ADDR_TYPE_NONE, 0 },
-  { "li",         0x34000000, 0xFFE00000, "%t, %I", ADDR_TYPE_NONE, 0 },
-  { "move",       0x00000021, 0xFC1F07FF, "%d, %s", ADDR_TYPE_NONE, 0 },
-  { "move",       0x00000025, 0xFC1F07FF, "%d, %s", ADDR_TYPE_NONE, 0 },
-  { "b",          0x10000000, 0xFFFF0000, "%O",     ADDR_TYPE_16,   INSTR_TYPE_B },
-  { "b",          0x04010000, 0xFFFF0000, "%O",     ADDR_TYPE_16,   INSTR_TYPE_B },
-  { "bal",        0x04110000, 0xFFFF0000, "%O",     ADDR_TYPE_16,   INSTR_TYPE_JAL },
-  { "bnez",       0x14000000, 0xFC1F0000, "%s, %O", ADDR_TYPE_16,   INSTR_TYPE_B },
-  { "bnezl",      0x54000000, 0xFC1F0000, "%s, %O", ADDR_TYPE_16,   INSTR_TYPE_B },
-  { "beqz",       0x10000000, 0xFC1F0000, "%s, %O", ADDR_TYPE_16,   INSTR_TYPE_B },
-  { "beqzl",      0x50000000, 0xFC1F0000, "%s, %O", ADDR_TYPE_16,   INSTR_TYPE_B },
-  { "neg",        0x00000022, 0xFFE007FF, "%d, %t", ADDR_TYPE_NONE, 0 },
-  { "negu",       0x00000023, 0xFFE007FF, "%d, %t", ADDR_TYPE_NONE, 0 },
-  { "not",        0x00000027, 0xFC1F07FF, "%d, %s", ADDR_TYPE_NONE, 0 },
-  { "jalr",       0x0000F809, 0xFC1FFFFF, "%J",     ADDR_TYPE_REG,  INSTR_TYPE_JAL },
+  { I_SLL,             "nop",        0x00000000, 0xFFFFFFFF, ""        },
+  { I_ADDIU,           "li",         0x24000000, 0xFFE00000, "%t, %i"  },
+  { I_ORI,             "li",         0x34000000, 0xFFE00000, "%t, %I"  },
+  { I_ADDU,            "move",       0x00000021, 0xFC1F07FF, "%d, %s"  },
+  { I_OR,              "move",       0x00000025, 0xFC1F07FF, "%d, %s"  },
+  { I_BEQ,             "b",          0x10000000, 0xFFFF0000, "%O"      },
+  { I_BGEZ,            "b",          0x04010000, 0xFFFF0000, "%O"      },
+  { I_BGEZAL,          "bal",        0x04110000, 0xFFFF0000, "%O"      },
+  { I_BNE,             "bnez",       0x14000000, 0xFC1F0000, "%s, %O"  },
+  { I_BNEL,            "bnezl",      0x54000000, 0xFC1F0000, "%s, %O"  },
+  { I_BEQ,             "beqz",       0x10000000, 0xFC1F0000, "%s, %O"  },
+  { I_BEQL,            "beqzl",      0x50000000, 0xFC1F0000, "%s, %O"  },
+  { I_SUB,             "neg",        0x00000022, 0xFFE007FF, "%d, %t"  },
+  { I_SUBU,            "negu",       0x00000023, 0xFFE007FF, "%d, %t"  },
+  { I_NOR,             "not",        0x00000027, 0xFC1F07FF, "%d, %s"  },
+  { I_JALR,            "jalr",       0x0000F809, 0xFC1FFFFF, "%J"      },
 
   /* MIPS instructions */
-  { "add",         0x00000020, 0xFC0007FF, "%d, %s, %t", ADDR_TYPE_NONE, 0 },
-  { "addi",        0x20000000, 0xFC000000, "%t, %s, %i", ADDR_TYPE_NONE, 0 },
-  { "addiu",       0x24000000, 0xFC000000, "%t, %s, %i", ADDR_TYPE_NONE, 0 },
-  { "addu",        0x00000021, 0xFC0007FF, "%d, %s, %t", ADDR_TYPE_NONE, 0 },
-  { "and",         0x00000024, 0xFC0007FF, "%d, %s, %t", ADDR_TYPE_NONE, 0 },
-  { "andi",        0x30000000, 0xFC000000, "%t, %s, %I", ADDR_TYPE_NONE, 0 },
-  { "beq",         0x10000000, 0xFC000000, "%s, %t, %O", ADDR_TYPE_16,   INSTR_TYPE_B },
-  { "beql",        0x50000000, 0xFC000000, "%s, %t, %O", ADDR_TYPE_16,   INSTR_TYPE_B },
-  { "bgez",        0x04010000, 0xFC1F0000, "%s, %O",     ADDR_TYPE_16,   INSTR_TYPE_B },
-  { "bgezal",      0x04110000, 0xFC1F0000, "%s, %O",     ADDR_TYPE_16,   INSTR_TYPE_JAL },
-  { "bgezl",       0x04030000, 0xFC1F0000, "%s, %O",     ADDR_TYPE_16,   INSTR_TYPE_B },
-  { "bgtz",        0x1C000000, 0xFC1F0000, "%s, %O",     ADDR_TYPE_16,   INSTR_TYPE_B },
-  { "bgtzl",       0x5C000000, 0xFC1F0000, "%s, %O",     ADDR_TYPE_16,   INSTR_TYPE_B },
-  { "bitrev",      0x7C000520, 0xFFE007FF, "%d, %t",     ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "blez",        0x18000000, 0xFC1F0000, "%s, %O",     ADDR_TYPE_16,   INSTR_TYPE_B },
-  { "blezl",       0x58000000, 0xFC1F0000, "%s, %O",     ADDR_TYPE_16,   INSTR_TYPE_B },
-  { "bltz",        0x04000000, 0xFC1F0000, "%s, %O",     ADDR_TYPE_16,   INSTR_TYPE_B },
-  { "bltzl",       0x04020000, 0xFC1F0000, "%s, %O",     ADDR_TYPE_16,   INSTR_TYPE_B },
-  { "bltzal",      0x04100000, 0xFC1F0000, "%s, %O",     ADDR_TYPE_16,   INSTR_TYPE_JAL },
-  { "bltzall",     0x04120000, 0xFC1F0000, "%s, %O",     ADDR_TYPE_16,   INSTR_TYPE_JAL },
-  { "bne",         0x14000000, 0xFC000000, "%s, %t, %O", ADDR_TYPE_16,   INSTR_TYPE_B },
-  { "bnel",        0x54000000, 0xFC000000, "%s, %t, %O", ADDR_TYPE_16,   INSTR_TYPE_B },
-  { "break",       0x0000000D, 0xFC00003F, "%c",         ADDR_TYPE_NONE, 0 },
-  { "cache",       0xbc000000, 0xfc000000, "%k, %o",     ADDR_TYPE_NONE, 0 },
-  { "cfc0",        0x40400000, 0xFFE007FF, "%t, %p",     ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "clo",         0x00000017, 0xFC1F07FF, "%d, %s",     ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "clz",         0x00000016, 0xFC1F07FF, "%d, %s",     ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "ctc0",        0x40C00000, 0xFFE007FF, "%t, %p",     ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "max",         0x0000002C, 0xFC0007FF, "%d, %s, %t", ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "min",         0x0000002D, 0xFC0007FF, "%d, %s, %t", ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "dbreak",      0x7000003F, 0xFFFFFFFF, "",           ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "div",         0x0000001A, 0xFC00FFFF, "%s, %t",     ADDR_TYPE_NONE, 0 },
-  { "divu",        0x0000001B, 0xFC00FFFF, "%s, %t",     ADDR_TYPE_NONE, 0 },
-  { "dret",        0x7000003E, 0xFFFFFFFF, "",           ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "eret",        0x42000018, 0xFFFFFFFF, "",           ADDR_TYPE_NONE, 0 },
-  { "ext",         0x7C000000, 0xFC00003F, "%t, %s, %a, %ne", ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "ins",         0x7C000004, 0xFC00003F, "%t, %s, %a, %ni", ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "j",           0x08000000, 0xFC000000, "%j",         ADDR_TYPE_26,   INSTR_TYPE_JUMP },
-  { "jr",          0x00000008, 0xFC1FFFFF, "%J",         ADDR_TYPE_REG,  INSTR_TYPE_JUMP },
-  { "jalr",        0x00000009, 0xFC1F07FF, "%J, %d",     ADDR_TYPE_REG,  INSTR_TYPE_JAL },
-  { "jal",         0x0C000000, 0xFC000000, "%j",         ADDR_TYPE_26,   INSTR_TYPE_JAL },
-  { "lb",          0x80000000, 0xFC000000, "%t, %o",     ADDR_TYPE_NONE, 0 },
-  { "lbu",         0x90000000, 0xFC000000, "%t, %o",     ADDR_TYPE_NONE, 0 },
-  { "lh",          0x84000000, 0xFC000000, "%t, %o",     ADDR_TYPE_NONE, 0 },
-  { "lhu",         0x94000000, 0xFC000000, "%t, %o",     ADDR_TYPE_NONE, 0 },
-  { "ll",          0xC0000000, 0xFC000000, "%t, %O",     ADDR_TYPE_NONE, 0 },
-  { "lui",         0x3C000000, 0xFFE00000, "%t, %I",     ADDR_TYPE_NONE, 0 },
-  { "lw",          0x8C000000, 0xFC000000, "%t, %o",     ADDR_TYPE_NONE, 0 },
-  { "lwl",         0x88000000, 0xFC000000, "%t, %o",     ADDR_TYPE_NONE, 0 },
-  { "lwr",         0x98000000, 0xFC000000, "%t, %o",     ADDR_TYPE_NONE, 0 },
-  { "madd",        0x0000001C, 0xFC00FFFF, "%s, %t",     ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "maddu",       0x0000001D, 0xFC00FFFF, "%s, %t",     ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "mfc0",        0x40000000, 0xFFE007FF, "%t, %0",     ADDR_TYPE_NONE, 0 },
-  { "mfdr",        0x7000003D, 0xFFE007FF, "%t, %r",     ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "mfhi",        0x00000010, 0xFFFF07FF, "%d",         ADDR_TYPE_NONE, 0 },
-  { "mfic",        0x70000024, 0xFFE007FF, "%t, %p",     ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "mflo",        0x00000012, 0xFFFF07FF, "%d",         ADDR_TYPE_NONE, 0 },
-  { "movn",        0x0000000B, 0xFC0007FF, "%d, %s, %t", ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "movz",        0x0000000A, 0xFC0007FF, "%d, %s, %t", ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "msub",        0x0000002e, 0xfc00ffff, "%d, %t",     ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "msubu",       0x0000002f, 0xfc00ffff, "%d, %t",     ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "mtc0",        0x40800000, 0xFFE007FF, "%t, %0",     ADDR_TYPE_NONE, 0 },
-  { "mtdr",        0x7080003D, 0xFFE007FF, "%t, %r",     ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "mtic",        0x70000026, 0xFFE007FF, "%t, %p",     ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "halt",        0x70000000, 0xFFFFFFFF, "",           ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "mthi",        0x00000011, 0xFC1FFFFF, "%s",         ADDR_TYPE_NONE, 0 },
-  { "mtlo",        0x00000013, 0xFC1FFFFF, "%s",         ADDR_TYPE_NONE, 0 },
-  { "mult",        0x00000018, 0xFC00FFFF, "%s, %t",     ADDR_TYPE_NONE, 0 },
-  { "multu",       0x00000019, 0xFC0007FF, "%s, %t",     ADDR_TYPE_NONE, 0 },
-  { "nor",         0x00000027, 0xFC0007FF, "%d, %s, %t", ADDR_TYPE_NONE, 0 },
-  { "or",          0x00000025, 0xFC0007FF, "%d, %s, %t", ADDR_TYPE_NONE, 0 },
-  { "ori",         0x34000000, 0xFC000000, "%t, %s, %I", ADDR_TYPE_NONE, 0 },
-  { "rotr",        0x00200002, 0xFFE0003F, "%d, %t, %a", ADDR_TYPE_NONE, 0 },
-  { "rotv",        0x00000046, 0xFC0007FF, "%d, %t, %s", ADDR_TYPE_NONE, 0 },
-  { "seb",         0x7C000420, 0xFFE007FF, "%d, %t",     ADDR_TYPE_NONE, 0 },
-  { "seh",         0x7C000620, 0xFFE007FF, "%d, %t",     ADDR_TYPE_NONE, 0 },
-  { "sb",          0xA0000000, 0xFC000000, "%t, %o",     ADDR_TYPE_NONE, 0 },
-  { "sh",          0xA4000000, 0xFC000000, "%t, %o",     ADDR_TYPE_NONE, 0 },
-  { "sllv",        0x00000004, 0xFC0007FF, "%d, %t, %s", ADDR_TYPE_NONE, 0 },
-  { "sll",         0x00000000, 0xFFE0003F, "%d, %t, %a", ADDR_TYPE_NONE, 0 },
-  { "slt",         0x0000002A, 0xFC0007FF, "%d, %s, %t", ADDR_TYPE_NONE, 0 },
-  { "slti",        0x28000000, 0xFC000000, "%t, %s, %i", ADDR_TYPE_NONE, 0 },
-  { "sltiu",       0x2C000000, 0xFC000000, "%t, %s, %i", ADDR_TYPE_NONE, 0 },
-  { "sltu",        0x0000002B, 0xFC0007FF, "%d, %s, %t", ADDR_TYPE_NONE, 0 },
-  { "sra",         0x00000003, 0xFFE0003F, "%d, %t, %a", ADDR_TYPE_NONE, 0 },
-  { "srav",        0x00000007, 0xFC0007FF, "%d, %t, %s", ADDR_TYPE_NONE, 0 },
-  { "srlv",        0x00000006, 0xFC0007FF, "%d, %t, %s", ADDR_TYPE_NONE, 0 },
-  { "srl",         0x00000002, 0xFFE0003F, "%d, %t, %a", ADDR_TYPE_NONE, 0 },
-  { "sw",          0xAC000000, 0xFC000000, "%t, %o",     ADDR_TYPE_NONE, 0 },
-  { "swl",         0xA8000000, 0xFC000000, "%t, %o",     ADDR_TYPE_NONE, 0 },
-  { "swr",         0xB8000000, 0xFC000000, "%t, %o",     ADDR_TYPE_NONE, 0 },
-  { "sub",         0x00000022, 0xFC0007FF, "%d, %s, %t", ADDR_TYPE_NONE, 0 },
-  { "subu",        0x00000023, 0xFC0007FF, "%d, %s, %t", ADDR_TYPE_NONE, 0 },
-  { "sync",        0x0000000F, 0xFFFFFFFF, "",           ADDR_TYPE_NONE, 0 },
-  { "syscall",     0x0000000C, 0xFC00003F, "%C",         ADDR_TYPE_NONE, 0 },
-  { "xor",         0x00000026, 0xFC0007FF, "%d, %s, %t", ADDR_TYPE_NONE, 0 },
-  { "xori",        0x38000000, 0xFC000000, "%t, %s, %I", ADDR_TYPE_NONE, 0 },
-  { "wsbh",        0x7C0000A0, 0xFFE007FF, "%d, %t",     ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "wsbw",        0x7C0000E0, 0xFFE007FF, "%d, %t",     ADDR_TYPE_NONE, INSTR_TYPE_PSP },
+  { I_ADD,             "add",         0x00000020, 0xFC0007FF, "%d, %s, %t"  },
+  { I_ADDI,            "addi",        0x20000000, 0xFC000000, "%t, %s, %i"  },
+  { I_ADDIU,           "addiu",       0x24000000, 0xFC000000, "%t, %s, %i"  },
+  { I_ADDU,            "addu",        0x00000021, 0xFC0007FF, "%d, %s, %t"  },
+  { I_AND,             "and",         0x00000024, 0xFC0007FF, "%d, %s, %t"  },
+  { I_ANDI,            "andi",        0x30000000, 0xFC000000, "%t, %s, %I"  },
+  { I_BEQ,             "beq",         0x10000000, 0xFC000000, "%s, %t, %O"  },
+  { I_BEQL,            "beql",        0x50000000, 0xFC000000, "%s, %t, %O"  },
+  { I_BGEZ,            "bgez",        0x04010000, 0xFC1F0000, "%s, %O"      },
+  { I_BGEZAL,          "bgezal",      0x04110000, 0xFC1F0000, "%s, %O"      },
+  { I_BGEZL,           "bgezl",       0x04030000, 0xFC1F0000, "%s, %O"      },
+  { I_BGTZ,            "bgtz",        0x1C000000, 0xFC1F0000, "%s, %O"      },
+  { I_BGTZL,           "bgtzl",       0x5C000000, 0xFC1F0000, "%s, %O"      },
+  { I_BITREV,          "bitrev",      0x7C000520, 0xFFE007FF, "%d, %t"      },
+  { I_BLEZ,            "blez",        0x18000000, 0xFC1F0000, "%s, %O"      },
+  { I_BLEZL,           "blezl",       0x58000000, 0xFC1F0000, "%s, %O"      },
+  { I_BLTZ,            "bltz",        0x04000000, 0xFC1F0000, "%s, %O"      },
+  { I_BLTZL,           "bltzl",       0x04020000, 0xFC1F0000, "%s, %O"      },
+  { I_BLTZAL,          "bltzal",      0x04100000, 0xFC1F0000, "%s, %O"      },
+  { I_BLTZALL,         "bltzall",     0x04120000, 0xFC1F0000, "%s, %O"      },
+  { I_BNE,             "bne",         0x14000000, 0xFC000000, "%s, %t, %O"  },
+  { I_BNEL,            "bnel",        0x54000000, 0xFC000000, "%s, %t, %O"  },
+  { I_BREAK,           "break",       0x0000000D, 0xFC00003F, "%c"          },
+  { I_CACHE,           "cache",       0xbc000000, 0xfc000000, "%k, %o"      },
+  { I_CFC0,            "cfc0",        0x40400000, 0xFFE007FF, "%t, %p"      },
+  { I_CLO,             "clo",         0x00000017, 0xFC1F07FF, "%d, %s"      },
+  { I_CLZ,             "clz",         0x00000016, 0xFC1F07FF, "%d, %s"      },
+  { I_CTC0,            "ctc0",        0x40C00000, 0xFFE007FF, "%t, %p"      },
+  { I_MAX,             "max",         0x0000002C, 0xFC0007FF, "%d, %s, %t"  },
+  { I_MIN,             "min",         0x0000002D, 0xFC0007FF, "%d, %s, %t"  },
+  { I_DBREAK,          "dbreak",      0x7000003F, 0xFFFFFFFF, ""            },
+  { I_DIV,             "div",         0x0000001A, 0xFC00FFFF, "%s, %t"      },
+  { I_DIVU,            "divu",        0x0000001B, 0xFC00FFFF, "%s, %t"      },
+  { I_DRET,            "dret",        0x7000003E, 0xFFFFFFFF, ""            },
+  { I_ERET,            "eret",        0x42000018, 0xFFFFFFFF, ""            },
+  { I_EXT,             "ext",         0x7C000000, 0xFC00003F, "%t, %s, %a, %ne" },
+  { I_INS,             "ins",         0x7C000004, 0xFC00003F, "%t, %s, %a, %ni" },
+  { I_J,               "j",           0x08000000, 0xFC000000, "%j"          },
+  { I_JR,              "jr",          0x00000008, 0xFC1FFFFF, "%J"          },
+  { I_JALR,            "jalr",        0x00000009, 0xFC1F07FF, "%J, %d"      },
+  { I_JAL,             "jal",         0x0C000000, 0xFC000000, "%j"          },
+  { I_LB,              "lb",          0x80000000, 0xFC000000, "%t, %o"      },
+  { I_LBU,             "lbu",         0x90000000, 0xFC000000, "%t, %o"      },
+  { I_LH,              "lh",          0x84000000, 0xFC000000, "%t, %o"      },
+  { I_LHU,             "lhu",         0x94000000, 0xFC000000, "%t, %o"      },
+  { I_LL,              "ll",          0xC0000000, 0xFC000000, "%t, %O"      },
+  { I_LUI,             "lui",         0x3C000000, 0xFFE00000, "%t, %I"      },
+  { I_LW,              "lw",          0x8C000000, 0xFC000000, "%t, %o"      },
+  { I_LWL,             "lwl",         0x88000000, 0xFC000000, "%t, %o"      },
+  { I_LWR,             "lwr",         0x98000000, 0xFC000000, "%t, %o"      },
+  { I_MADD,            "madd",        0x0000001C, 0xFC00FFFF, "%s, %t"      },
+  { I_MADDU,           "maddu",       0x0000001D, 0xFC00FFFF, "%s, %t"      },
+  { I_MFC0,            "mfc0",        0x40000000, 0xFFE007FF, "%t, %0"      },
+  { I_MFDR,            "mfdr",        0x7000003D, 0xFFE007FF, "%t, %r"      },
+  { I_MFHI,            "mfhi",        0x00000010, 0xFFFF07FF, "%d"          },
+  { I_MFIC,            "mfic",        0x70000024, 0xFFE007FF, "%t, %p"      },
+  { I_MFLO,            "mflo",        0x00000012, 0xFFFF07FF, "%d"          },
+  { I_MOVN,            "movn",        0x0000000B, 0xFC0007FF, "%d, %s, %t"  },
+  { I_MOVZ,            "movz",        0x0000000A, 0xFC0007FF, "%d, %s, %t"  },
+  { I_MSUB,            "msub",        0x0000002e, 0xfc00ffff, "%d, %t"      },
+  { I_MSUBU,           "msubu",       0x0000002f, 0xfc00ffff, "%d, %t"      },
+  { I_MTC0,            "mtc0",        0x40800000, 0xFFE007FF, "%t, %0"      },
+  { I_MTDR,            "mtdr",        0x7080003D, 0xFFE007FF, "%t, %r"      },
+  { I_MTIC,            "mtic",        0x70000026, 0xFFE007FF, "%t, %p"      },
+  { I_HALT,            "halt",        0x70000000, 0xFFFFFFFF, ""            },
+  { I_MTHI,            "mthi",        0x00000011, 0xFC1FFFFF, "%s"          },
+  { I_MTLO,            "mtlo",        0x00000013, 0xFC1FFFFF, "%s"          },
+  { I_MULT,            "mult",        0x00000018, 0xFC00FFFF, "%s, %t"      },
+  { I_MULTU,           "multu",       0x00000019, 0xFC0007FF, "%s, %t"      },
+  { I_NOR,             "nor",         0x00000027, 0xFC0007FF, "%d, %s, %t"  },
+  { I_OR,              "or",          0x00000025, 0xFC0007FF, "%d, %s, %t"  },
+  { I_ORI,             "ori",         0x34000000, 0xFC000000, "%t, %s, %I"  },
+  { I_ROTR,            "rotr",        0x00200002, 0xFFE0003F, "%d, %t, %a"  },
+  { I_ROTV,            "rotv",        0x00000046, 0xFC0007FF, "%d, %t, %s"  },
+  { I_SEB,             "seb",         0x7C000420, 0xFFE007FF, "%d, %t"      },
+  { I_SEH,             "seh",         0x7C000620, 0xFFE007FF, "%d, %t"      },
+  { I_SB,              "sb",          0xA0000000, 0xFC000000, "%t, %o"      },
+  { I_SH,              "sh",          0xA4000000, 0xFC000000, "%t, %o"      },
+  { I_SLLV,            "sllv",        0x00000004, 0xFC0007FF, "%d, %t, %s"  },
+  { I_SLL,             "sll",         0x00000000, 0xFFE0003F, "%d, %t, %a"  },
+  { I_SLT,             "slt",         0x0000002A, 0xFC0007FF, "%d, %s, %t"  },
+  { I_SLTI,            "slti",        0x28000000, 0xFC000000, "%t, %s, %i"  },
+  { I_SLTIU,           "sltiu",       0x2C000000, 0xFC000000, "%t, %s, %i"  },
+  { I_SLTU,            "sltu",        0x0000002B, 0xFC0007FF, "%d, %s, %t"  },
+  { I_SRA,             "sra",         0x00000003, 0xFFE0003F, "%d, %t, %a"  },
+  { I_SRAV,            "srav",        0x00000007, 0xFC0007FF, "%d, %t, %s"  },
+  { I_SRLV,            "srlv",        0x00000006, 0xFC0007FF, "%d, %t, %s"  },
+  { I_SRL,             "srl",         0x00000002, 0xFFE0003F, "%d, %t, %a"  },
+  { I_SW,              "sw",          0xAC000000, 0xFC000000, "%t, %o"      },
+  { I_SWL,             "swl",         0xA8000000, 0xFC000000, "%t, %o"      },
+  { I_SWR,             "swr",         0xB8000000, 0xFC000000, "%t, %o"      },
+  { I_SUB,             "sub",         0x00000022, 0xFC0007FF, "%d, %s, %t"  },
+  { I_SUBU,            "subu",        0x00000023, 0xFC0007FF, "%d, %s, %t"  },
+  { I_SYNC,            "sync",        0x0000000F, 0xFFFFFFFF, ""            },
+  { I_SYSCALL,         "syscall",     0x0000000C, 0xFC00003F, "%C"          },
+  { I_XOR,             "xor",         0x00000026, 0xFC0007FF, "%d, %s, %t"  },
+  { I_XORI,            "xori",        0x38000000, 0xFC000000, "%t, %s, %I"  },
+  { I_WSBH,            "wsbh",        0x7C0000A0, 0xFFE007FF, "%d, %t"      },
+  { I_WSBW,            "wsbw",        0x7C0000E0, 0xFFE007FF, "%d, %t"      },
 
   /* FPU instructions */
-  { "abs.s",        0x46000005, 0xFFFF003F, "%D, %S",     ADDR_TYPE_NONE, 0 },
-  { "add.s",        0x46000000, 0xFFE0003F, "%D, %S, %T", ADDR_TYPE_NONE, 0 },
-  { "bc1f",         0x45000000, 0xFFFF0000, "%O",         ADDR_TYPE_16,   INSTR_TYPE_B },
-  { "bc1fl",        0x45020000, 0xFFFF0000, "%O",         ADDR_TYPE_16,   INSTR_TYPE_B },
-  { "bc1t",         0x45010000, 0xFFFF0000, "%O",         ADDR_TYPE_16,   INSTR_TYPE_B },
-  { "bc1tl",        0x45030000, 0xFFFF0000, "%O",         ADDR_TYPE_16,   INSTR_TYPE_B },
-  { "c.f.s",        0x46000030, 0xFFE007FF, "%S, %T",     ADDR_TYPE_NONE, 0 },
-  { "c.un.s",       0x46000031, 0xFFE007FF, "%S, %T",     ADDR_TYPE_NONE, 0 },
-  { "c.eq.s",       0x46000032, 0xFFE007FF, "%S, %T",     ADDR_TYPE_NONE, 0 },
-  { "c.ueq.s",      0x46000033, 0xFFE007FF, "%S, %T",     ADDR_TYPE_NONE, 0 },
-  { "c.olt.s",      0x46000034, 0xFFE007FF, "%S, %T",     ADDR_TYPE_NONE, 0 },
-  { "c.ult.s",      0x46000035, 0xFFE007FF, "%S, %T",     ADDR_TYPE_NONE, 0 },
-  { "c.ole.s",      0x46000036, 0xFFE007FF, "%S, %T",     ADDR_TYPE_NONE, 0 },
-  { "c.ule.s",      0x46000037, 0xFFE007FF, "%S, %T",     ADDR_TYPE_NONE, 0 },
-  { "c.sf.s",       0x46000038, 0xFFE007FF, "%S, %T",     ADDR_TYPE_NONE, 0 },
-  { "c.ngle.s",     0x46000039, 0xFFE007FF, "%S, %T",     ADDR_TYPE_NONE, 0 },
-  { "c.seq.s",      0x4600003A, 0xFFE007FF, "%S, %T",     ADDR_TYPE_NONE, 0 },
-  { "c.ngl.s",      0x4600003B, 0xFFE007FF, "%S, %T",     ADDR_TYPE_NONE, 0 },
-  { "c.lt.s",       0x4600003C, 0xFFE007FF, "%S, %T",     ADDR_TYPE_NONE, 0 },
-  { "c.nge.s",      0x4600003D, 0xFFE007FF, "%S, %T",     ADDR_TYPE_NONE, 0 },
-  { "c.le.s",       0x4600003E, 0xFFE007FF, "%S, %T",     ADDR_TYPE_NONE, 0 },
-  { "c.ngt.s",      0x4600003F, 0xFFE007FF, "%S, %T",     ADDR_TYPE_NONE, 0 },
-  { "ceil.w.s",     0x4600000E, 0xFFFF003F, "%D, %S",     ADDR_TYPE_NONE, 0 },
-  { "cfc1",         0x44400000, 0xFFE007FF, "%t, %p",     ADDR_TYPE_NONE, 0 },
-  { "ctc1",         0x44c00000, 0xFFE007FF, "%t, %p",     ADDR_TYPE_NONE, 0 },
-  { "cvt.s.w",      0x46800020, 0xFFFF003F, "%D, %S",     ADDR_TYPE_NONE, 0 },
-  { "cvt.w.s",      0x46000024, 0xFFFF003F, "%D, %S",     ADDR_TYPE_NONE, 0 },
-  { "div.s",        0x46000003, 0xFFE0003F, "%D, %S, %T", ADDR_TYPE_NONE, 0 },
-  { "floor.w.s",    0x4600000F, 0xFFFF003F, "%D, %S",     ADDR_TYPE_NONE, 0 },
-  { "lwc1",         0xc4000000, 0xFC000000, "%T, %o",     ADDR_TYPE_NONE, 0 },
-  { "mfc1",         0x44000000, 0xFFE007FF, "%t, %1",     ADDR_TYPE_NONE, 0 },
-  { "mov.s",        0x46000006, 0xFFFF003F, "%D, %S",     ADDR_TYPE_NONE, 0 },
-  { "mtc1",         0x44800000, 0xFFE007FF, "%t, %1",     ADDR_TYPE_NONE, 0 },
-  { "mul.s",        0x46000002, 0xFFE0003F, "%D, %S, %T", ADDR_TYPE_NONE, 0 },
-  { "neg.s",        0x46000007, 0xFFFF003F, "%D, %S",     ADDR_TYPE_NONE, 0 },
-  { "round.w.s",    0x4600000C, 0xFFFF003F, "%D, %S",     ADDR_TYPE_NONE, 0 },
-  { "sqrt.s",       0x46000004, 0xFFFF003F, "%D, %S",     ADDR_TYPE_NONE, 0 },
-  { "sub.s",        0x46000001, 0xFFE0003F, "%D, %S, %T", ADDR_TYPE_NONE, 0 },
-  { "swc1",         0xe4000000, 0xFC000000, "%T, %o",     ADDR_TYPE_NONE, 0 },
-  { "trunc.w.s",    0x4600000D, 0xFFFF003F, "%D, %S",     ADDR_TYPE_NONE, 0 },
+  { I_ABS_S,           "abs.s",        0x46000005, 0xFFFF003F, "%D, %S"      },
+  { I_ADD_S,           "add.s",        0x46000000, 0xFFE0003F, "%D, %S, %T"  },
+  { I_BC1F,            "bc1f",         0x45000000, 0xFFFF0000, "%O"          },
+  { I_BC1FL,           "bc1fl",        0x45020000, 0xFFFF0000, "%O"          },
+  { I_BC1T,            "bc1t",         0x45010000, 0xFFFF0000, "%O"          },
+  { I_BC1TL,           "bc1tl",        0x45030000, 0xFFFF0000, "%O"          },
+  { I_C_F_S,           "c.f.s",        0x46000030, 0xFFE007FF, "%S, %T"      },
+  { I_C_UN_S,          "c.un.s",       0x46000031, 0xFFE007FF, "%S, %T"      },
+  { I_C_EQ_S,          "c.eq.s",       0x46000032, 0xFFE007FF, "%S, %T"      },
+  { I_C_UEQ_S,         "c.ueq.s",      0x46000033, 0xFFE007FF, "%S, %T"      },
+  { I_C_OLT_S,         "c.olt.s",      0x46000034, 0xFFE007FF, "%S, %T"      },
+  { I_C_ULT_S,         "c.ult.s",      0x46000035, 0xFFE007FF, "%S, %T"      },
+  { I_C_OLE_S,         "c.ole.s",      0x46000036, 0xFFE007FF, "%S, %T"      },
+  { I_C_ULE_S,         "c.ule.s",      0x46000037, 0xFFE007FF, "%S, %T"      },
+  { I_C_SF_S,          "c.sf.s",       0x46000038, 0xFFE007FF, "%S, %T"      },
+  { I_C_NGLE_S,        "c.ngle.s",     0x46000039, 0xFFE007FF, "%S, %T"      },
+  { I_C_SEQ_S,         "c.seq.s",      0x4600003A, 0xFFE007FF, "%S, %T"      },
+  { I_C_NGL_S,         "c.ngl.s",      0x4600003B, 0xFFE007FF, "%S, %T"      },
+  { I_C_LT_S,          "c.lt.s",       0x4600003C, 0xFFE007FF, "%S, %T"      },
+  { I_C_NGE_S,         "c.nge.s",      0x4600003D, 0xFFE007FF, "%S, %T"      },
+  { I_C_LE_S,          "c.le.s",       0x4600003E, 0xFFE007FF, "%S, %T"      },
+  { I_C_NGT_S,         "c.ngt.s",      0x4600003F, 0xFFE007FF, "%S, %T"      },
+  { I_CEIL_W_S,        "ceil.w.s",     0x4600000E, 0xFFFF003F, "%D, %S"      },
+  { I_CFC1,            "cfc1",         0x44400000, 0xFFE007FF, "%t, %p"      },
+  { I_CTC1,            "ctc1",         0x44c00000, 0xFFE007FF, "%t, %p"      },
+  { I_CVT_S_W,         "cvt.s.w",      0x46800020, 0xFFFF003F, "%D, %S"      },
+  { I_CVT_W_S,         "cvt.w.s",      0x46000024, 0xFFFF003F, "%D, %S"      },
+  { I_DIV_S,           "div.s",        0x46000003, 0xFFE0003F, "%D, %S, %T"  },
+  { I_FLOOR_W_S,       "floor.w.s",    0x4600000F, 0xFFFF003F, "%D, %S"      },
+  { I_LWC1,            "lwc1",         0xc4000000, 0xFC000000, "%T, %o"      },
+  { I_MFC1,            "mfc1",         0x44000000, 0xFFE007FF, "%t, %1"      },
+  { I_MOV_S,           "mov.s",        0x46000006, 0xFFFF003F, "%D, %S"      },
+  { I_MTC1,            "mtc1",         0x44800000, 0xFFE007FF, "%t, %1"      },
+  { I_MUL_S,           "mul.s",        0x46000002, 0xFFE0003F, "%D, %S, %T"  },
+  { I_NEG_S,           "neg.s",        0x46000007, 0xFFFF003F, "%D, %S"      },
+  { I_ROUND_W_S,       "round.w.s",    0x4600000C, 0xFFFF003F, "%D, %S"      },
+  { I_SQRT_S,          "sqrt.s",       0x46000004, 0xFFFF003F, "%D, %S"      },
+  { I_SUB_S,           "sub.s",        0x46000001, 0xFFE0003F, "%D, %S, %T"  },
+  { I_SWC1,            "swc1",         0xe4000000, 0xFC000000, "%T, %o"      },
+  { I_TRUNC_W_S,       "trunc.w.s",    0x4600000D, 0xFFFF003F, "%D, %S"      },
 
         /* VPU instructions */
-  { "bvf",         0x49000000, 0xFFE30000, "%Zc, %O",       ADDR_TYPE_16, INSTR_TYPE_PSP | INSTR_TYPE_B }, /* [hlide] %Z -> %Zc */
-  { "bvfl",        0x49020000, 0xFFE30000, "%Zc, %O",       ADDR_TYPE_16, INSTR_TYPE_PSP | INSTR_TYPE_B }, /* [hlide] %Z -> %Zc */
-  { "bvt",         0x49010000, 0xFFE30000, "%Zc, %O",       ADDR_TYPE_16, INSTR_TYPE_PSP | INSTR_TYPE_B }, /* [hlide] %Z -> %Zc */
-  { "bvtl",        0x49030000, 0xFFE30000, "%Zc, %O",       ADDR_TYPE_16, INSTR_TYPE_PSP | INSTR_TYPE_B }, /* [hlide] %Z -> %Zc */
-  { "lv.q",        0xD8000000, 0xFC000002, "%Xq, %Y",       ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "lv.s",        0xC8000000, 0xFC000000, "%Xs, %Y",       ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "lvl.q",       0xD4000000, 0xFC000002, "%Xq, %Y",       ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "lvr.q",       0xD4000002, 0xFC000002, "%Xq, %Y",       ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "mfv",         0x48600000, 0xFFE0FF80, "%t, %zs",       ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] added "%t, %zs" */
-  { "mfvc",        0x48600000, 0xFFE0FF00, "%t, %2d",       ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] added "%t, %2d" */
-  { "mtv",         0x48E00000, 0xFFE0FF80, "%t, %zs",       ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] added "%t, %zs" */
-  { "mtvc",        0x48E00000, 0xFFE0FF00, "%t, %2d",       ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] added "%t, %2d" */
-  { "sv.q",        0xF8000000, 0xFC000002, "%Xq, %Y",       ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "sv.s",        0xE8000000, 0xFC000000, "%Xs, %Y",       ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "svl.q",       0xF4000000, 0xFC000002, "%Xq, %Y",       ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "svr.q",       0xF4000002, 0xFC000002, "%Xq, %Y",       ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vabs.p",      0xD0010080, 0xFFFF8080, "%zp, %yp",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vabs.q",      0xD0018080, 0xFFFF8080, "%zq, %yq",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vabs.s",      0xD0010000, 0xFFFF8080, "%zs, %ys",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vabs.t",      0xD0018000, 0xFFFF8080, "%zt, %yt",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vadd.p",      0x60000080, 0xFF808080, "%zp, %yp, %xp", ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vadd.q",      0x60008080, 0xFF808080, "%zq, %yq, %xq", ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vadd.s",      0x60000000, 0xFF808080, "%zs, %ys, %xs", ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] %yz -> %ys */
-  { "vadd.t",      0x60008000, 0xFF808080, "%zt, %yt, %xt", ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vasin.p",     0xD0170080, 0xFFFF8080, "%zp, %yp",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vasin.q",     0xD0178080, 0xFFFF8080, "%zq, %yq",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vasin.s",     0xD0170000, 0xFFFF8080, "%zs, %ys",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vasin.t",     0xD0178000, 0xFFFF8080, "%zt, %yt",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vavg.p",      0xD0470080, 0xFFFF8080, "%zp, %yp",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vavg.q",      0xD0478080, 0xFFFF8080, "%zq, %yq",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vavg.t",      0xD0478000, 0xFFFF8080, "%zt, %yt",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vbfy1.p",     0xD0420080, 0xFFFF8080, "%zp, %yp",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vbfy1.q",     0xD0428080, 0xFFFF8080, "%zq, %yq",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vbfy2.q",     0xD0438080, 0xFFFF8080, "%zq, %yq",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vcmovf.p",    0xD2A80080, 0xFFF88080, "%zp, %yp, %v3", ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] added "%zp, %yp, %v3" */
-  { "vcmovf.q",    0xD2A88080, 0xFFF88080, "%zq, %yq, %v3", ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] added "%zq, %yq, %v3" */
-  { "vcmovf.s",    0xD2A80000, 0xFFF88080, "%zs, %ys, %v3", ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] added "%zs, %ys, %v3" */
-  { "vcmovf.t",    0xD2A88000, 0xFFF88080, "%zt, %yt, %v3", ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] added "%zt, %yt, %v3" */
-  { "vcmovt.p",    0xD2A00080, 0xFFF88080, "%zp, %yp, %v3", ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] added "%zp, %yp, %v3" */
-  { "vcmovt.q",    0xD2A08080, 0xFFF88080, "%zq, %yq, %v3", ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] added "%zq, %yq, %v3" */
-  { "vcmovt.s",    0xD2A00000, 0xFFF88080, "%zs, %ys, %v3", ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] added "%zs, %ys, %v3" */
-  { "vcmovt.t",    0xD2A08000, 0xFFF88080, "%zt, %yt, %v3", ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] added "%zt, %yt, %v3" */
-  { "vcmp.p",      0x6C000080, 0xFFFFFFF0, "%Zn",           ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] added "%Zn" */
-  { "vcmp.p",      0x6C000080, 0xFFFF80F0, "%Zn, %yp",      ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] added "%Zn, %xp" */
-  { "vcmp.p",      0x6C000080, 0xFF8080F0, "%Zn, %yp, %xp", ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] added "%Zn, %zp, %xp" */
-  { "vcmp.q",      0x6C008080, 0xFFFFFFF0, "%Zn",           ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] added "%Zn" */
-  { "vcmp.q",      0x6C008080, 0xFFFF80F0, "%Zn, %yq",      ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] added "%Zn, %yq" */
-  { "vcmp.q",      0x6C008080, 0xFF8080F0, "%Zn, %yq, %xq", ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] added "%Zn, %yq, %xq" */
-  { "vcmp.s",      0x6C000000, 0xFFFFFFF0, "%Zn",           ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] added "%Zn" */
-  { "vcmp.s",      0x6C000000, 0xFFFF80F0, "%Zn, %ys",      ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] added "%Zn, %ys" */
-  { "vcmp.s",      0x6C000000, 0xFF8080F0, "%Zn, %ys, %xs", ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] added "%Zn, %ys, %xs" */
-  { "vcmp.t",      0x6C008000, 0xFFFFFFF0, "%Zn",           ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] added "%zp" */
-  { "vcmp.t",      0x6C008000, 0xFFFF80F0, "%Zn, %yt",      ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] added "%Zn, %yt" */
-  { "vcmp.t",      0x6C008000, 0xFF8080F0, "%Zn, %yt, %xt", ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] added "%Zn, %yt, %xt" */
-  { "vcos.p",      0xD0130080, 0xFFFF8080, "%zp, %yp",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vcos.q",      0xD0138080, 0xFFFF8080, "%zq, %yq",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vcos.s",      0xD0130000, 0xFFFF8080, "%zs, %ys",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vcos.t",      0xD0138000, 0xFFFF8080, "%zt, %yt",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vcrs.t",      0x66808000, 0xFF808080, "%zt, %yt, %xt", ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vcrsp.t",     0xF2808000, 0xFF808080, "%zt, %yt, %xt", ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vcst.p",      0xD0600080, 0xFFE0FF80, "%zp, %vk",      ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] "%zp, %yp, %xp" -> "%zp, %vk" */
-  { "vcst.q",      0xD0608080, 0xFFE0FF80, "%zq, %vk",      ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] "%zq, %yq, %xq" -> "%zq, %vk" */
-  { "vcst.s",      0xD0600000, 0xFFE0FF80, "%zs, %vk",      ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] "%zs, %ys, %xs" -> "%zs, %vk" */
-  { "vcst.t",      0xD0608000, 0xFFE0FF80, "%zt, %vk",      ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] "%zt, %yt, %xt" -> "%zt, %vk" */
-  { "vdet.p",      0x67000080, 0xFF808080, "%zs, %yp, %xp", ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vdiv.p",      0x63800080, 0xFF808080, "%zp, %yp, %xp", ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vdiv.q",      0x63808080, 0xFF808080, "%zq, %yq, %xq", ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vdiv.s",      0x63800000, 0xFF808080, "%zs, %ys, %xs", ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] %yz -> %ys */
-  { "vdiv.t",      0x63808000, 0xFF808080, "%zt, %yt, %xt", ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vdot.p",      0x64800080, 0xFF808080, "%zs, %yp, %xp", ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vdot.q",      0x64808080, 0xFF808080, "%zs, %yq, %xq", ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vdot.t",      0x64808000, 0xFF808080, "%zs, %yt, %xt", ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vexp2.p",     0xD0140080, 0xFFFF8080, "%zp, %yp",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vexp2.q",     0xD0148080, 0xFFFF8080, "%zq, %yq",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vexp2.s",     0xD0140000, 0xFFFF8080, "%zs, %ys",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vexp2.t",     0xD0148000, 0xFFFF8080, "%zt, %yt",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vf2h.p",      0xD0320080, 0xFFFF8080, "%zs, %yp",      ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] %zp -> %zs */
-  { "vf2h.q",      0xD0328080, 0xFFFF8080, "%zp, %yq",      ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] %zq -> %zp */
-  { "vf2id.p",     0xD2600080, 0xFFE08080, "%zp, %yp, %v5", ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] added "%zp, %yp, %v5" */
-  { "vf2id.q",     0xD2608080, 0xFFE08080, "%zq, %yq, %v5", ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] added "%zq, %yq, %v5" */
-  { "vf2id.s",     0xD2600000, 0xFFE08080, "%zs, %ys, %v5", ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] added "%zs, %ys, %v5" */
-  { "vf2id.t",     0xD2608000, 0xFFE08080, "%zt, %yt, %v5", ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] added "%zt, %yt, %v5" */
-  { "vf2in.p",     0xD2000080, 0xFFE08080, "%zp, %yp, %v5", ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] added "%zp, %yp, %v5" */
-  { "vf2in.q",     0xD2008080, 0xFFE08080, "%zq, %yq, %v5", ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] added "%zq, %yq, %v5" */
-  { "vf2in.s",     0xD2000000, 0xFFE08080, "%zs, %ys, %v5", ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] added "%zs, %ys, %v5" */
-  { "vf2in.t",     0xD2008000, 0xFFE08080, "%zt, %yt, %v5", ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] added "%zt, %yt, %v5" */
-  { "vf2iu.p",     0xD2400080, 0xFFE08080, "%zp, %yp, %v5", ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] added "%zp, %yp, %v5" */
-  { "vf2iu.q",     0xD2408080, 0xFFE08080, "%zq, %yq, %v5", ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] added "%zq, %yq, %v5" */
-  { "vf2iu.s",     0xD2400000, 0xFFE08080, "%zs, %ys, %v5", ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] added "%zs, %ys, %v5" */
-  { "vf2iu.t",     0xD2408000, 0xFFE08080, "%zt, %yt, %v5", ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] added "%zt, %yt, %v5" */
-  { "vf2iz.p",     0xD2200080, 0xFFE08080, "%zp, %yp, %v5", ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] added "%zp, %yp, %v5" */
-  { "vf2iz.q",     0xD2208080, 0xFFE08080, "%zq, %yq, %v5", ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] added "%zq, %yq, %v5" */
-  { "vf2iz.s",     0xD2200000, 0xFFE08080, "%zs, %ys, %v5", ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] added "%zs, %ys, %v5" */
-  { "vf2iz.t",     0xD2208000, 0xFFE08080, "%zt, %yt, %v5", ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] added "%zt, %yt, %v5" */
-  { "vfad.p",      0xD0460080, 0xFFFF8080, "%zp, %yp",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vfad.q",      0xD0468080, 0xFFFF8080, "%zq, %yq",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vfad.t",      0xD0468000, 0xFFFF8080, "%zt, %yt",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vfim.s",      0xDF800000, 0xFF800000, "%xs, %vh",      ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] added "%xs, %vh" */
-  { "vflush",      0xFFFF040D, 0xFFFFFFFF, "",              ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vh2f.p",      0xD0330080, 0xFFFF8080, "%zq, %yp",      ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] %zp -> %zq */
-  { "vh2f.s",      0xD0330000, 0xFFFF8080, "%zp, %ys",      ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] %zs -> %zp */
-  { "vhdp.p",      0x66000080, 0xFF808080, "%zs, %yp, %xp", ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] added "%zs, %yp, %xp" */
-  { "vhdp.q",      0x66008080, 0xFF808080, "%zs, %yq, %xq", ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] added "%zs, %yq, %xq" */
-  { "vhdp.t",      0x66008000, 0xFF808080, "%zs, %yt, %xt", ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] added "%zs, %yt, %xt" */
-  { "vhtfm2.p",    0xF0800000, 0xFF808080, "%zp, %ym, %xp", ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] added "%zp, %ym, %xp" */
-  { "vhtfm3.t",    0xF1000080, 0xFF808080, "%zt, %yn, %xt", ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] added "%zt, %yn, %xt" */
-  { "vhtfm4.q",    0xF1808000, 0xFF808080, "%zq, %yo, %xq", ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] added "%zq, %yo, %xq" */
-  { "vi2c.q",      0xD03D8080, 0xFFFF8080, "%zs, %yq",      ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] added "%zs, %yq" */
-  { "vi2f.p",      0xD2800080, 0xFFE08080, "%zp, %yp, %v5", ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] added "%zp, %yp, %v5" */
-  { "vi2f.q",      0xD2808080, 0xFFE08080, "%zq, %yq, %v5", ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] added "%zq, %yq, %v5" */
-  { "vi2f.s",      0xD2800000, 0xFFE08080, "%zs, %ys, %v5", ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] added "%zs, %ys, %v5" */
-  { "vi2f.t",      0xD2808000, 0xFFE08080, "%zt, %yt, %v5", ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] added "%zt, %yt, %v5" */
-  { "vi2s.p",      0xD03F0080, 0xFFFF8080, "%zs, %yp",      ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] added "%zs, %yp" */
-  { "vi2s.q",      0xD03F8080, 0xFFFF8080, "%zp, %yq",      ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] added "%zp, %yq" */
-  { "vi2uc.q",     0xD03C8080, 0xFFFF8080, "%zq, %yq",      ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] %zp -> %zq */
-  { "vi2us.p",     0xD03E0080, 0xFFFF8080, "%zq, %yq",      ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] %zp -> %zq */
-  { "vi2us.q",     0xD03E8080, 0xFFFF8080, "%zq, %yq",      ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] %zp -> %zq */
-  { "vidt.p",      0xD0030080, 0xFFFFFF80, "%zp",           ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vidt.q",      0xD0038080, 0xFFFFFF80, "%zq",           ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "viim.s",      0xDF000000, 0xFF800000, "%xs, %vi",      ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] added "%xs, %vi" */
-  { "vlgb.s",      0xD0370000, 0xFFFF8080, "%zs, %ys",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vlog2.p",     0xD0150080, 0xFFFF8080, "%zp, %yp",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vlog2.q",     0xD0158080, 0xFFFF8080, "%zq, %yq",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vlog2.s",     0xD0150000, 0xFFFF8080, "%zs, %ys",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vlog2.t",     0xD0158000, 0xFFFF8080, "%zt, %yt",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vmax.p",      0x6D800080, 0xFF808080, "%zp, %yp, %xp", ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vmax.q",      0x6D808080, 0xFF808080, "%zq, %yq, %xq", ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vmax.s",      0x6D800000, 0xFF808080, "%zs, %ys, %xs", ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vmax.t",      0x6D808000, 0xFF808080, "%zt, %yt, %xt", ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vmfvc",       0xD0500000, 0xFFFF0080, "%zs, %2s",      ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] added "%zs, %2s" */
-  { "vmidt.p",     0xF3830080, 0xFFFFFF80, "%zm",           ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] %zp -> %zm */
-  { "vmidt.q",     0xF3838080, 0xFFFFFF80, "%zo",           ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] %zq -> %zo */
-  { "vmidt.t",     0xF3838000, 0xFFFFFF80, "%zn",           ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] %zt -> %zn */
-  { "vmin.p",      0x6D000080, 0xFF808080, "%zp, %yp, %xp", ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vmin.q",      0x6D008080, 0xFF808080, "%zq, %yq, %xq", ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vmin.s",      0x6D000000, 0xFF808080, "%zs, %ys, %xs", ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vmin.t",      0x6D008000, 0xFF808080, "%zt, %yt, %xt", ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vmmov.p",     0xF3800080, 0xFFFF8080, "%zm, %ym",      ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] added "%zm, %ym" */
-  { "vmmov.q",     0xF3808080, 0xFFFF8080, "%zo, %yo",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vmmov.t",     0xF3808000, 0xFFFF8080, "%zn, %yn",      ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] added "%zn, %yn" */
-  { "vmmul.p",     0xF0000080, 0xFF808080, "%?%zm, %ym, %xm", ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] added "%?%zm, %ym, %xm" */
-  { "vmmul.q",     0xF0008080, 0xFF808080, "%?%zo, %yo, %xo", ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vmmul.t",     0xF0008000, 0xFF808080, "%?%zn, %yn, %xn", ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] added "%?%zn, %yn, %xn" */
-  { "vmone.p",     0xF3870080, 0xFFFFFF80, "%zp",           ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vmone.q",     0xF3878080, 0xFFFFFF80, "%zq",           ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vmone.t",     0xF3878000, 0xFFFFFF80, "%zt",           ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vmov.p",      0xD0000080, 0xFFFF8080, "%zp, %yp",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vmov.q",      0xD0008080, 0xFFFF8080, "%zq, %yq",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vmov.s",      0xD0000000, 0xFFFF8080, "%zs, %ys",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vmov.t",      0xD0008000, 0xFFFF8080, "%zt, %yt",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vmscl.p",     0xF2000080, 0xFF808080, "%zm, %ym, %xs", ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] %zp, %yp, %xp -> %zm, %ym, %xs */
-  { "vmscl.q",     0xF2008080, 0xFF808080, "%zo, %yo, %xs", ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] %zq, %yq, %xp -> %zo, %yo, %xs */
-  { "vmscl.t",     0xF2008000, 0xFF808080, "%zn, %yn, %xs", ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] %zt, %yt, %xp -> %zn, %yn, %xs */
-  { "vmtvc",       0xD0510000, 0xFFFF8000, "%2d, %ys",      ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] added "%2d, %ys" */
-  { "vmul.p",      0x64000080, 0xFF808080, "%zp, %yp, %xp", ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vmul.q",      0x64008080, 0xFF808080, "%zq, %yq, %xq", ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vmul.s",      0x64000000, 0xFF808080, "%zs, %ys, %xs", ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vmul.t",      0x64008000, 0xFF808080, "%zt, %yt, %xt", ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vmzero.p",    0xF3860080, 0xFFFFFF80, "%zm",           ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] %zp -> %zm */
-  { "vmzero.q",    0xF3868080, 0xFFFFFF80, "%zo",           ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] %zq -> %zo */
-  { "vmzero.t",    0xF3868000, 0xFFFFFF80, "%zn",           ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] %zt -> %zn */
-  { "vneg.p",      0xD0020080, 0xFFFF8080, "%zp, %yp",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vneg.q",      0xD0028080, 0xFFFF8080, "%zq, %yq",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vneg.s",      0xD0020000, 0xFFFF8080, "%zs, %ys",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vneg.t",      0xD0028000, 0xFFFF8080, "%zt, %yt",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vnop",        0xFFFF0000, 0xFFFFFFFF, "",              ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vnrcp.p",     0xD0180080, 0xFFFF8080, "%zp, %yp",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vnrcp.q",     0xD0188080, 0xFFFF8080, "%zq, %yq",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vnrcp.s",     0xD0180000, 0xFFFF8080, "%zs, %ys",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vnrcp.t",     0xD0188000, 0xFFFF8080, "%zt, %yt",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vnsin.p",     0xD01A0080, 0xFFFF8080, "%zp, %yp",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vnsin.q",     0xD01A8080, 0xFFFF8080, "%zq, %yq",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vnsin.s",     0xD01A0000, 0xFFFF8080, "%zs, %ys",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vnsin.t",     0xD01A8000, 0xFFFF8080, "%zt, %yt",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vocp.p",      0xD0440080, 0xFFFF8080, "%zp, %yp",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vocp.q",      0xD0448080, 0xFFFF8080, "%zq, %yq",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vocp.s",      0xD0440000, 0xFFFF8080, "%zs, %ys",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vocp.t",      0xD0448000, 0xFFFF8080, "%zt, %yt",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vone.p",      0xD0070080, 0xFFFFFF80, "%zp",           ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vone.q",      0xD0078080, 0xFFFFFF80, "%zq",           ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vone.s",      0xD0070000, 0xFFFFFF80, "%zs",           ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vone.t",      0xD0078000, 0xFFFFFF80, "%zt",           ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vpfxd",       0xDE000000, 0xFF000000, "[%vp4, %vp5, %vp6, %vp7]", ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] added "[%vp4, %vp5, %vp6, %vp7]" */
-  { "vpfxs",       0xDC000000, 0xFF000000, "[%vp0, %vp1, %vp2, %vp3]", ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] added "[%vp0, %vp1, %vp2, %vp3]" */
-  { "vpfxt",       0xDD000000, 0xFF000000, "[%vp0, %vp1, %vp2, %vp3]", ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] added "[%vp0, %vp1, %vp2, %vp3]" */
-  { "vqmul.q",     0xF2808080, 0xFF808080, "%zq, %yq, %xq", ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] added "%zq, %yq, %xq" */
-  { "vrcp.p",      0xD0100080, 0xFFFF8080, "%zp, %yp",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vrcp.q",      0xD0108080, 0xFFFF8080, "%zq, %yq",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vrcp.s",      0xD0100000, 0xFFFF8080, "%zs, %ys",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vrcp.t",      0xD0108000, 0xFFFF8080, "%zt, %yt",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vrexp2.p",    0xD01C0080, 0xFFFF8080, "%zp, %yp",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vrexp2.q",    0xD01C8080, 0xFFFF8080, "%zq, %yq",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vrexp2.s",    0xD01C0000, 0xFFFF8080, "%zs, %ys",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vrexp2.t",    0xD01C8000, 0xFFFF8080, "%zt, %yt",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vrndf1.p",    0xD0220080, 0xFFFFFF80, "%zp",           ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vrndf1.q",    0xD0228080, 0xFFFFFF80, "%zq",           ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vrndf1.s",    0xD0220000, 0xFFFFFF80, "%zs",           ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vrndf1.t",    0xD0228000, 0xFFFFFF80, "%zt",           ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vrndf2.p",    0xD0230080, 0xFFFFFF80, "%zp",           ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vrndf2.q",    0xD0238080, 0xFFFFFF80, "%zq",           ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vrndf2.s",    0xD0230000, 0xFFFFFF80, "%zs",           ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vrndf2.t",    0xD0238000, 0xFFFFFF80, "%zt",           ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vrndi.p",     0xD0210080, 0xFFFFFF80, "%zp",           ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vrndi.q",     0xD0218080, 0xFFFFFF80, "%zq",           ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vrndi.s",     0xD0210000, 0xFFFFFF80, "%zs",           ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vrndi.t",     0xD0218000, 0xFFFFFF80, "%zt",           ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vrnds.s",     0xD0200000, 0xFFFF80FF, "%ys",           ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vrot.p",      0xF3A00080, 0xFFE08080, "%zp, %ys, %vr", ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] added "%zp, %ys, %vr" */
-  { "vrot.q",      0xF3A08080, 0xFFE08080, "%zq, %ys, %vr", ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] added "%zq, %ys, %vr" */
-  { "vrot.t",      0xF3A08000, 0xFFE08080, "%zt, %ys, %vr", ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] added "%zt, %ys, %vr" */
-  { "vrsq.p",      0xD0110080, 0xFFFF8080, "%zp, %yp",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vrsq.q",      0xD0118080, 0xFFFF8080, "%zq, %yq",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vrsq.s",      0xD0110000, 0xFFFF8080, "%zs, %ys",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vrsq.t",      0xD0118000, 0xFFFF8080, "%zt, %yt",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vs2i.p",      0xD03B0080, 0xFFFF8080, "%zq, %yp",      ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] %zp -> %zq */
-  { "vs2i.s",      0xD03B0000, 0xFFFF8080, "%zp, %ys",      ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] %zs -> %zp */
-  { "vsat0.p",     0xD0040080, 0xFFFF8080, "%zp, %yp",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vsat0.q",     0xD0048080, 0xFFFF8080, "%zq, %yq",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vsat0.s",     0xD0040000, 0xFFFF8080, "%zs, %ys",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vsat0.t",     0xD0048000, 0xFFFF8080, "%zt, %yt",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vsat1.p",     0xD0050080, 0xFFFF8080, "%zp, %yp",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vsat1.q",     0xD0058080, 0xFFFF8080, "%zq, %yq",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vsat1.s",     0xD0050000, 0xFFFF8080, "%zs, %ys",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vsat1.t",     0xD0058000, 0xFFFF8080, "%zt, %yt",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vsbn.s",      0x61000000, 0xFF808080, "%zs, %ys, %xs", ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vsbz.s",      0xD0360000, 0xFFFF8080, "%zs, %ys",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vscl.p",      0x65000080, 0xFF808080, "%zp, %yp, %xs", ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] %xp -> %xs */
-  { "vscl.q",      0x65008080, 0xFF808080, "%zq, %yq, %xs", ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] %xq -> %xs */
-  { "vscl.t",      0x65008000, 0xFF808080, "%zt, %yt, %xs", ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] %xt -> %xs */
-  { "vscmp.p",     0x6E800080, 0xFF808080, "%zp, %yp, %xp", ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vscmp.q",     0x6E808080, 0xFF808080, "%zq, %yq, %xq", ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vscmp.s",     0x6E800000, 0xFF808080, "%zs, %ys, %xs", ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vscmp.t",     0x6E808000, 0xFF808080, "%zt, %yt, %xt", ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vsge.p",      0x6F000080, 0xFF808080, "%zp, %yp, %xp", ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vsge.q",      0x6F008080, 0xFF808080, "%zq, %yq, %xq", ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vsge.s",      0x6F000000, 0xFF808080, "%zs, %ys, %xs", ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vsge.t",      0x6F008000, 0xFF808080, "%zt, %yt, %xt", ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vsgn.p",      0xD04A0080, 0xFFFF8080, "%zp, %yp",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vsgn.q",      0xD04A8080, 0xFFFF8080, "%zq, %yq",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vsgn.s",      0xD04A0000, 0xFFFF8080, "%zs, %ys",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vsgn.t",      0xD04A8000, 0xFFFF8080, "%zt, %yt",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vsin.p",      0xD0120080, 0xFFFF8080, "%zp, %yp",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vsin.q",      0xD0128080, 0xFFFF8080, "%zq, %yq",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vsin.s",      0xD0120000, 0xFFFF8080, "%zs, %ys",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vsin.t",      0xD0128000, 0xFFFF8080, "%zt, %yt",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vslt.p",      0x6F800080, 0xFF808080, "%zp, %yp, %xp", ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vslt.q",      0x6F808080, 0xFF808080, "%zq, %yq, %xq", ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vslt.s",      0x6F800000, 0xFF808080, "%zs, %ys, %xs", ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vslt.t",      0x6F808000, 0xFF808080, "%zt, %yt, %xt", ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vsocp.p",     0xD0450080, 0xFFFF8080, "%zq, %yp",      ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] %zp -> %zq */
-  { "vsocp.s",     0xD0450000, 0xFFFF8080, "%zp, %ys",      ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] %zs -> %zp */
-  { "vsqrt.p",     0xD0160080, 0xFFFF8080, "%zp, %yp",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vsqrt.q",     0xD0168080, 0xFFFF8080, "%zq, %yq",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vsqrt.s",     0xD0160000, 0xFFFF8080, "%zs, %ys",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vsqrt.t",     0xD0168000, 0xFFFF8080, "%zt, %yt",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vsrt1.q",     0xD0408080, 0xFFFF8080, "%zq, %yq",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vsrt2.q",     0xD0418080, 0xFFFF8080, "%zq, %yq",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vsrt3.q",     0xD0488080, 0xFFFF8080, "%zq, %yq",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vsrt4.q",     0xD0498080, 0xFFFF8080, "%zq, %yq",      ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vsub.p",      0x60800080, 0xFF808080, "%zp, %yp, %xp", ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vsub.q",      0x60808080, 0xFF808080, "%zq, %yq, %xq", ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vsub.s",      0x60800000, 0xFF808080, "%zs, %ys, %xs", ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vsub.t",      0x60808000, 0xFF808080, "%zt, %yt, %xt", ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vsync",       0xFFFF0320, 0xFFFFFFFF, "",              ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vsync",       0xFFFF0000, 0xFFFF0000, "%I",            ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vt4444.q",    0xD0598080, 0xFFFF8080, "%zq, %yq",      ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] %zq -> %zp */
-  { "vt5551.q",    0xD05A8080, 0xFFFF8080, "%zq, %yq",      ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] %zq -> %zp */
-  { "vt5650.q",    0xD05B8080, 0xFFFF8080, "%zq, %yq",      ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] %zq -> %zp */
-  { "vtfm2.p",     0xF0800080, 0xFF808080, "%zp, %ym, %xp", ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] added "%zp, %ym, %xp" */
-  { "vtfm3.t",     0xF1008000, 0xFF808080, "%zt, %yn, %xt", ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] added "%zt, %yn, %xt" */
-  { "vtfm4.q",     0xF1808080, 0xFF808080, "%zq, %yo, %xq", ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] added "%zq, %yo, %xq" */
-  { "vus2i.p",     0xD03A0080, 0xFFFF8080, "%zq, %yp",      ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] added "%zq, %yp" */
-  { "vus2i.s",     0xD03A0000, 0xFFFF8080, "%zp, %ys",      ADDR_TYPE_NONE, INSTR_TYPE_PSP }, /* [hlide] added "%zp, %ys" */
-  { "vwb.q",       0xF8000002, 0xFC000002, "%Xq, %Y",       ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vwbn.s",      0xD3000000, 0xFF008080, "%zs, %xs, %I",  ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vzero.p",     0xD0060080, 0xFFFFFF80, "%zp",           ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vzero.q",     0xD0068080, 0xFFFFFF80, "%zq",           ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vzero.s",     0xD0060000, 0xFFFFFF80, "%zs",           ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "vzero.t",     0xD0068000, 0xFFFFFF80, "%zt",           ADDR_TYPE_NONE, INSTR_TYPE_PSP },
-  { "mfvme",       0x68000000, 0xFC000000, "%t, %i",        ADDR_TYPE_NONE, 0 },
-  { "mtvme",       0xb0000000, 0xFC000000, "%t, %i",        ADDR_TYPE_NONE, 0 },
+  { I_BVF,             "bvf",         0x49000000, 0xFFE30000, "%Zc, %O"         }, /* [hlide] %Z -> %Zc */
+  { I_BVFL,            "bvfl",        0x49020000, 0xFFE30000, "%Zc, %O"         }, /* [hlide] %Z -> %Zc */
+  { I_BVT,             "bvt",         0x49010000, 0xFFE30000, "%Zc, %O"         }, /* [hlide] %Z -> %Zc */
+  { I_BVTL,            "bvtl",        0x49030000, 0xFFE30000, "%Zc, %O"         }, /* [hlide] %Z -> %Zc */
+  { I_LV_Q,            "lv.q",        0xD8000000, 0xFC000002, "%Xq, %Y"         },
+  { I_LV_S,            "lv.s",        0xC8000000, 0xFC000000, "%Xs, %Y"         },
+  { I_LVL_Q,           "lvl.q",       0xD4000000, 0xFC000002, "%Xq, %Y"         },
+  { I_LVR_Q,           "lvr.q",       0xD4000002, 0xFC000002, "%Xq, %Y"         },
+  { I_MFV,             "mfv",         0x48600000, 0xFFE0FF80, "%t, %zs"         }, /* [hlide] added "%t, %zs" */
+  { I_MFVC,            "mfvc",        0x48600000, 0xFFE0FF00, "%t, %2d"         }, /* [hlide] added "%t, %2d" */
+  { I_MTV,             "mtv",         0x48E00000, 0xFFE0FF80, "%t, %zs"         }, /* [hlide] added "%t, %zs" */
+  { I_MTVC,            "mtvc",        0x48E00000, 0xFFE0FF00, "%t, %2d"         }, /* [hlide] added "%t, %2d" */
+  { I_SV_Q,            "sv.q",        0xF8000000, 0xFC000002, "%Xq, %Y"         },
+  { I_SV_S,            "sv.s",        0xE8000000, 0xFC000000, "%Xs, %Y"         },
+  { I_SVL_Q,           "svl.q",       0xF4000000, 0xFC000002, "%Xq, %Y"         },
+  { I_SVR_Q,           "svr.q",       0xF4000002, 0xFC000002, "%Xq, %Y"         },
+  { I_VABS_P,          "vabs.p",      0xD0010080, 0xFFFF8080, "%zp, %yp"        },
+  { I_VABS_Q,          "vabs.q",      0xD0018080, 0xFFFF8080, "%zq, %yq"        },
+  { I_VABS_S,          "vabs.s",      0xD0010000, 0xFFFF8080, "%zs, %ys"        },
+  { I_VABS_T,          "vabs.t",      0xD0018000, 0xFFFF8080, "%zt, %yt"        },
+  { I_VADD_P,          "vadd.p",      0x60000080, 0xFF808080, "%zp, %yp, %xp"   },
+  { I_VADD_Q,          "vadd.q",      0x60008080, 0xFF808080, "%zq, %yq, %xq"   },
+  { I_VADD_S,          "vadd.s",      0x60000000, 0xFF808080, "%zs, %ys, %xs"   }, /* [hlide] %yz -> %ys */
+  { I_VADD_T,          "vadd.t",      0x60008000, 0xFF808080, "%zt, %yt, %xt"   },
+  { I_VASIN_P,         "vasin.p",     0xD0170080, 0xFFFF8080, "%zp, %yp"        },
+  { I_VASIN_Q,         "vasin.q",     0xD0178080, 0xFFFF8080, "%zq, %yq"        },
+  { I_VASIN_S,         "vasin.s",     0xD0170000, 0xFFFF8080, "%zs, %ys"        },
+  { I_VASIN_T,         "vasin.t",     0xD0178000, 0xFFFF8080, "%zt, %yt"        },
+  { I_VAVG_P,          "vavg.p",      0xD0470080, 0xFFFF8080, "%zp, %yp"        },
+  { I_VAVG_Q,          "vavg.q",      0xD0478080, 0xFFFF8080, "%zq, %yq"        },
+  { I_VAVG_T,          "vavg.t",      0xD0478000, 0xFFFF8080, "%zt, %yt"        },
+  { I_VBFY1_P,         "vbfy1.p",     0xD0420080, 0xFFFF8080, "%zp, %yp"        },
+  { I_VBFY1_Q,         "vbfy1.q",     0xD0428080, 0xFFFF8080, "%zq, %yq"        },
+  { I_VBFY2_Q,         "vbfy2.q",     0xD0438080, 0xFFFF8080, "%zq, %yq"        },
+  { I_VCMOVF_P,        "vcmovf.p",    0xD2A80080, 0xFFF88080, "%zp, %yp, %v3"   }, /* [hlide] added "%zp, %yp, %v3" */
+  { I_VCMOVF_Q,        "vcmovf.q",    0xD2A88080, 0xFFF88080, "%zq, %yq, %v3"   }, /* [hlide] added "%zq, %yq, %v3" */
+  { I_VCMOVF_S,        "vcmovf.s",    0xD2A80000, 0xFFF88080, "%zs, %ys, %v3"   }, /* [hlide] added "%zs, %ys, %v3" */
+  { I_VCMOVF_T,        "vcmovf.t",    0xD2A88000, 0xFFF88080, "%zt, %yt, %v3"   }, /* [hlide] added "%zt, %yt, %v3" */
+  { I_VCMOVT_P,        "vcmovt.p",    0xD2A00080, 0xFFF88080, "%zp, %yp, %v3"   }, /* [hlide] added "%zp, %yp, %v3" */
+  { I_VCMOVT_Q,        "vcmovt.q",    0xD2A08080, 0xFFF88080, "%zq, %yq, %v3"   }, /* [hlide] added "%zq, %yq, %v3" */
+  { I_VCMOVT_S,        "vcmovt.s",    0xD2A00000, 0xFFF88080, "%zs, %ys, %v3"   }, /* [hlide] added "%zs, %ys, %v3" */
+  { I_VCMOVT_T,        "vcmovt.t",    0xD2A08000, 0xFFF88080, "%zt, %yt, %v3"   }, /* [hlide] added "%zt, %yt, %v3" */
+  { I_VCMP_P,          "vcmp.p",      0x6C000080, 0xFFFFFFF0, "%Zn"             }, /* [hlide] added "%Zn" */
+  { I_VCMP_P,          "vcmp.p",      0x6C000080, 0xFFFF80F0, "%Zn, %yp"        }, /* [hlide] added "%Zn, %xp" */
+  { I_VCMP_P,          "vcmp.p",      0x6C000080, 0xFF8080F0, "%Zn, %yp, %xp"   }, /* [hlide] added "%Zn, %zp, %xp" */
+  { I_VCMP_Q,          "vcmp.q",      0x6C008080, 0xFFFFFFF0, "%Zn"             }, /* [hlide] added "%Zn" */
+  { I_VCMP_Q,          "vcmp.q",      0x6C008080, 0xFFFF80F0, "%Zn, %yq"        }, /* [hlide] added "%Zn, %yq" */
+  { I_VCMP_Q,          "vcmp.q",      0x6C008080, 0xFF8080F0, "%Zn, %yq, %xq"   }, /* [hlide] added "%Zn, %yq, %xq" */
+  { I_VCMP_S,          "vcmp.s",      0x6C000000, 0xFFFFFFF0, "%Zn"             }, /* [hlide] added "%Zn" */
+  { I_VCMP_S,          "vcmp.s",      0x6C000000, 0xFFFF80F0, "%Zn, %ys"        }, /* [hlide] added "%Zn, %ys" */
+  { I_VCMP_S,          "vcmp.s",      0x6C000000, 0xFF8080F0, "%Zn, %ys, %xs"   }, /* [hlide] added "%Zn, %ys, %xs" */
+  { I_VCMP_T,          "vcmp.t",      0x6C008000, 0xFFFFFFF0, "%Zn"             }, /* [hlide] added "%zp" */
+  { I_VCMP_T,          "vcmp.t",      0x6C008000, 0xFFFF80F0, "%Zn, %yt"        }, /* [hlide] added "%Zn, %yt" */
+  { I_VCMP_T,          "vcmp.t",      0x6C008000, 0xFF8080F0, "%Zn, %yt, %xt"   }, /* [hlide] added "%Zn, %yt, %xt" */
+  { I_VCOS_P,          "vcos.p",      0xD0130080, 0xFFFF8080, "%zp, %yp"        },
+  { I_VCOS_Q,          "vcos.q",      0xD0138080, 0xFFFF8080, "%zq, %yq"        },
+  { I_VCOS_S,          "vcos.s",      0xD0130000, 0xFFFF8080, "%zs, %ys"        },
+  { I_VCOS_T,          "vcos.t",      0xD0138000, 0xFFFF8080, "%zt, %yt"        },
+  { I_VCRS_T,          "vcrs.t",      0x66808000, 0xFF808080, "%zt, %yt, %xt"   },
+  { I_VCRSP_T,         "vcrsp.t",     0xF2808000, 0xFF808080, "%zt, %yt, %xt"   },
+  { I_VCST_P,          "vcst.p",      0xD0600080, 0xFFE0FF80, "%zp, %vk"        }, /* [hlide] "%zp, %yp, %xp" -> "%zp, %vk" */
+  { I_VCST_Q,          "vcst.q",      0xD0608080, 0xFFE0FF80, "%zq, %vk"        }, /* [hlide] "%zq, %yq, %xq" -> "%zq, %vk" */
+  { I_VCST_S,          "vcst.s",      0xD0600000, 0xFFE0FF80, "%zs, %vk"        }, /* [hlide] "%zs, %ys, %xs" -> "%zs, %vk" */
+  { I_VCST_T,          "vcst.t",      0xD0608000, 0xFFE0FF80, "%zt, %vk"        }, /* [hlide] "%zt, %yt, %xt" -> "%zt, %vk" */
+  { I_VDET_P,          "vdet.p",      0x67000080, 0xFF808080, "%zs, %yp, %xp"   },
+  { I_VDIV_P,          "vdiv.p",      0x63800080, 0xFF808080, "%zp, %yp, %xp"   },
+  { I_VDIV_Q,          "vdiv.q",      0x63808080, 0xFF808080, "%zq, %yq, %xq"   },
+  { I_VDIV_S,          "vdiv.s",      0x63800000, 0xFF808080, "%zs, %ys, %xs"   }, /* [hlide] %yz -> %ys */
+  { I_VDIV_T,          "vdiv.t",      0x63808000, 0xFF808080, "%zt, %yt, %xt"   },
+  { I_VDOT_P,          "vdot.p",      0x64800080, 0xFF808080, "%zs, %yp, %xp"   },
+  { I_VDOT_Q,          "vdot.q",      0x64808080, 0xFF808080, "%zs, %yq, %xq"   },
+  { I_VDOT_T,          "vdot.t",      0x64808000, 0xFF808080, "%zs, %yt, %xt"   },
+  { I_VEXP2_P,         "vexp2.p",     0xD0140080, 0xFFFF8080, "%zp, %yp"        },
+  { I_VEXP2_Q,         "vexp2.q",     0xD0148080, 0xFFFF8080, "%zq, %yq"        },
+  { I_VEXP2_S,         "vexp2.s",     0xD0140000, 0xFFFF8080, "%zs, %ys"        },
+  { I_VEXP2_T,         "vexp2.t",     0xD0148000, 0xFFFF8080, "%zt, %yt"        },
+  { I_VF2H_P,          "vf2h.p",      0xD0320080, 0xFFFF8080, "%zs, %yp"        }, /* [hlide] %zp -> %zs */
+  { I_VF2H_Q,          "vf2h.q",      0xD0328080, 0xFFFF8080, "%zp, %yq"        }, /* [hlide] %zq -> %zp */
+  { I_VF2ID_P,         "vf2id.p",     0xD2600080, 0xFFE08080, "%zp, %yp, %v5"   }, /* [hlide] added "%zp, %yp, %v5" */
+  { I_VF2ID_Q,         "vf2id.q",     0xD2608080, 0xFFE08080, "%zq, %yq, %v5"   }, /* [hlide] added "%zq, %yq, %v5" */
+  { I_VF2ID_S,         "vf2id.s",     0xD2600000, 0xFFE08080, "%zs, %ys, %v5"   }, /* [hlide] added "%zs, %ys, %v5" */
+  { I_VF2ID_T,         "vf2id.t",     0xD2608000, 0xFFE08080, "%zt, %yt, %v5"   }, /* [hlide] added "%zt, %yt, %v5" */
+  { I_VF2IN_P,         "vf2in.p",     0xD2000080, 0xFFE08080, "%zp, %yp, %v5"   }, /* [hlide] added "%zp, %yp, %v5" */
+  { I_VF2IN_Q,         "vf2in.q",     0xD2008080, 0xFFE08080, "%zq, %yq, %v5"   }, /* [hlide] added "%zq, %yq, %v5" */
+  { I_VF2IN_S,         "vf2in.s",     0xD2000000, 0xFFE08080, "%zs, %ys, %v5"   }, /* [hlide] added "%zs, %ys, %v5" */
+  { I_VF2IN_T,         "vf2in.t",     0xD2008000, 0xFFE08080, "%zt, %yt, %v5"   }, /* [hlide] added "%zt, %yt, %v5" */
+  { I_VF2IU_P,         "vf2iu.p",     0xD2400080, 0xFFE08080, "%zp, %yp, %v5"   }, /* [hlide] added "%zp, %yp, %v5" */
+  { I_VF2IU_Q,         "vf2iu.q",     0xD2408080, 0xFFE08080, "%zq, %yq, %v5"   }, /* [hlide] added "%zq, %yq, %v5" */
+  { I_VF2IU_S,         "vf2iu.s",     0xD2400000, 0xFFE08080, "%zs, %ys, %v5"   }, /* [hlide] added "%zs, %ys, %v5" */
+  { I_VF2IU_T,         "vf2iu.t",     0xD2408000, 0xFFE08080, "%zt, %yt, %v5"   }, /* [hlide] added "%zt, %yt, %v5" */
+  { I_VF2IZ_P,         "vf2iz.p",     0xD2200080, 0xFFE08080, "%zp, %yp, %v5"   }, /* [hlide] added "%zp, %yp, %v5" */
+  { I_VF2IZ_Q,         "vf2iz.q",     0xD2208080, 0xFFE08080, "%zq, %yq, %v5"   }, /* [hlide] added "%zq, %yq, %v5" */
+  { I_VF2IZ_S,         "vf2iz.s",     0xD2200000, 0xFFE08080, "%zs, %ys, %v5"   }, /* [hlide] added "%zs, %ys, %v5" */
+  { I_VF2IZ_T,         "vf2iz.t",     0xD2208000, 0xFFE08080, "%zt, %yt, %v5"   }, /* [hlide] added "%zt, %yt, %v5" */
+  { I_VFAD_P,          "vfad.p",      0xD0460080, 0xFFFF8080, "%zp, %yp"        },
+  { I_VFAD_Q,          "vfad.q",      0xD0468080, 0xFFFF8080, "%zq, %yq"        },
+  { I_VFAD_T,          "vfad.t",      0xD0468000, 0xFFFF8080, "%zt, %yt"        },
+  { I_VFIM_S,          "vfim.s",      0xDF800000, 0xFF800000, "%xs, %vh"        }, /* [hlide] added "%xs, %vh" */
+  { I_VFLUSH,          "vflush",      0xFFFF040D, 0xFFFFFFFF, ""                },
+  { I_VH2F_P,          "vh2f.p",      0xD0330080, 0xFFFF8080, "%zq, %yp"        }, /* [hlide] %zp -> %zq */
+  { I_VH2F_S,          "vh2f.s",      0xD0330000, 0xFFFF8080, "%zp, %ys"        }, /* [hlide] %zs -> %zp */
+  { I_VHDP_P,          "vhdp.p",      0x66000080, 0xFF808080, "%zs, %yp, %xp"   }, /* [hlide] added "%zs, %yp, %xp" */
+  { I_VHDP_Q,          "vhdp.q",      0x66008080, 0xFF808080, "%zs, %yq, %xq"   }, /* [hlide] added "%zs, %yq, %xq" */
+  { I_VHDP_T,          "vhdp.t",      0x66008000, 0xFF808080, "%zs, %yt, %xt"   }, /* [hlide] added "%zs, %yt, %xt" */
+  { I_VHTFM2_P,        "vhtfm2.p",    0xF0800000, 0xFF808080, "%zp, %ym, %xp"   }, /* [hlide] added "%zp, %ym, %xp" */
+  { I_VHTFM3_T,        "vhtfm3.t",    0xF1000080, 0xFF808080, "%zt, %yn, %xt"   }, /* [hlide] added "%zt, %yn, %xt" */
+  { I_VHTFM4_Q,        "vhtfm4.q",    0xF1808000, 0xFF808080, "%zq, %yo, %xq"   }, /* [hlide] added "%zq, %yo, %xq" */
+  { I_VI2C_Q,          "vi2c.q",      0xD03D8080, 0xFFFF8080, "%zs, %yq"        }, /* [hlide] added "%zs, %yq" */
+  { I_VI2F_P,          "vi2f.p",      0xD2800080, 0xFFE08080, "%zp, %yp, %v5"   }, /* [hlide] added "%zp, %yp, %v5" */
+  { I_VI2F_Q,          "vi2f.q",      0xD2808080, 0xFFE08080, "%zq, %yq, %v5"   }, /* [hlide] added "%zq, %yq, %v5" */
+  { I_VI2F_S,          "vi2f.s",      0xD2800000, 0xFFE08080, "%zs, %ys, %v5"   }, /* [hlide] added "%zs, %ys, %v5" */
+  { I_VI2F_T,          "vi2f.t",      0xD2808000, 0xFFE08080, "%zt, %yt, %v5"   }, /* [hlide] added "%zt, %yt, %v5" */
+  { I_VI2S_P,          "vi2s.p",      0xD03F0080, 0xFFFF8080, "%zs, %yp"        }, /* [hlide] added "%zs, %yp" */
+  { I_VI2S_Q,          "vi2s.q",      0xD03F8080, 0xFFFF8080, "%zp, %yq"        }, /* [hlide] added "%zp, %yq" */
+  { I_VI2UC_Q,         "vi2uc.q",     0xD03C8080, 0xFFFF8080, "%zq, %yq"        }, /* [hlide] %zp -> %zq */
+  { I_VI2US_P,         "vi2us.p",     0xD03E0080, 0xFFFF8080, "%zq, %yq"        }, /* [hlide] %zp -> %zq */
+  { I_VI2US_Q,         "vi2us.q",     0xD03E8080, 0xFFFF8080, "%zq, %yq"        }, /* [hlide] %zp -> %zq */
+  { I_VIDT_P,          "vidt.p",      0xD0030080, 0xFFFFFF80, "%zp"             },
+  { I_VIDT_Q,          "vidt.q",      0xD0038080, 0xFFFFFF80, "%zq"             },
+  { I_VIIM_S,          "viim.s",      0xDF000000, 0xFF800000, "%xs, %vi"        }, /* [hlide] added "%xs, %vi" */
+  { I_VLGB_S,          "vlgb.s",      0xD0370000, 0xFFFF8080, "%zs, %ys"        },
+  { I_VLOG2_P,         "vlog2.p",     0xD0150080, 0xFFFF8080, "%zp, %yp"        },
+  { I_VLOG2_Q,         "vlog2.q",     0xD0158080, 0xFFFF8080, "%zq, %yq"        },
+  { I_VLOG2_S,         "vlog2.s",     0xD0150000, 0xFFFF8080, "%zs, %ys"        },
+  { I_VLOG2_T,         "vlog2.t",     0xD0158000, 0xFFFF8080, "%zt, %yt"        },
+  { I_VMAX_P,          "vmax.p",      0x6D800080, 0xFF808080, "%zp, %yp, %xp"   },
+  { I_VMAX_Q,          "vmax.q",      0x6D808080, 0xFF808080, "%zq, %yq, %xq"   },
+  { I_VMAX_S,          "vmax.s",      0x6D800000, 0xFF808080, "%zs, %ys, %xs"   },
+  { I_VMAX_T,          "vmax.t",      0x6D808000, 0xFF808080, "%zt, %yt, %xt"   },
+  { I_VMFVC,           "vmfvc",       0xD0500000, 0xFFFF0080, "%zs, %2s"        }, /* [hlide] added "%zs, %2s" */
+  { I_VMIDT_P,         "vmidt.p",     0xF3830080, 0xFFFFFF80, "%zm"             }, /* [hlide] %zp -> %zm */
+  { I_VMIDT_Q,         "vmidt.q",     0xF3838080, 0xFFFFFF80, "%zo"             }, /* [hlide] %zq -> %zo */
+  { I_VMIDT_T,         "vmidt.t",     0xF3838000, 0xFFFFFF80, "%zn"             }, /* [hlide] %zt -> %zn */
+  { I_VMIN_P,          "vmin.p",      0x6D000080, 0xFF808080, "%zp, %yp, %xp"   },
+  { I_VMIN_Q,          "vmin.q",      0x6D008080, 0xFF808080, "%zq, %yq, %xq"   },
+  { I_VMIN_S,          "vmin.s",      0x6D000000, 0xFF808080, "%zs, %ys, %xs"   },
+  { I_VMIN_T,          "vmin.t",      0x6D008000, 0xFF808080, "%zt, %yt, %xt"   },
+  { I_VMMOV_P,         "vmmov.p",     0xF3800080, 0xFFFF8080, "%zm, %ym"        }, /* [hlide] added "%zm, %ym" */
+  { I_VMMOV_Q,         "vmmov.q",     0xF3808080, 0xFFFF8080, "%zo, %yo"        },
+  { I_VMMOV_T,         "vmmov.t",     0xF3808000, 0xFFFF8080, "%zn, %yn"        }, /* [hlide] added "%zn, %yn" */
+  { I_VMMUL_P,         "vmmul.p",     0xF0000080, 0xFF808080, "%?%zm, %ym, %xm"   }, /* [hlide] added "%?%zm, %ym, %xm" */
+  { I_VMMUL_Q,         "vmmul.q",     0xF0008080, 0xFF808080, "%?%zo, %yo, %xo"   },
+  { I_VMMUL_T,         "vmmul.t",     0xF0008000, 0xFF808080, "%?%zn, %yn, %xn"   }, /* [hlide] added "%?%zn, %yn, %xn" */
+  { I_VMONE_P,         "vmone.p",     0xF3870080, 0xFFFFFF80, "%zp"             },
+  { I_VMONE_Q,         "vmone.q",     0xF3878080, 0xFFFFFF80, "%zq"             },
+  { I_VMONE_T,         "vmone.t",     0xF3878000, 0xFFFFFF80, "%zt"             },
+  { I_VMOV_P,          "vmov.p",      0xD0000080, 0xFFFF8080, "%zp, %yp"        },
+  { I_VMOV_Q,          "vmov.q",      0xD0008080, 0xFFFF8080, "%zq, %yq"        },
+  { I_VMOV_S,          "vmov.s",      0xD0000000, 0xFFFF8080, "%zs, %ys"        },
+  { I_VMOV_T,          "vmov.t",      0xD0008000, 0xFFFF8080, "%zt, %yt"        },
+  { I_VMSCL_P,         "vmscl.p",     0xF2000080, 0xFF808080, "%zm, %ym, %xs"   }, /* [hlide] %zp, %yp, %xp -> %zm, %ym, %xs */
+  { I_VMSCL_Q,         "vmscl.q",     0xF2008080, 0xFF808080, "%zo, %yo, %xs"   }, /* [hlide] %zq, %yq, %xp -> %zo, %yo, %xs */
+  { I_VMSCL_T,         "vmscl.t",     0xF2008000, 0xFF808080, "%zn, %yn, %xs"   }, /* [hlide] %zt, %yt, %xp -> %zn, %yn, %xs */
+  { I_VMTVC,           "vmtvc",       0xD0510000, 0xFFFF8000, "%2d, %ys"        }, /* [hlide] added "%2d, %ys" */
+  { I_VMUL_P,          "vmul.p",      0x64000080, 0xFF808080, "%zp, %yp, %xp"   },
+  { I_VMUL_Q,          "vmul.q",      0x64008080, 0xFF808080, "%zq, %yq, %xq"   },
+  { I_VMUL_S,          "vmul.s",      0x64000000, 0xFF808080, "%zs, %ys, %xs"   },
+  { I_VMUL_T,          "vmul.t",      0x64008000, 0xFF808080, "%zt, %yt, %xt"   },
+  { I_VMZERO_P,        "vmzero.p",    0xF3860080, 0xFFFFFF80, "%zm"             }, /* [hlide] %zp -> %zm */
+  { I_VMZERO_Q,        "vmzero.q",    0xF3868080, 0xFFFFFF80, "%zo"             }, /* [hlide] %zq -> %zo */
+  { I_VMZERO_T,        "vmzero.t",    0xF3868000, 0xFFFFFF80, "%zn"             }, /* [hlide] %zt -> %zn */
+  { I_VNEG_P,          "vneg.p",      0xD0020080, 0xFFFF8080, "%zp, %yp"        },
+  { I_VNEG_Q,          "vneg.q",      0xD0028080, 0xFFFF8080, "%zq, %yq"        },
+  { I_VNEG_S,          "vneg.s",      0xD0020000, 0xFFFF8080, "%zs, %ys"        },
+  { I_VNEG_T,          "vneg.t",      0xD0028000, 0xFFFF8080, "%zt, %yt"        },
+  { I_VNOP,            "vnop",        0xFFFF0000, 0xFFFFFFFF, ""                },
+  { I_VNRCP_P,         "vnrcp.p",     0xD0180080, 0xFFFF8080, "%zp, %yp"        },
+  { I_VNRCP_Q,         "vnrcp.q",     0xD0188080, 0xFFFF8080, "%zq, %yq"        },
+  { I_VNRCP_S,         "vnrcp.s",     0xD0180000, 0xFFFF8080, "%zs, %ys"        },
+  { I_VNRCP_T,         "vnrcp.t",     0xD0188000, 0xFFFF8080, "%zt, %yt"        },
+  { I_VNSIN_P,         "vnsin.p",     0xD01A0080, 0xFFFF8080, "%zp, %yp"        },
+  { I_VNSIN_Q,         "vnsin.q",     0xD01A8080, 0xFFFF8080, "%zq, %yq"        },
+  { I_VNSIN_S,         "vnsin.s",     0xD01A0000, 0xFFFF8080, "%zs, %ys"        },
+  { I_VNSIN_T,         "vnsin.t",     0xD01A8000, 0xFFFF8080, "%zt, %yt"        },
+  { I_VOCP_P,          "vocp.p",      0xD0440080, 0xFFFF8080, "%zp, %yp"        },
+  { I_VOCP_Q,          "vocp.q",      0xD0448080, 0xFFFF8080, "%zq, %yq"        },
+  { I_VOCP_S,          "vocp.s",      0xD0440000, 0xFFFF8080, "%zs, %ys"        },
+  { I_VOCP_T,          "vocp.t",      0xD0448000, 0xFFFF8080, "%zt, %yt"        },
+  { I_VONE_P,          "vone.p",      0xD0070080, 0xFFFFFF80, "%zp"             },
+  { I_VONE_Q,          "vone.q",      0xD0078080, 0xFFFFFF80, "%zq"             },
+  { I_VONE_S,          "vone.s",      0xD0070000, 0xFFFFFF80, "%zs"             },
+  { I_VONE_T,          "vone.t",      0xD0078000, 0xFFFFFF80, "%zt"             },
+  { I_VPFXD,           "vpfxd",       0xDE000000, 0xFF000000, "[%vp4, %vp5, %vp6, %vp7]"   }, /* [hlide] added "[%vp4, %vp5, %vp6, %vp7]" */
+  { I_VPFXS,           "vpfxs",       0xDC000000, 0xFF000000, "[%vp0, %vp1, %vp2, %vp3]"   }, /* [hlide] added "[%vp0, %vp1, %vp2, %vp3]" */
+  { I_VPFXT,           "vpfxt",       0xDD000000, 0xFF000000, "[%vp0, %vp1, %vp2, %vp3]"   }, /* [hlide] added "[%vp0, %vp1, %vp2, %vp3]" */
+  { I_VQMUL_Q,         "vqmul.q",     0xF2808080, 0xFF808080, "%zq, %yq, %xq"   }, /* [hlide] added "%zq, %yq, %xq" */
+  { I_VRCP_P,          "vrcp.p",      0xD0100080, 0xFFFF8080, "%zp, %yp"        },
+  { I_VRCP_Q,          "vrcp.q",      0xD0108080, 0xFFFF8080, "%zq, %yq"        },
+  { I_VRCP_S,          "vrcp.s",      0xD0100000, 0xFFFF8080, "%zs, %ys"        },
+  { I_VRCP_T,          "vrcp.t",      0xD0108000, 0xFFFF8080, "%zt, %yt"        },
+  { I_VREXP2_P,        "vrexp2.p",    0xD01C0080, 0xFFFF8080, "%zp, %yp"        },
+  { I_VREXP2_Q,        "vrexp2.q",    0xD01C8080, 0xFFFF8080, "%zq, %yq"        },
+  { I_VREXP2_S,        "vrexp2.s",    0xD01C0000, 0xFFFF8080, "%zs, %ys"        },
+  { I_VREXP2_T,        "vrexp2.t",    0xD01C8000, 0xFFFF8080, "%zt, %yt"        },
+  { I_VRNDF1_P,        "vrndf1.p",    0xD0220080, 0xFFFFFF80, "%zp"             },
+  { I_VRNDF1_Q,        "vrndf1.q",    0xD0228080, 0xFFFFFF80, "%zq"             },
+  { I_VRNDF1_S,        "vrndf1.s",    0xD0220000, 0xFFFFFF80, "%zs"             },
+  { I_VRNDF1_T,        "vrndf1.t",    0xD0228000, 0xFFFFFF80, "%zt"             },
+  { I_VRNDF2_P,        "vrndf2.p",    0xD0230080, 0xFFFFFF80, "%zp"             },
+  { I_VRNDF2_Q,        "vrndf2.q",    0xD0238080, 0xFFFFFF80, "%zq"             },
+  { I_VRNDF2_S,        "vrndf2.s",    0xD0230000, 0xFFFFFF80, "%zs"             },
+  { I_VRNDF2_T,        "vrndf2.t",    0xD0238000, 0xFFFFFF80, "%zt"             },
+  { I_VRNDI_P,         "vrndi.p",     0xD0210080, 0xFFFFFF80, "%zp"             },
+  { I_VRNDI_Q,         "vrndi.q",     0xD0218080, 0xFFFFFF80, "%zq"             },
+  { I_VRNDI_S,         "vrndi.s",     0xD0210000, 0xFFFFFF80, "%zs"             },
+  { I_VRNDI_T,         "vrndi.t",     0xD0218000, 0xFFFFFF80, "%zt"             },
+  { I_VRNDS_S,         "vrnds.s",     0xD0200000, 0xFFFF80FF, "%ys"             },
+  { I_VROT_P,          "vrot.p",      0xF3A00080, 0xFFE08080, "%zp, %ys, %vr"   }, /* [hlide] added "%zp, %ys, %vr" */
+  { I_VROT_Q,          "vrot.q",      0xF3A08080, 0xFFE08080, "%zq, %ys, %vr"   }, /* [hlide] added "%zq, %ys, %vr" */
+  { I_VROT_T,          "vrot.t",      0xF3A08000, 0xFFE08080, "%zt, %ys, %vr"   }, /* [hlide] added "%zt, %ys, %vr" */
+  { I_VRSQ_P,          "vrsq.p",      0xD0110080, 0xFFFF8080, "%zp, %yp"        },
+  { I_VRSQ_Q,          "vrsq.q",      0xD0118080, 0xFFFF8080, "%zq, %yq"        },
+  { I_VRSQ_S,          "vrsq.s",      0xD0110000, 0xFFFF8080, "%zs, %ys"        },
+  { I_VRSQ_T,          "vrsq.t",      0xD0118000, 0xFFFF8080, "%zt, %yt"        },
+  { I_VS2I_P,          "vs2i.p",      0xD03B0080, 0xFFFF8080, "%zq, %yp"        }, /* [hlide] %zp -> %zq */
+  { I_VS2I_S,          "vs2i.s",      0xD03B0000, 0xFFFF8080, "%zp, %ys"        }, /* [hlide] %zs -> %zp */
+  { I_VSAT0_P,         "vsat0.p",     0xD0040080, 0xFFFF8080, "%zp, %yp"        },
+  { I_VSAT0_Q,         "vsat0.q",     0xD0048080, 0xFFFF8080, "%zq, %yq"        },
+  { I_VSAT0_S,         "vsat0.s",     0xD0040000, 0xFFFF8080, "%zs, %ys"        },
+  { I_VSAT0_T,         "vsat0.t",     0xD0048000, 0xFFFF8080, "%zt, %yt"        },
+  { I_VSAT1_P,         "vsat1.p",     0xD0050080, 0xFFFF8080, "%zp, %yp"        },
+  { I_VSAT1_Q,         "vsat1.q",     0xD0058080, 0xFFFF8080, "%zq, %yq"        },
+  { I_VSAT1_S,         "vsat1.s",     0xD0050000, 0xFFFF8080, "%zs, %ys"        },
+  { I_VSAT1_T,         "vsat1.t",     0xD0058000, 0xFFFF8080, "%zt, %yt"        },
+  { I_VSBN_S,          "vsbn.s",      0x61000000, 0xFF808080, "%zs, %ys, %xs"   },
+  { I_VSBZ_S,          "vsbz.s",      0xD0360000, 0xFFFF8080, "%zs, %ys"        },
+  { I_VSCL_P,          "vscl.p",      0x65000080, 0xFF808080, "%zp, %yp, %xs"   }, /* [hlide] %xp -> %xs */
+  { I_VSCL_Q,          "vscl.q",      0x65008080, 0xFF808080, "%zq, %yq, %xs"   }, /* [hlide] %xq -> %xs */
+  { I_VSCL_T,          "vscl.t",      0x65008000, 0xFF808080, "%zt, %yt, %xs"   }, /* [hlide] %xt -> %xs */
+  { I_VSCMP_P,         "vscmp.p",     0x6E800080, 0xFF808080, "%zp, %yp, %xp"   },
+  { I_VSCMP_Q,         "vscmp.q",     0x6E808080, 0xFF808080, "%zq, %yq, %xq"   },
+  { I_VSCMP_S,         "vscmp.s",     0x6E800000, 0xFF808080, "%zs, %ys, %xs"   },
+  { I_VSCMP_T,         "vscmp.t",     0x6E808000, 0xFF808080, "%zt, %yt, %xt"   },
+  { I_VSGE_P,          "vsge.p",      0x6F000080, 0xFF808080, "%zp, %yp, %xp"   },
+  { I_VSGE_Q,          "vsge.q",      0x6F008080, 0xFF808080, "%zq, %yq, %xq"   },
+  { I_VSGE_S,          "vsge.s",      0x6F000000, 0xFF808080, "%zs, %ys, %xs"   },
+  { I_VSGE_T,          "vsge.t",      0x6F008000, 0xFF808080, "%zt, %yt, %xt"   },
+  { I_VSGN_P,          "vsgn.p",      0xD04A0080, 0xFFFF8080, "%zp, %yp"        },
+  { I_VSGN_Q,          "vsgn.q",      0xD04A8080, 0xFFFF8080, "%zq, %yq"        },
+  { I_VSGN_S,          "vsgn.s",      0xD04A0000, 0xFFFF8080, "%zs, %ys"        },
+  { I_VSGN_T,          "vsgn.t",      0xD04A8000, 0xFFFF8080, "%zt, %yt"        },
+  { I_VSIN_P,          "vsin.p",      0xD0120080, 0xFFFF8080, "%zp, %yp"        },
+  { I_VSIN_Q,          "vsin.q",      0xD0128080, 0xFFFF8080, "%zq, %yq"        },
+  { I_VSIN_S,          "vsin.s",      0xD0120000, 0xFFFF8080, "%zs, %ys"        },
+  { I_VSIN_T,          "vsin.t",      0xD0128000, 0xFFFF8080, "%zt, %yt"        },
+  { I_VSLT_P,          "vslt.p",      0x6F800080, 0xFF808080, "%zp, %yp, %xp"   },
+  { I_VSLT_Q,          "vslt.q",      0x6F808080, 0xFF808080, "%zq, %yq, %xq"   },
+  { I_VSLT_S,          "vslt.s",      0x6F800000, 0xFF808080, "%zs, %ys, %xs"   },
+  { I_VSLT_T,          "vslt.t",      0x6F808000, 0xFF808080, "%zt, %yt, %xt"   },
+  { I_VSOCP_P,         "vsocp.p",     0xD0450080, 0xFFFF8080, "%zq, %yp"        }, /* [hlide] %zp -> %zq */
+  { I_VSOCP_S,         "vsocp.s",     0xD0450000, 0xFFFF8080, "%zp, %ys"        }, /* [hlide] %zs -> %zp */
+  { I_VSQRT_P,         "vsqrt.p",     0xD0160080, 0xFFFF8080, "%zp, %yp"        },
+  { I_VSQRT_Q,         "vsqrt.q",     0xD0168080, 0xFFFF8080, "%zq, %yq"        },
+  { I_VSQRT_S,         "vsqrt.s",     0xD0160000, 0xFFFF8080, "%zs, %ys"        },
+  { I_VSQRT_T,         "vsqrt.t",     0xD0168000, 0xFFFF8080, "%zt, %yt"        },
+  { I_VSRT1_Q,         "vsrt1.q",     0xD0408080, 0xFFFF8080, "%zq, %yq"        },
+  { I_VSRT2_Q,         "vsrt2.q",     0xD0418080, 0xFFFF8080, "%zq, %yq"        },
+  { I_VSRT3_Q,         "vsrt3.q",     0xD0488080, 0xFFFF8080, "%zq, %yq"        },
+  { I_VSRT4_Q,         "vsrt4.q",     0xD0498080, 0xFFFF8080, "%zq, %yq"        },
+  { I_VSUB_P,          "vsub.p",      0x60800080, 0xFF808080, "%zp, %yp, %xp"   },
+  { I_VSUB_Q,          "vsub.q",      0x60808080, 0xFF808080, "%zq, %yq, %xq"   },
+  { I_VSUB_S,          "vsub.s",      0x60800000, 0xFF808080, "%zs, %ys, %xs"   },
+  { I_VSUB_T,          "vsub.t",      0x60808000, 0xFF808080, "%zt, %yt, %xt"   },
+  { I_VSYNC,           "vsync",       0xFFFF0320, 0xFFFFFFFF, ""                },
+  { I_VSYNC,           "vsync",       0xFFFF0000, 0xFFFF0000, "%I"              },
+  { I_VT4444_Q,        "vt4444.q",    0xD0598080, 0xFFFF8080, "%zq, %yq"        }, /* [hlide] %zq -> %zp */
+  { I_VT5551_Q,        "vt5551.q",    0xD05A8080, 0xFFFF8080, "%zq, %yq"        }, /* [hlide] %zq -> %zp */
+  { I_VT5650_Q,        "vt5650.q",    0xD05B8080, 0xFFFF8080, "%zq, %yq"        }, /* [hlide] %zq -> %zp */
+  { I_VTFM2_P,         "vtfm2.p",     0xF0800080, 0xFF808080, "%zp, %ym, %xp"   }, /* [hlide] added "%zp, %ym, %xp" */
+  { I_VTFM3_T,         "vtfm3.t",     0xF1008000, 0xFF808080, "%zt, %yn, %xt"   }, /* [hlide] added "%zt, %yn, %xt" */
+  { I_VTFM4_Q,         "vtfm4.q",     0xF1808080, 0xFF808080, "%zq, %yo, %xq"   }, /* [hlide] added "%zq, %yo, %xq" */
+  { I_VUS2I_P,         "vus2i.p",     0xD03A0080, 0xFFFF8080, "%zq, %yp"        }, /* [hlide] added "%zq, %yp" */
+  { I_VUS2I_S,         "vus2i.s",     0xD03A0000, 0xFFFF8080, "%zp, %ys"        }, /* [hlide] added "%zp, %ys" */
+  { I_VWB_Q,           "vwb.q",       0xF8000002, 0xFC000002, "%Xq, %Y"         },
+  { I_VWBN_S,          "vwbn.s",      0xD3000000, 0xFF008080, "%zs, %xs, %I"    },
+  { I_VZERO_P,         "vzero.p",     0xD0060080, 0xFFFFFF80, "%zp"             },
+  { I_VZERO_Q,         "vzero.q",     0xD0068080, 0xFFFFFF80, "%zq"             },
+  { I_VZERO_S,         "vzero.s",     0xD0060000, 0xFFFFFF80, "%zs"             },
+  { I_VZERO_T,         "vzero.t",     0xD0068000, 0xFFFFFF80, "%zt"             },
+  { I_MFVME,           "mfvme",       0x68000000, 0xFC000000, "%t, %i"          },
+  { I_MTVME,           "mtvme",       0xb0000000, 0xFC000000, "%t, %i"          },
 };
 
 static char buffer[1024];
@@ -1096,11 +1085,23 @@ char *allegrex_disassemble (unsigned int opcode, unsigned int PC)
   return (char *) buffer;
 }
 
+enum allegrex_itype allegrex_get_itype (unsigned int opcode)
+{
+  int i;
+
+  for (i = 0; i < sizeof (instructions) / sizeof (struct allegrex_instruction); i++) {
+    if ((instructions[i].mask & opcode) == instructions[i].opcode) {
+      return instructions[i].itype;
+    }
+  }
+  return I_INVALID;
+}
+
 #ifdef TEST_DISASSEMBLE
 
 #include <stdlib.h>
 
-int main2 (int argc, char **argv)
+int main (int argc, char **argv)
 {
   int i;
 
@@ -1113,35 +1114,5 @@ int main2 (int argc, char **argv)
   return 0;
 }
 #include <string.h>
-
-int main (int argc, char **argv)
-{
-  FILE *fp = fopen ("disasm.c", "r");
-  char buffer[1024];
-  char buf2[512];
-  int i = 0;
-
-  while (1) {
-    char *s = fgets (buffer, sizeof (buffer), fp);
-    if (!s) break;
-    if (strncmp (s, "  { \"", 5) == 0) {
-      int j = 0;
-      while (s[5+j] != '"') {
-        char c = s[5+j];
-        if (c == '.') {  c = '_';  }
-        else c = toupper (c);
-        buf2[j] = c;
-        j++;
-      }
-      buf2[j] = ',';
-      buf2[j+1] = '\0';
-      printf ("  { I_%-16s \"%s", buf2, &s[5]);
-    } else {
-      printf ("%s", s);
-    }
-  }
-  fclose (fp);
-  return 0;
-}
 
 #endif /* TEST_DISASSEMBLE */
