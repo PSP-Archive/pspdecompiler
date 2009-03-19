@@ -122,10 +122,10 @@ struct prx_modinfo {
   uint16 attributes;
   uint16 version;
   uint32 gp;
-  uint32 libent;
-  uint32 libentbtm;
-  uint32 libstub;
-  uint32 libstubbtm;
+  uint32 expvaddr;
+  uint32 expvaddrbtm;
+  uint32 impvaddr;
+  uint32 impvaddrbtm;
 
   uint32 numimports;
   uint32 numexports;
@@ -188,8 +188,9 @@ struct prx_export {
 #define ELF32_ST_TYPE(i) ((i)&0xf)
 #define ELF32_ST_INFO(b,t) (((b)<<4)+((t)&0xf))
 
-struct prx *load_prx (const char *path);
-void free_prx (struct prx *p);
-void print_prx (struct prx *p);
+struct prx *prx_load (const char *path);
+void prx_free (struct prx *p);
+void prx_print (struct prx *p);
+
 
 #endif /* __PRX_H */

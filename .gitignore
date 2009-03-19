@@ -3,4 +3,6 @@
 .cproject
 .settings
 pspdecompiler
+*.elf
+*.prx
 

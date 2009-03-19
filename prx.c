@@ -102,27 +102,27 @@ int check_module_info (struct prx *p)
     error (__FILE__ ": module name is not null terminated\n");
     return 0;
   }
-  if (info->libent) {
-    if (info->libentbtm < info->libent ||
-        info->libent >= p->size ||
-        info->libentbtm >= p->size) {
-      error (__FILE__ ": invalid library entry (0x%08X - 0x%08X)", info->libent, info->libentbtm);
+  if (info->expvaddr) {
+    if (info->expvaddrbtm < info->expvaddr ||
+        info->expvaddr >= p->size ||
+        info->expvaddrbtm >= p->size) {
+      error (__FILE__ ": invalid library entry (0x%08X - 0x%08X)", info->expvaddr, info->expvaddrbtm);
       return 0;
     }
-    if ((info->libentbtm - info->libent) % PRX_MODULE_EXPORT_SIZE) {
-      error (__FILE__ ": invalid size for exports (%u)", info->libentbtm - info->libent);
+    if ((info->expvaddrbtm - info->expvaddr) % PRX_MODULE_EXPORT_SIZE) {
+      error (__FILE__ ": invalid size for exports (%u)", info->expvaddrbtm - info->expvaddr);
       return 0;
     }
   }
-  if (info->libstub) {
-    if (info->libstubbtm < info->libstub ||
-        info->libstub >= p->size ||
-        info->libstubbtm >= p->size) {
-      error (__FILE__ ": invalid stubs (0x%08X - 0x%08X)", info->libstub, info->libstubbtm);
+  if (info->impvaddr) {
+    if (info->impvaddrbtm < info->impvaddr ||
+        info->impvaddr >= p->size ||
+        info->impvaddrbtm >= p->size) {
+      error (__FILE__ ": invalid stubs (0x%08X - 0x%08X)", info->impvaddr, info->impvaddrbtm);
       return 0;
     }
-    if ((info->libstubbtm - info->libstub) % PRX_MODULE_IMPORT_SIZE) {
-      error (__FILE__ ": invalid size for imports (%u)", info->libstubbtm - info->libstub);
+    if ((info->impvaddrbtm - info->impvaddr) % PRX_MODULE_IMPORT_SIZE) {
+      error (__FILE__ ": invalid size for imports (%u)", info->impvaddrbtm - info->impvaddr);
       return 0;
     }
   }
@@ -303,11 +303,11 @@ int load_module_imports (struct prx *p)
 {
   uint32 i = 0, offset;
   struct prx_modinfo *info = p->modinfo;
-  if (!info->libstub) return 1;
+  if (!info->impvaddr) return 1;
 
-  info->numimports = (info->libstubbtm - info->libstub) / PRX_MODULE_IMPORT_SIZE;
+  info->numimports = (info->impvaddrbtm - info->impvaddr) / PRX_MODULE_IMPORT_SIZE;
   info->imports = (struct prx_import *) xmalloc (info->numimports * sizeof (struct prx_import));
-  for (offset = info->libstub + p->programs[0].offset; i < info->numimports; offset += PRX_MODULE_IMPORT_SIZE, i++) {
+  for (offset = info->impvaddr + p->programs[0].offset; i < info->numimports; offset += PRX_MODULE_IMPORT_SIZE, i++) {
     info->imports[i].nameaddr = read_uint32_le (&p->data[offset]);
     info->imports[i].flags = read_uint16_le (&p->data[offset+4]);
     info->imports[i].version = read_uint16_le (&p->data[offset+6]);
@@ -326,11 +326,11 @@ int load_module_exports (struct prx *p)
 {
   uint32 i = 0, offset;
   struct prx_modinfo *info = p->modinfo;
-  if (!info->libent) return 1;
+  if (!info->expvaddr) return 1;
 
-  info->numexports = (info->libentbtm - info->libent) / PRX_MODULE_EXPORT_SIZE;
+  info->numexports = (info->expvaddrbtm - info->expvaddr) / PRX_MODULE_EXPORT_SIZE;
   info->exports = (struct prx_export *) xmalloc (info->numexports * sizeof (struct prx_export));
-  for (offset = info->libent + p->programs[0].offset; i < info->numexports; offset += PRX_MODULE_EXPORT_SIZE, i++) {
+  for (offset = info->expvaddr + p->programs[0].offset; i < info->numexports; offset += PRX_MODULE_EXPORT_SIZE, i++) {
     info->exports[i].nameaddr = read_uint32_le (&p->data[offset]);
     info->exports[i].version = read_uint16_le (&p->data[offset+4]);
     info->exports[i].attributes = read_uint16_le (&p->data[offset+6]);
@@ -366,10 +366,10 @@ int load_module_info (struct prx *p)
   info->version = read_uint16_le (&p->data[offset+2]);
   info->name = (const char *) &p->data[offset+4];
   info->gp = read_uint32_le (&p->data[offset+32]);
-  info->libent = read_uint32_le (&p->data[offset+36]);
-  info->libentbtm = read_uint32_le (&p->data[offset+40]);
-  info->libstub = read_uint32_le (&p->data[offset+44]);
-  info->libstubbtm = read_uint32_le (&p->data[offset+48]);
+  info->expvaddr = read_uint32_le (&p->data[offset+36]);
+  info->expvaddrbtm = read_uint32_le (&p->data[offset+40]);
+  info->impvaddr = read_uint32_le (&p->data[offset+44]);
+  info->impvaddrbtm = read_uint32_le (&p->data[offset+48]);
 
   info->imports = NULL;
   info->exports = NULL;
@@ -383,7 +383,7 @@ int load_module_info (struct prx *p)
 }
 
 
-struct prx *load_prx (const char *path)
+struct prx *prx_load (const char *path)
 {
   struct prx *p;
   uint8 *elf_bytes;
@@ -419,22 +419,22 @@ struct prx *load_prx (const char *path)
   p->shstrndx = read_uint16_le (&p->data[ELF_HEADER_IDENT+34]);
 
   if (!check_elf_header (p)) {
-    free_prx (p);
+    prx_free (p);
     return NULL;
   }
 
   if (!load_sections (p)) {
-    free_prx (p);
+    prx_free (p);
     return NULL;
   }
 
   if (!load_programs (p)) {
-    free_prx (p);
+    prx_free (p);
     return NULL;
   }
 
   if (!load_module_info (p)) {
-    free_prx (p);
+    prx_free (p);
     return NULL;
   }
 
@@ -488,7 +488,7 @@ void free_module_info (struct prx *p)
   p->modinfo = NULL;
 }
 
-void free_prx (struct prx *p)
+void prx_free (struct prx *p)
 {
   free_sections (p);
   free_programs (p);
@@ -585,16 +585,16 @@ void print_module_info (struct prx *p)
   report ("  Attributes:                    0x%04X\n", info->attributes);
   report ("  Version:                       0x%04X\n", info->version);
   report ("  GP:                        0x%08X\n", info->gp);
-  report ("  Library entry:             0x%08X\n", info->libent);
-  report ("  Library entry bottom:      0x%08X\n", info->libentbtm);
-  report ("  Library stubs:             0x%08X\n", info->libstub);
-  report ("  Library stubs bottom:      0x%08X\n", info->libstubbtm);
+  report ("  Library entry:             0x%08X\n", info->expvaddr);
+  report ("  Library entry bottom:      0x%08X\n", info->expvaddrbtm);
+  report ("  Library stubs:             0x%08X\n", info->impvaddr);
+  report ("  Library stubs bottom:      0x%08X\n", info->impvaddrbtm);
 
   print_module_imports (p);
   print_module_exports (p);
 }
 
-void print_prx (struct prx *p)
+void prx_print (struct prx *p)
 {
   report ("ELF header:\n");
   report ("  Entry point address:        0x%08X\n", p->entry);
