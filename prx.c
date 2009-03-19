@@ -296,7 +296,7 @@ int load_sections (struct prx *p)
   uint32 offset;
 
   p->sections = NULL;
-  p->secbyname = hashtable_create (64, &hash_string, &hashtable_string_compare);
+  p->secbyname = hashtable_create (64, &hashtable_hash_string, &hashtable_string_compare);
   if (p->shnum == 0) return 1;
 
   sections = xmalloc (p->shnum * sizeof (struct elf_section));

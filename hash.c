@@ -198,7 +198,7 @@ int hashtable_merge (struct hashtable *out, struct hashtable *in, repeatedfuncti
       value = hashtable_search (out, e->key, &key);
       if (value) {
         if (repeatedfn)
-          repeatedfn (e->key, e->value, key, value, arg);
+          repeatedfn (key, value, e->key, e->value, arg);
       } else {
         hashtable_insert (out, e->key, e->value);
       }
@@ -218,7 +218,7 @@ int hashtable_string_compare (void *key1, void *key2)
   return (strcmp (key1, key2) == 0);
 }
 
-unsigned int hash_bytes (unsigned char *key, size_t len)
+unsigned int hashtable_hash_bytes (unsigned char *key, size_t len)
 {
   unsigned int hash = 0;
   size_t i;
@@ -236,7 +236,7 @@ unsigned int hash_bytes (unsigned char *key, size_t len)
   return hash;
 }
 
-unsigned int hash_string (void *key)
+unsigned int hashtable_hash_string (void *key)
 {
   unsigned int hash = 0;
   unsigned char *bytes = (unsigned char *) key;
@@ -252,4 +252,9 @@ unsigned int hash_string (void *key)
   hash += (hash << 15);
 
   return hash;
+}
+
+unsigned int hashtable_hash_pointer (void *key)
+{
+  return (unsigned int) key;
 }
