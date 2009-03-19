@@ -123,7 +123,7 @@ void end_hndl (void *data, const char *el)
   } else if (strcmp (el, "FUNCTION") == 0 || strcmp (el, "VARIABLE") == 0) {
     d->scope = XMLS_LIBRARY;
     if (d->name && d->nid) {
-      if (hashtable_search (d->curlib, (void *) d->name, NULL)) {
+      if (hashtable_search (d->curlib, (void *) d->nid, NULL)) {
         error (__FILE__ ": NID `0x%08X' repeated in library `%s'", d->nid, d->libname);
         free ((void *) d->name);
         d->error = 1;

@@ -9,7 +9,7 @@ int main (int argc, char **argv)
 {
   struct hashtable *nids = nids_load_xml (argv[1]);
   if (nids) {
-    nids_print (nids);
+    /* nids_print (nids); */
     nids_free (nids);
   }
   return 0;
