@@ -3,6 +3,7 @@
 
 #include "types.h"
 #include "hash.h"
+#include "nids.h"
 
 #define ELF_HEADER_IDENT        16
 #define ELF_PRX_TYPE            0xFFA0
@@ -40,8 +41,6 @@ struct prx
   struct elf_program *programs;
 
   struct prx_modinfo *modinfo;
-
-
 };
 
 #define SHT_NULL            0
@@ -134,6 +133,9 @@ struct prx_import {
   uint32 funcsvaddr;
   uint32 varsvaddr;
 
+  struct prx_function *funcs;
+  struct prx_variable *vars;
+
   const char *name;
 
 };
@@ -146,6 +148,21 @@ struct prx_export {
   uint16 nfuncs;
   uint32 expvaddr;
 
+  struct prx_function *funcs;
+  struct prx_variable *vars;
+
+  const char *name;
+};
+
+struct prx_function {
+  uint32 vaddr;
+  uint32 nid;
+  const char *name;
+};
+
+struct prx_variable {
+  uint32 vaddr;
+  uint32 nid;
   const char *name;
 };
 
@@ -177,6 +194,7 @@ struct prx_export {
 struct prx *prx_load (const char *path);
 void prx_free (struct prx *p);
 void prx_print (struct prx *p);
+void prx_resolve_nids (struct prx *p, struct hashtable *nids);
 uint32 prx_translate (struct prx *p, uint32 vaddr);
 
 #endif /* __PRX_H */

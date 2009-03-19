@@ -7,12 +7,12 @@
 
 int main (int argc, char **argv)
 {
-  struct hashtable *nids = nids_load_xml (argv[1]);
-  if (nids) {
-    /* nids_print (nids); */
-    nids_free (nids);
+  struct hashtable *nids = NULL;
+
+  if (argc > 2) {
+    nids = nids_load_xml (argv[2]);
   }
-  return 0;
+
 
   if (argc > 1) {
     struct prx *p = prx_load (argv[1]);
@@ -20,7 +20,10 @@ int main (int argc, char **argv)
     if (!p) {
       return 0;
     }
+    if (nids)
+      prx_resolve_nids (p, nids);
     prx_print (p);
+
     s = hashtable_search (p->secbyname, ".text", NULL);
     if (s) {
       struct code *c = analyse_code (s->data, s->size, s->addr);
@@ -31,5 +34,11 @@ int main (int argc, char **argv)
     }
     prx_free (p);
   }
+
+  if (nids) {
+    /* nids_print (nids); */
+    nids_free (nids);
+  }
+
   return 0;
 }

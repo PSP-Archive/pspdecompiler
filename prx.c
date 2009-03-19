@@ -148,6 +148,7 @@ int check_module_info (struct prx *p)
     error (__FILE__ ": module name is not null terminated\n");
     return 0;
   }
+
   if (info->expvaddr) {
     if (info->expvaddr > info->expvaddrbtm) {
       error (__FILE__ ": exports bottom is above top (0x%08X - 0x%08X)", info->expvaddr, info->expvaddrbtm);
@@ -162,6 +163,10 @@ int check_module_info (struct prx *p)
       uint32 size;
       offset = prx_translate (p, vaddr);
       size = p->data[offset+8];
+      if (size < 4) {
+        error (__FILE__ ": export size less than 4 words: %d", size);
+        return 0;
+      }
       vaddr += size << 2;
     }
     if (vaddr != info->expvaddrbtm) {
@@ -169,6 +174,7 @@ int check_module_info (struct prx *p)
       return 0;
     }
   }
+
   if (info->impvaddr) {
     if (info->impvaddr > info->impvaddrbtm) {
       error (__FILE__ ": imports bottom is above top (0x%08X - 0x%08X)", info->impvaddr, info->impvaddrbtm);
@@ -181,8 +187,18 @@ int check_module_info (struct prx *p)
     info->numimports = 0;
     for (vaddr = info->impvaddr; vaddr < info->impvaddrbtm; info->numimports++) {
       uint32 size;
+      uint8 nvars;
       offset = prx_translate (p, vaddr);
       size = p->data[offset+8];
+      nvars = p->data[offset+9];
+      if (size < 5) {
+        error (__FILE__ ": import size less than 5 words: %d", size);
+        return 0;
+      }
+      if (nvars && size < 6) {
+        error (__FILE__ ": import size less than 6 words: %d", size);
+        return 0;
+      }
       vaddr += size << 2;
     }
     if (vaddr != info->impvaddrbtm) {
@@ -203,6 +219,28 @@ int check_module_import (struct prx *p, uint32 index)
     return 0;
   }
 
+  if (!imp->nfuncs && !imp->nvars) {
+    error (__FILE__ ": no functions or variables imported");
+    return 0;
+  }
+
+  if (!check_inside_program0 (p, imp->funcsvaddr, 8 * imp->nfuncs)) {
+    error (__FILE__ ": functions not inside the first program");
+    return 0;
+  }
+
+  if (!check_inside_program0 (p, imp->nidsvaddr, 4 * imp->nfuncs)) {
+    error (__FILE__ ": nids not inside the first program");
+    return 0;
+  }
+
+  if (imp->nvars) {
+    if (!check_inside_program0 (p, imp->varsvaddr, 8 * imp->nvars)) {
+      error (__FILE__ ": variables not inside first program");
+      return 0;
+    }
+  }
+
 
   return 1;
 }
@@ -214,6 +252,16 @@ int check_module_export (struct prx *p, uint32 index)
 
   if (!check_string_program0 (p, exp->namevaddr)) {
     error (__FILE__ ": export name not inside first program");
+    return 0;
+  }
+
+  if (!exp->nfuncs && !exp->nvars) {
+    error (__FILE__ ": no functions or variables exported");
+    return 0;
+  }
+
+  if (!check_inside_program0 (p, exp->expvaddr, 8 * (exp->nfuncs + exp->nvars))) {
+    error (__FILE__ ": functions and variables not inside the first program");
     return 0;
   }
 
@@ -386,6 +434,34 @@ int load_programs (struct prx *p)
 }
 
 static
+int load_module_import (struct prx *p, struct prx_import *imp)
+{
+  uint32 i, offset;
+  if (imp->nfuncs) {
+    imp->funcs = (struct prx_function *) xmalloc (imp->nfuncs * sizeof (struct prx_function));
+    offset = prx_translate (p, imp->nidsvaddr);
+    for (i = 0; i < imp->nfuncs; i++) {
+      struct prx_function *f = &imp->funcs[i];
+      f->nid = read_uint32_le (&p->data[offset + 4 * i]);
+      f->vaddr = imp->funcsvaddr + 8 * i;
+      f->name = NULL;
+    }
+  }
+
+  if (imp->nvars) {
+    imp->vars = (struct prx_variable *) xmalloc (imp->nvars * sizeof (struct prx_variable));
+    offset = prx_translate (p, imp->varsvaddr);
+    for (i = 0; i < imp->nvars; i++) {
+      struct prx_variable *v = &imp->vars[i];
+      v->nid = read_uint32_le (&p->data[offset + 8 * i + 4]);
+      v->vaddr = read_uint32_le (&p->data[offset +  8 * i]);
+      v->name = NULL;
+    }
+ }
+  return 1;
+}
+
+static
 int load_module_imports (struct prx *p)
 {
   uint32 i = 0, offset;
@@ -393,6 +469,7 @@ int load_module_imports (struct prx *p)
   if (!info->impvaddr) return 1;
 
   info->imports = (struct prx_import *) xmalloc (info->numimports * sizeof (struct prx_import));
+  memset (info->imports, 0, info->numimports * sizeof (struct prx_import));
 
   offset = prx_translate (p, info->impvaddr);
   for (i = 0; i < info->numimports; i++) {
@@ -404,6 +481,7 @@ int load_module_imports (struct prx *p)
     imp->nfuncs = read_uint16_le (&p->data[offset+10]);
     imp->nidsvaddr = read_uint32_le (&p->data[offset+12]);
     imp->funcsvaddr = read_uint32_le (&p->data[offset+16]);
+    if (imp->nvars) imp->varsvaddr = read_uint32_le (&p->data[offset+20]);
 
     if (!check_module_import (p, i)) return 0;
 
@@ -411,7 +489,61 @@ int load_module_imports (struct prx *p)
       imp->name = (const char *) &p->data[prx_translate (p, imp->namevaddr)];
     else
       imp->name = NULL;
+
+    if (!load_module_import (p, imp)) return 0;
     offset += imp->size << 2;
+  }
+  return 1;
+}
+
+static
+const char *resolve_syslib_nid (uint32 nid)
+{
+  switch (nid) {
+  case 0xd3744be0: return "module_bootstart";
+  case 0x2f064fa6: return "module_reboot_before";
+  case 0xadf12745: return "module_reboot_phase";
+  case 0xd632acdb: return "module_start";
+  case 0xcee8593c: return "module_stop";
+  case 0xf01d73a7: return "module_info";
+  case 0x0f7c276c: return "module_start_thread_parameter";
+  case 0xcf0cc697: return "module_stop_thread_parameter";
+  }
+  return NULL;
+}
+
+static
+int load_module_export (struct prx *p, struct prx_export *exp)
+{
+  uint32 i, offset, disp;
+  offset = prx_translate (p, exp->expvaddr);
+  disp = 4 * (exp->nfuncs + exp->nvars);
+  if (exp->nfuncs) {
+    exp->funcs = (struct prx_function *) xmalloc (exp->nfuncs * sizeof (struct prx_function));
+    for (i = 0; i < exp->nfuncs; i++) {
+      struct prx_function *f = &exp->funcs[i];
+      f->vaddr = read_uint32_le (&p->data[offset + disp]);
+      f->nid = read_uint32_le (&p->data[offset]);
+      f->name = NULL;
+      offset += 4;
+      if (exp->namevaddr == 0) {
+        f->name = resolve_syslib_nid (f->nid);
+      }
+    }
+  }
+
+  if (exp->nvars) {
+    exp->vars = (struct prx_variable *) xmalloc (exp->nvars * sizeof (struct prx_variable));
+    for (i = 0; i < exp->nvars; i++) {
+      struct prx_variable *v = &exp->vars[i];
+      v->vaddr = read_uint32_le (&p->data[offset + disp]);
+      v->nid = read_uint32_le (&p->data[offset]);
+      v->name = NULL;
+      offset += 4;
+      if (exp->namevaddr == 0) {
+        v->name = resolve_syslib_nid (v->nid);
+      }
+    }
   }
   return 1;
 }
@@ -424,6 +556,7 @@ int load_module_exports (struct prx *p)
   if (!info->expvaddr) return 1;
 
   info->exports = (struct prx_export *) xmalloc (info->numexports * sizeof (struct prx_export));
+  memset (info->exports, 0, info->numexports * sizeof (struct prx_export));
 
   offset = prx_translate (p, info->expvaddr);
   for (i = 0; i < info->numexports; i++) {
@@ -440,8 +573,9 @@ int load_module_exports (struct prx *p)
     if (exp->namevaddr)
       exp->name = (const char *) &p->data[prx_translate (p, exp->namevaddr)];
     else
-      exp->name = NULL;
+      exp->name = "syslib";
 
+    if (!load_module_export (p, exp)) return 0;
     offset += exp->size << 2;
   }
   return 1;
@@ -564,20 +698,46 @@ void free_programs (struct prx *p)
 }
 
 static
+void free_module_import (struct prx_import *imp)
+{
+  if (imp->funcs) free (imp->funcs);
+  if (imp->vars) free (imp->vars);
+  imp->funcs = NULL;
+  imp->vars = NULL;
+}
+
+static
 void free_module_imports (struct prx *p)
 {
   if (!p->modinfo) return;
-  if (p->modinfo->imports)
+  if (p->modinfo->imports) {
+    uint32 i;
+    for (i = 0; i < p->modinfo->numimports; i++)
+      free_module_import (&p->modinfo->imports[i]);
     free (p->modinfo->imports);
+  }
   p->modinfo->imports = NULL;
+}
+
+static
+void free_module_export (struct prx_export *exp)
+{
+  if (exp->funcs) free (exp->funcs);
+  if (exp->vars) free (exp->vars);
+  exp->funcs = NULL;
+  exp->vars = NULL;
 }
 
 static
 void free_module_exports (struct prx *p)
 {
   if (!p->modinfo) return;
-  if (p->modinfo->exports)
+  if (p->modinfo->exports) {
+    uint32 i;
+    for (i = 0; i < p->modinfo->numexports; i++)
+      free_module_export (&p->modinfo->exports[i]);
     free (p->modinfo->exports);
+  }
   p->modinfo->imports = NULL;
 }
 
@@ -658,7 +818,7 @@ void print_programs (struct prx *p)
 static
 void print_module_imports (struct prx *p)
 {
-  uint32 idx;
+  uint32 idx, i;
   struct prx_modinfo *info = p->modinfo;
   report ("\nImports:\n");
   for (idx = 0; idx < info->numimports; idx++) {
@@ -671,27 +831,65 @@ void print_module_imports (struct prx *p)
     report ("     Num Functions:      %6d\n", imp->nfuncs);
     report ("     Nids:           0x%08X\n", imp->nidsvaddr);
     report ("     Functions:      0x%08X\n", imp->funcsvaddr);
+
+    for (i = 0; i < imp->nfuncs; i++) {
+      struct prx_function *f = &imp->funcs[i];
+      report ("         NID: 0x%08X  VADDR: 0x%08X", f->nid, f->vaddr);
+      if (f->name)
+        report (" NAME: %s", f->name);
+      report ("\n");
+    }
+    if (imp->nvars) {
+      report ("     Variables:      0x%08X\n", imp->varsvaddr);
+      for (i = 0; i < imp->nvars; i++) {
+        struct prx_variable *v = &imp->vars[i];
+        report ("         NID: 0x%08X  VADDR: 0x%08X", v->nid, v->vaddr);
+        if (v->name)
+          report (" NAME: %s", v->name);
+        report ("\n");
+      }
+    }
+
+    report ("\n");
   }
 }
 
 static
 void print_module_exports (struct prx *p)
 {
-  uint32 idx;
+  uint32 idx, i;
   struct prx_modinfo *info = p->modinfo;
   report ("\nExports:\n");
   for (idx = 0; idx < info->numexports; idx++) {
     struct prx_export *exp = &info->exports[idx];
-    if (exp->namevaddr)
-      report ("  %s\n", exp->name);
-    else
-      report ("  syslib\n");
+    report ("  %s\n", exp->name);
 
     report ("     Flags:          0x%08X\n", exp->flags);
     report ("     Size:               %6d\n", exp->size);
     report ("     Num Variables:      %6d\n", exp->nvars);
     report ("     Num Functions:      %6d\n", exp->nfuncs);
     report ("     Exports:        0x%08X\n", exp->expvaddr);
+    if (exp->nfuncs) {
+      report ("     Functions:\n");
+      for (i = 0; i < exp->nfuncs; i++) {
+        struct prx_function *f = &exp->funcs[i];
+        report ("         NID: 0x%08X  VADDR: 0x%08X", f->nid, f->vaddr);
+        if (f->name)
+          report (" NAME: %s", f->name);
+        report ("\n");
+      }
+    }
+    if (exp->nvars) {
+      report ("     Variables:\n");
+      for (i = 0; i < exp->nvars; i++) {
+        struct prx_variable *v = &exp->vars[i];
+        report ("         NID: 0x%08X  VADDR: 0x%08X", v->nid, v->vaddr);
+        if (v->name)
+          report (" NAME: %s", v->name);
+        report ("\n");
+      }
+    }
+    report ("\n");
   }
 }
 
@@ -729,6 +927,23 @@ void prx_print (struct prx *p)
   print_module_info (p);
 
   report ("\n");
+}
+
+void prx_resolve_nids (struct prx *p, struct hashtable *nids)
+{
+  uint32 i, j;
+  struct prx_modinfo *info = p->modinfo;
+  for (i = 0; i < info->numimports; i++) {
+    struct prx_import *imp = &info->imports[i];
+    for (j = 0; j < imp->nfuncs; j++) {
+      struct prx_function *f = &imp->funcs[j];
+      f->name = nids_find (nids, imp->name, (void *) f->nid);
+    }
+    for (j = 0; j < imp->nvars; j++) {
+      struct prx_variable *v = &imp->vars[j];
+      v->name = nids_find (nids, imp->name, (void *) v->nid);
+    }
+  }
 }
 
 uint32 prx_translate (struct prx *p, uint32 vaddr)

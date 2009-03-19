@@ -262,3 +262,13 @@ void nids_print (struct hashtable *nids)
   report ("Libraries:\n");
   hashtable_traverse (nids, &print_level0, NULL);
 }
+
+
+const char *nids_find (struct hashtable *nids, const char *library, void *nid)
+{
+  struct hashtable *ht;
+
+  ht = hashtable_search (nids, (void *) library, NULL);
+  if (ht) return hashtable_search (ht, nid, NULL);
+  return NULL;
+}
