@@ -102,6 +102,10 @@ struct code* analyse_code (const uint8 *code, uint32 size, uint32 address)
           loc[i].nextref = loc[tgt].jumprefs;
           loc[tgt].jumprefs = &loc[i];
         }
+      } else {
+        error (__FILE__ ": branch outside file\n%s", allegrex_disassemble (loc[i].opc, loc[i].address));
+        free_code (c);
+        return NULL;
       }
       loc[i].target_addr = (tgt << 2) + address;
       break;
@@ -119,6 +123,10 @@ struct code* analyse_code (const uint8 *code, uint32 size, uint32 address)
           loc[i].nextref = loc[tgt].jumprefs;
           loc[tgt].jumprefs = &loc[i];
         }
+      } else {
+        error (__FILE__ ": jump outside file%s", allegrex_disassemble (loc[i].opc, loc[i].address));
+        free_code (c);
+        return NULL;
       }
       break;
     default:
