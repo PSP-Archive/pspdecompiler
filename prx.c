@@ -11,8 +11,6 @@
 #define ELF_PROGRAM_HEADER_ENT_SIZE  32
 #define ELF_PRX_FLAGS                (ELF_FLAGS_MIPS_ARCH2 | ELF_FLAGS_MACH_ALLEGREX | ELF_FLAGS_MACH_ALLEGREX)
 #define PRX_MODULE_INFO_SIZE         52
-#define PRX_MODULE_IMPORT_SIZE       20
-#define PRX_MODULE_EXPORT_SIZE       16
 
 
 static const uint8 valid_ident[] = {
@@ -44,24 +42,58 @@ uint16 read_uint16_le (const uint8 *bytes)
 }
 
 static
+int check_inside_prx (struct prx *p, uint32 offset, uint32 size)
+{
+  if (offset >= p->size || size > p->size ||
+      size > (p->size - offset)) return 0;
+  return 1;
+}
+
+static
+int check_inside_program0 (struct prx *p, uint32 vaddr, uint32 size)
+{
+  struct elf_program *program = p->programs;
+  if (vaddr < program->vaddr || size > program->filesz) return 0;
+
+  vaddr -= program->vaddr;
+  if (vaddr >= program->filesz || (program->filesz - vaddr) < size) return 0;
+  return 1;
+}
+
+static
+int check_string_program0 (struct prx *p, uint32 vaddr)
+{
+  struct elf_program *program = p->programs;
+
+  if (vaddr < program->vaddr) return 0;
+
+  vaddr -= program->vaddr;
+  if (vaddr >= program->filesz) return 0;
+
+  while (vaddr < program->filesz) {
+    if (!p->data[program->offset + vaddr]) return 1;
+    vaddr++;
+  }
+
+  return 0;
+}
+
+static
 int check_section_header (struct prx *p, uint32 index)
 {
   struct elf_section *section = &p->sections[index];
 
-  if (section->offset >= p->size ||
-      (section->type != SHT_NOBITS && (section->size > p->size ||
-      (section->offset + section->size) > p->size))) {
-    error (__FILE__ ": wrong section offset/size (section %d)", index);
-    return 0;
-  }
-
   switch (section->type) {
-  case SHT_DYNAMIC:
   case SHT_NOBITS:
+    break;
   case SHT_PRXRELOC:
   case SHT_STRTAB:
   case SHT_PROGBITS:
   case SHT_NULL:
+    if (!check_inside_prx (p, section->offset, section->size)) {
+      error (__FILE__ ": wrong section offset/size (section %d)", index);
+      return 0;
+    }
     break;
   default:
     error (__FILE__ ": invalid section type 0x$08X (section %d)", section->type, index);
@@ -75,16 +107,28 @@ static
 int check_program_header (struct prx *p, uint32 index)
 {
   struct elf_program *program = &p->programs[index];
-  if (program->offset >= p->size ||
-      program->filesz > p->size ||
-      (program->offset + program->filesz) > p->size) {
+  if (!check_inside_prx (p, program->offset, program->filesz)) {
     error (__FILE__ ": wrong program offset/size (program %d)", index);
+    return 0;
+  }
+
+  if ((index == 0) && program->type != PT_LOAD) {
+    error (__FILE__ ": first program is not of the type LOAD");
     return 0;
   }
 
   switch (program->type) {
   case PT_LOAD:
+    if (program->filesz > program->memsz) {
+      error (__FILE__ ": program file size grater than than memory size (program %d)", index);
+      return 0;
+    }
+    break;
   case PT_PRX:
+    if (program->memsz) {
+      error (__FILE__ ": program type is not loaded (program %d)", index);
+      return 0;
+    }
     break;
   default:
     error (__FILE__ ": invalid program type 0x$08X (program %d)", program->type, index);
@@ -98,34 +142,81 @@ static
 int check_module_info (struct prx *p)
 {
   struct prx_modinfo *info = p->modinfo;
+  uint32 vaddr, offset;
+
   if (info->name[27]) {
     error (__FILE__ ": module name is not null terminated\n");
     return 0;
   }
   if (info->expvaddr) {
-    if (info->expvaddrbtm < info->expvaddr ||
-        info->expvaddr >= p->size ||
-        info->expvaddrbtm >= p->size) {
-      error (__FILE__ ": invalid library entry (0x%08X - 0x%08X)", info->expvaddr, info->expvaddrbtm);
+    if (info->expvaddr > info->expvaddrbtm) {
+      error (__FILE__ ": exports bottom is above top (0x%08X - 0x%08X)", info->expvaddr, info->expvaddrbtm);
       return 0;
     }
-    if ((info->expvaddrbtm - info->expvaddr) % PRX_MODULE_EXPORT_SIZE) {
-      error (__FILE__ ": invalid size for exports (%u)", info->expvaddrbtm - info->expvaddr);
+    if (!check_inside_program0 (p, info->expvaddr, info->expvaddrbtm - info->expvaddr)) {
+      error (__FILE__ ": exports not inside the first program (0x%08X - 0x%08X)", info->expvaddr, info->expvaddrbtm);
+      return 0;
+    }
+    info->numexports = 0;
+    for (vaddr = info->expvaddr; vaddr < info->expvaddrbtm; info->numexports++) {
+      uint32 size;
+      offset = prx_translate (p, vaddr);
+      size = p->data[offset+8];
+      vaddr += size << 2;
+    }
+    if (vaddr != info->expvaddrbtm) {
+      error (__FILE__ ": invalid exports boundary");
       return 0;
     }
   }
   if (info->impvaddr) {
-    if (info->impvaddrbtm < info->impvaddr ||
-        info->impvaddr >= p->size ||
-        info->impvaddrbtm >= p->size) {
-      error (__FILE__ ": invalid stubs (0x%08X - 0x%08X)", info->impvaddr, info->impvaddrbtm);
+    if (info->impvaddr > info->impvaddrbtm) {
+      error (__FILE__ ": imports bottom is above top (0x%08X - 0x%08X)", info->impvaddr, info->impvaddrbtm);
       return 0;
     }
-    if ((info->impvaddrbtm - info->impvaddr) % PRX_MODULE_IMPORT_SIZE) {
-      error (__FILE__ ": invalid size for imports (%u)", info->impvaddrbtm - info->impvaddr);
+    if (!check_inside_program0 (p, info->impvaddr, info->impvaddrbtm - info->impvaddr)) {
+      error (__FILE__ ": imports not inside the first program (0x%08X - 0x%08X)", info->impvaddr, info->impvaddrbtm);
+      return 0;
+    }
+    info->numimports = 0;
+    for (vaddr = info->impvaddr; vaddr < info->impvaddrbtm; info->numimports++) {
+      uint32 size;
+      offset = prx_translate (p, vaddr);
+      size = p->data[offset+8];
+      vaddr += size << 2;
+    }
+    if (vaddr != info->impvaddrbtm) {
+      error (__FILE__ ": invalid imports boundary");
       return 0;
     }
   }
+  return 1;
+}
+
+static
+int check_module_import (struct prx *p, uint32 index)
+{
+  struct prx_import *imp = &p->modinfo->imports[index];
+
+  if (!check_string_program0 (p, imp->namevaddr)) {
+    error (__FILE__ ": import name not inside first program");
+    return 0;
+  }
+
+
+  return 1;
+}
+
+static
+int check_module_export (struct prx *p, uint32 index)
+{
+  struct prx_export *exp = &p->modinfo->exports[index];
+
+  if (!check_string_program0 (p, exp->namevaddr)) {
+    error (__FILE__ ": export name not inside first program");
+    return 0;
+  }
+
   return 1;
 }
 
@@ -176,9 +267,7 @@ int check_elf_header (struct prx *p)
 
   table_size = p->phentsize;
   table_size *= (uint32) p->phnum;
-  if (p->phoff >= p->size ||
-      table_size > p->size ||
-      (p->phoff + table_size) > p->size) {
+  if (!check_inside_prx (p, p->phoff, table_size)) {
     error (__FILE__ ": wrong ELF program header table offset/size");
     return 0;
   }
@@ -190,9 +279,7 @@ int check_elf_header (struct prx *p)
 
   table_size = p->shentsize;
   table_size *= (uint32) p->shnum;
-  if (p->shoff >= p->size ||
-      table_size > p->size ||
-      (p->shoff + table_size) > p->size) {
+  if (!check_inside_prx (p, p->shoff, table_size)) {
     error (__FILE__ ": wrong ELF section header table offset/size");
     return 0;
   }
@@ -305,18 +392,26 @@ int load_module_imports (struct prx *p)
   struct prx_modinfo *info = p->modinfo;
   if (!info->impvaddr) return 1;
 
-  info->numimports = (info->impvaddrbtm - info->impvaddr) / PRX_MODULE_IMPORT_SIZE;
   info->imports = (struct prx_import *) xmalloc (info->numimports * sizeof (struct prx_import));
-  for (offset = info->impvaddr + p->programs[0].offset; i < info->numimports; offset += PRX_MODULE_IMPORT_SIZE, i++) {
-    info->imports[i].nameaddr = read_uint32_le (&p->data[offset]);
-    info->imports[i].flags = read_uint16_le (&p->data[offset+4]);
-    info->imports[i].version = read_uint16_le (&p->data[offset+6]);
-    info->imports[i].numstubs = read_uint16_le (&p->data[offset+8]);
-    info->imports[i].stubsize = read_uint16_le (&p->data[offset+10]);
-    info->imports[i].nids = read_uint32_le (&p->data[offset+12]);
-    info->imports[i].funcs = read_uint32_le (&p->data[offset+16]);
 
-    info->imports[i].name = (const char *) &p->data[info->imports[i].nameaddr + p->programs[0].offset];
+  offset = prx_translate (p, info->impvaddr);
+  for (i = 0; i < info->numimports; i++) {
+    struct prx_import *imp = &info->imports[i];
+    imp->namevaddr = read_uint32_le (&p->data[offset]);
+    imp->flags = read_uint32_le (&p->data[offset+4]);
+    imp->size = p->data[offset+8];
+    imp->nvars = p->data[offset+9];
+    imp->nfuncs = read_uint16_le (&p->data[offset+10]);
+    imp->nidsvaddr = read_uint32_le (&p->data[offset+12]);
+    imp->funcsvaddr = read_uint32_le (&p->data[offset+16]);
+
+    if (!check_module_import (p, i)) return 0;
+
+    if (imp->namevaddr)
+      imp->name = (const char *) &p->data[prx_translate (p, imp->namevaddr)];
+    else
+      imp->name = NULL;
+    offset += imp->size << 2;
   }
   return 1;
 }
@@ -328,18 +423,26 @@ int load_module_exports (struct prx *p)
   struct prx_modinfo *info = p->modinfo;
   if (!info->expvaddr) return 1;
 
-  info->numexports = (info->expvaddrbtm - info->expvaddr) / PRX_MODULE_EXPORT_SIZE;
   info->exports = (struct prx_export *) xmalloc (info->numexports * sizeof (struct prx_export));
-  for (offset = info->expvaddr + p->programs[0].offset; i < info->numexports; offset += PRX_MODULE_EXPORT_SIZE, i++) {
-    info->exports[i].nameaddr = read_uint32_le (&p->data[offset]);
-    info->exports[i].version = read_uint16_le (&p->data[offset+4]);
-    info->exports[i].attributes = read_uint16_le (&p->data[offset+6]);
-    info->exports[i].ndwords = p->data[offset+8];
-    info->exports[i].nvars = p->data[offset+9];
-    info->exports[i].nfuncs = read_uint16_le (&p->data[offset+10]);
-    info->exports[i].funcs = read_uint32_le (&p->data[offset+12]);
 
-    info->exports[i].name = (const char *) &p->data[info->exports[i].nameaddr + p->programs[0].offset];
+  offset = prx_translate (p, info->expvaddr);
+  for (i = 0; i < info->numexports; i++) {
+    struct prx_export *exp = &info->exports[i];
+    exp->namevaddr = read_uint32_le (&p->data[offset]);
+    exp->flags = read_uint32_le (&p->data[offset+4]);
+    exp->size = p->data[offset+8];
+    exp->nvars = p->data[offset+9];
+    exp->nfuncs = read_uint16_le (&p->data[offset+10]);
+    exp->expvaddr = read_uint32_le (&p->data[offset+12]);
+
+    if (!check_module_export (p, i)) return 0;
+
+    if (exp->namevaddr)
+      exp->name = (const char *) &p->data[prx_translate (p, exp->namevaddr)];
+    else
+      exp->name = NULL;
+
+    offset += exp->size << 2;
   }
   return 1;
 }
@@ -448,7 +551,7 @@ void free_sections (struct prx *p)
     free (p->sections);
   p->sections = NULL;
   if (p->secbyname)
-    hashtable_destroy (p->secbyname, NULL);
+    hashtable_destroy (p->secbyname, NULL, NULL);
   p->secbyname = NULL;
 }
 
@@ -513,7 +616,6 @@ void print_sections (struct prx *p)
   for (idx = 0; idx < p->shnum; idx++) {
     section = &p->sections[idx];
     switch (section->type) {
-    case SHT_DYNAMIC: type = "DYNAMIC"; break;
     case SHT_NOBITS: type = "NOBITS"; break;
     case SHT_PRXRELOC: type = "PRXRELOC"; break;
     case SHT_STRTAB: type = "STRTAB"; break;
@@ -557,9 +659,18 @@ static
 void print_module_imports (struct prx *p)
 {
   uint32 idx;
+  struct prx_modinfo *info = p->modinfo;
   report ("\nImports:\n");
-  for (idx = 0; idx < p->modinfo->numimports; idx++) {
-    report ("  %s\n", p->modinfo->imports[idx].name);
+  for (idx = 0; idx < info->numimports; idx++) {
+    struct prx_import *imp = &info->imports[idx];
+    report ("  %s\n", imp->name);
+
+    report ("     Flags:          0x%08X\n", imp->flags);
+    report ("     Size:               %6d\n", imp->size);
+    report ("     Num Variables:      %6d\n", imp->nvars);
+    report ("     Num Functions:      %6d\n", imp->nfuncs);
+    report ("     Nids:           0x%08X\n", imp->nidsvaddr);
+    report ("     Functions:      0x%08X\n", imp->funcsvaddr);
   }
 }
 
@@ -567,10 +678,20 @@ static
 void print_module_exports (struct prx *p)
 {
   uint32 idx;
+  struct prx_modinfo *info = p->modinfo;
   report ("\nExports:\n");
-  for (idx = 0; idx < p->modinfo->numexports; idx++) {
-    if (p->modinfo->exports[idx].nameaddr)
-      report ("  %s\n", p->modinfo->exports[idx].name);
+  for (idx = 0; idx < info->numexports; idx++) {
+    struct prx_export *exp = &info->exports[idx];
+    if (exp->namevaddr)
+      report ("  %s\n", exp->name);
+    else
+      report ("  syslib\n");
+
+    report ("     Flags:          0x%08X\n", exp->flags);
+    report ("     Size:               %6d\n", exp->size);
+    report ("     Num Variables:      %6d\n", exp->nvars);
+    report ("     Num Functions:      %6d\n", exp->nfuncs);
+    report ("     Exports:        0x%08X\n", exp->expvaddr);
   }
 }
 
@@ -608,4 +729,22 @@ void prx_print (struct prx *p)
   print_module_info (p);
 
   report ("\n");
+}
+
+uint32 prx_translate (struct prx *p, uint32 vaddr)
+{
+  uint32 idx;
+  for (idx = 0; idx < p->phnum; idx++) {
+    struct elf_program *program = &p->programs[idx];
+    if (program->type != PT_LOAD) continue;
+    if (vaddr >= program->vaddr &&
+        (vaddr - program->vaddr) < program->memsz) {
+      vaddr -= program->vaddr;
+      if (vaddr < program->filesz)
+        return vaddr + program->offset;
+      else
+        return 0;
+    }
+  }
+  return 0;
 }

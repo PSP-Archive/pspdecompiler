@@ -2,9 +2,9 @@
 
 CC=gcc
 CFLAGS=	-O2 -g -Wall -ansi -pedantic
-LIBS = 
+LIBS = -lexpat
 
-OBJS = allegrex.o analyser.o prx.o hash.o utils.o main.o
+OBJS = allegrex.o analyser.o prx.o nids.o hash.o utils.o main.o
 TARGET = pspdecompiler
 
 all:	$(TARGET)

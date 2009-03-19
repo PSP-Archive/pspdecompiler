@@ -41,7 +41,7 @@ struct hashtable *hashtable_create (unsigned int size, hashfunction hashfn, equa
   return ht;
 }
 
-void hashtable_destroy (struct hashtable *ht, traversefunction destroyfn)
+void hashtable_destroy (struct hashtable *ht, traversefunction destroyfn, void *arg)
 {
   struct entry *e, *ne;
   unsigned int i;
@@ -50,7 +50,7 @@ void hashtable_destroy (struct hashtable *ht, traversefunction destroyfn)
     for (e = ht->table[i]; e; e = ne) {
       ne = e->next;
       if (destroyfn)
-        destroyfn (e->key, e->value);
+        destroyfn (e->key, e->value, arg);
       free (e);
     }
   }
@@ -59,7 +59,7 @@ void hashtable_destroy (struct hashtable *ht, traversefunction destroyfn)
 }
 
 static
-void free_entry (void *key, void *value)
+void destroy_entry (void *key, void *value, void *arg)
 {
   free (key);
   free (value);
@@ -67,7 +67,7 @@ void free_entry (void *key, void *value)
 
 void hashtable_destroy_all (struct hashtable *ht)
 {
-  hashtable_destroy (ht, &free_entry);
+  hashtable_destroy (ht, &destroy_entry, NULL);
 }
 
 
@@ -168,16 +168,44 @@ void *hashtable_remove (struct hashtable *ht, void *key, void **key_found)
 }
 
 
-void hashtable_traverse (struct hashtable *ht, traversefunction traversefn)
+void hashtable_traverse (struct hashtable *ht, traversefunction traversefn, void *arg)
 {
   struct entry *e;
   unsigned int i;
 
   for (i = 0; i < ht->tablelength; i++) {
     for (e = ht->table[i]; e; e = e->next) {
-      traversefn (e->key, e->value);
+      traversefn (e->key, e->value, arg);
     }
   }
+}
+
+
+int hashtable_merge (struct hashtable *out, struct hashtable *in, repeatedfunction repeatedfn, void *arg)
+{
+  struct entry *e;
+  unsigned int i;
+
+  if (in->hashfn != out->hashfn ||
+      in->eqfn != out->eqfn) {
+    error (__FILE__ ": incompatible types during merge");
+    return 0;
+  }
+
+  for (i = 0; i < in->tablelength; i++) {
+    for (e = in->table[i]; e; e = e->next) {
+      void *key, *value;
+      value = hashtable_search (out, e->key, &key);
+      if (value) {
+        if (repeatedfn)
+          repeatedfn (e->key, e->value, key, value, arg);
+      } else {
+        hashtable_insert (out, e->key, e->value);
+      }
+    }
+  }
+
+  return 1;
 }
 
 int hashtable_pointer_compare (void *key1, void *key2)
