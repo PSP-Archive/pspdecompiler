@@ -12,8 +12,8 @@ typedef void (*repeatedfunction) (void *outkey, void *outvalue, void *inkey, voi
                                   unsigned int hash, void *arg);
 
 struct hashtable *hashtable_create (unsigned int size, hashfunction hashfn, equalsfunction eqfn);
-void hashtable_destroy (struct hashtable *ht, traversefunction destroyfn, void *arg);
-void hashtable_destroy_all (struct hashtable *ht);
+void hashtable_free (struct hashtable *ht, traversefunction destroyfn, void *arg);
+void hashtable_free_all (struct hashtable *ht);
 
 unsigned int hashtable_count (struct hashtable *ht);
 

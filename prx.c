@@ -685,7 +685,7 @@ void free_sections (struct prx *p)
     free (p->sections);
   p->sections = NULL;
   if (p->secbyname)
-    hashtable_destroy (p->secbyname, NULL, NULL);
+    hashtable_free (p->secbyname, NULL, NULL);
   p->secbyname = NULL;
 }
 

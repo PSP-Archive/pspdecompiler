@@ -35,11 +35,11 @@ struct xml_data {
 static
 void destroy_library (struct hashtable *ht)
 {
-  hashtable_destroy_all (ht);
+  hashtable_free_all (ht);
 }
 
 static
-void destroy_library_entry (void *key, void *value, unsigned int hash, void *arg)
+void nids_free_callback (void *key, void *value, unsigned int hash, void *arg)
 {
   struct hashtable *ht = (struct hashtable *) value;
   destroy_library (ht);
@@ -48,7 +48,7 @@ void destroy_library_entry (void *key, void *value, unsigned int hash, void *arg
 
 void nids_free (struct hashtable *nids)
 {
-  hashtable_destroy (nids, &destroy_library_entry, NULL);
+  hashtable_free (nids, &nids_free_callback, NULL);
 }
 
 
@@ -79,7 +79,7 @@ void start_hndl (void *data, const char *el, const char **attr)
 }
 
 static
-void merge_libraries (void *outkey, void *outvalue, void *inkey, void *invalue, unsigned int hash, void *arg)
+void mergelib_callback (void *outkey, void *outvalue, void *inkey, void *invalue, unsigned int hash, void *arg)
 {
   struct xml_data *d = (struct xml_data *) arg;
   if (strcmp (invalue, outvalue)) {
@@ -100,8 +100,8 @@ void end_hndl (void *data, const char *el)
     if (d->libname && d->curlib) {
       struct hashtable *ht = hashtable_search (d->ht, (void *) d->libname, NULL);
       if (ht) {
-        hashtable_merge (ht, d->curlib, &merge_libraries, data);
-        hashtable_destroy (d->curlib, NULL, NULL);
+        hashtable_merge (ht, d->curlib, &mergelib_callback, data);
+        hashtable_free (d->curlib, NULL, NULL);
         free ((void *) d->libname);
       } else {
         hashtable_insert (d->ht, (void *) d->libname, (void *) d->curlib);
@@ -134,12 +134,16 @@ void end_hndl (void *data, const char *el)
   }
 }
 
+static int dupcount, dupsize;
 static
 const char *dup_string (const char *str, int size)
 {
   char *c = (char *) xmalloc (size + 1);
   memcpy (c, str, size);
   c[size] = '\0';
+  dupcount++;
+  dupsize += size + 1;
+  report ("%c", str[size]);
   return (const char *) c;
 }
 
@@ -196,6 +200,7 @@ struct hashtable *nids_load_xml (const char *path)
     return NULL;
   }
 
+  report ("%d\n", size);
   p = XML_ParserCreate (NULL);
   if (!p) {
     error (__FILE__ ": can't create XML parser");
@@ -272,7 +277,8 @@ int main (int argc, char **argv)
   struct hashtable *nids = NULL;
 
   nids = nids_load_xml (argv[1]);
-  nids_print (nids);
+  /* nids_print (nids); */
+  report ("%d %d\n", dupcount, dupsize);
   nids_free (nids);
   return 0;
 }
