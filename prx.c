@@ -937,11 +937,11 @@ void prx_resolve_nids (struct prx *p, struct hashtable *nids)
     struct prx_import *imp = &info->imports[i];
     for (j = 0; j < imp->nfuncs; j++) {
       struct prx_function *f = &imp->funcs[j];
-      f->name = nids_find (nids, imp->name, (void *) f->nid);
+      f->name = nids_find (nids, imp->name, f->nid);
     }
     for (j = 0; j < imp->nvars; j++) {
       struct prx_variable *v = &imp->vars[j];
-      v->name = nids_find (nids, imp->name, (void *) v->nid);
+      v->name = nids_find (nids, imp->name, v->nid);
     }
   }
 }

@@ -55,13 +55,18 @@ void xfatal (const char *fmt, ...)
   exit (1);
 }
 
-
-
 void *xmalloc (size_t size)
 {
   void *ptr = malloc (size);
   if (!ptr) fatal (__FILE__ ": memory exhausted");
   return ptr;
+}
+
+void *xrealloc (void *ptr, size_t size)
+{
+  void *nptr = realloc (ptr, size);
+  if (!nptr) fatal (__FILE__ ": can't realloc");
+  return nptr;
 }
 
 void *read_file (const char *path, size_t *size)
