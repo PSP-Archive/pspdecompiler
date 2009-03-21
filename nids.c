@@ -3,8 +3,15 @@
 #include <stdlib.h>
 #include <string.h>
 #include <expat.h>
+
 #include "nids.h"
+#include "hash.h"
 #include "utils.h"
+
+struct nidstable {
+  struct hashtable *libs;
+  char *buffer;
+};
 
 enum XMLSCOPE {
   XMLS_LIBRARY,
@@ -22,10 +29,10 @@ struct xml_data {
   enum XMLSCOPE scope;
   enum XMLELEMENT last;
 
-  struct hashtable *ht;
+  size_t buffer_pos;
+  struct nidstable *result;
   struct hashtable *curlib;
   const char *libname;
-
 
   unsigned int nid;
   const char *name;
@@ -33,22 +40,19 @@ struct xml_data {
 };
 
 static
-void destroy_library (struct hashtable *ht)
-{
-  hashtable_free_all (ht);
-}
-
-static
 void nids_free_callback (void *key, void *value, unsigned int hash, void *arg)
 {
-  struct hashtable *ht = (struct hashtable *) value;
-  destroy_library (ht);
-  free (key);
+  struct hashtable *lib = (struct hashtable *) value;
+  hashtable_free (lib, NULL, NULL);
 }
 
-void nids_free (struct hashtable *nids)
+void nids_free (struct nidstable *nids)
 {
-  hashtable_free (nids, &nids_free_callback, NULL);
+  if (nids->libs) hashtable_free (nids->libs, &nids_free_callback, NULL);
+  nids->libs = NULL;
+  if (nids->buffer) free (nids->buffer);
+  nids->buffer = NULL;
+  free (nids);
 }
 
 
@@ -61,12 +65,6 @@ void start_hndl (void *data, const char *el, const char **attr)
 
   if (strcmp (el, "LIBRARY") == 0) {
     d->scope = XMLS_LIBRARY;
-    if (d->curlib) {
-      error (__FILE__ ": current lib is not null");
-      destroy_library (d->curlib);
-      d->error = 1;
-    }
-    d->curlib = hashtable_create (128, NULL, &hashtable_pointer_compare);
   } else if (strcmp (el, "NAME") == 0) {
     d->last = XMLE_NAME;
   } else if (strcmp (el, "FUNCTION") == 0) {
@@ -79,17 +77,6 @@ void start_hndl (void *data, const char *el, const char **attr)
 }
 
 static
-void mergelib_callback (void *outkey, void *outvalue, void *inkey, void *invalue, unsigned int hash, void *arg)
-{
-  struct xml_data *d = (struct xml_data *) arg;
-  if (strcmp (invalue, outvalue)) {
-    error (__FILE__ ": NID 0x%08X repeated in library `%s' and with different values", hash, d->libname);
-    d->error = 1;
-  }
-  free (invalue);
-}
-
-static
 void end_hndl (void *data, const char *el)
 {
   struct xml_data *d = (struct xml_data *) data;
@@ -97,35 +84,21 @@ void end_hndl (void *data, const char *el)
   d->last = XMLE_DEFAULT;
 
   if (strcmp (el, "LIBRARY") == 0) {
-    if (d->libname && d->curlib) {
-      struct hashtable *ht = hashtable_search (d->ht, (void *) d->libname, NULL);
-      if (ht) {
-        hashtable_merge (ht, d->curlib, &mergelib_callback, data);
-        hashtable_free (d->curlib, NULL, NULL);
-        free ((void *) d->libname);
-      } else {
-        hashtable_insert (d->ht, (void *) d->libname, (void *) d->curlib);
-      }
-    } else {
-      if (d->libname) free ((void *) d->libname);
-      if (d->curlib) destroy_library (d->curlib);
-      error (__FILE__ ": missing library definition");
-      d->error = 1;
-    }
     d->curlib = NULL;
     d->libname = NULL;
   } else if (strcmp (el, "FUNCTION") == 0 || strcmp (el, "VARIABLE") == 0) {
     d->scope = XMLS_LIBRARY;
     if (d->name && d->nid) {
-      if (hashtable_searchh (d->curlib, NULL, NULL, d->nid)) {
-        error (__FILE__ ": NID `0x%08X' repeated in library `%s'", d->nid, d->libname);
-        free ((void *) d->name);
-        d->error = 1;
+      const char *name = hashtable_searchh (d->curlib, NULL, NULL, d->nid);
+      if (name) {
+        if (strcmp (name, d->name)) {
+          error (__FILE__ ": NID `0x%08X' repeated in library `%s'", d->nid, d->libname);
+          d->error = 1;
+        }
       } else {
         hashtable_inserth (d->curlib, NULL, (void *) d->name, d->nid);
       }
     } else {
-      if (d->name) free ((void *) d->name);
       error (__FILE__ ": missing function or variable definition");
       d->error = 1;
     }
@@ -134,23 +107,22 @@ void end_hndl (void *data, const char *el)
   }
 }
 
-static int dupcount, dupsize;
 static
-const char *dup_string (const char *str, int size)
+const char *dup_string (struct xml_data *d, const char *txt, size_t len)
 {
-  char *c = (char *) xmalloc (size + 1);
-  memcpy (c, str, size);
-  c[size] = '\0';
-  dupcount++;
-  dupsize += size + 1;
-  report ("%c", str[size]);
-  return (const char *) c;
+  char *result;
+
+  result = &d->result->buffer[d->buffer_pos];
+  memcpy (result, txt, len);
+  result[len] = '\0';
+  d->buffer_pos += len + 1;
+
+  return (const char *) result;
 }
 
 static
 void char_hndl (void *data, const char *txt, int txtlen)
 {
-  char buffer[16];
   struct xml_data *d = (struct xml_data *) data;
 
   switch (d->scope) {
@@ -158,49 +130,58 @@ void char_hndl (void *data, const char *txt, int txtlen)
   case XMLS_VARIABLE:
     if (d->last == XMLE_NAME) {
       if (d->name) {
-        error (__FILE__ ": name is not null");
-        free ((void *) d->name);
+        error (__FILE__ ": repeated name in function/variable");
         d->error = 1;
+      } else {
+        d->name = dup_string (d, txt, txtlen);
       }
-      d->name = dup_string (txt, txtlen);
     } else if (d->last == XMLE_NID) {
-      if (txtlen > 10) txtlen = 10;
+      char buffer[256];
+
+      if (txtlen > sizeof (buffer) - 1)
+        txtlen = sizeof (buffer) - 1;
       memcpy (buffer, txt, txtlen);
       buffer[txtlen] = '\0';
+
       if (d->nid) {
-        error (__FILE__ ": nid is not null");
+        error (__FILE__ ": nid repeated in function/variable");
         d->error = 1;
+      } else {
+        d->nid = 0;
+        sscanf (buffer, "0x%X", &d->nid);
       }
-      d->nid = 0;
-      sscanf (buffer, "0x%X", &d->nid);
     }
     break;
   case XMLS_LIBRARY:
     if (d->last == XMLE_NAME) {
-      if (d->libname) {
-        error (__FILE__ ": library name is not null");
-        free ((void *) d->libname);
+      d->libname = dup_string (d, txt, txtlen);
+      if (d->curlib) {
+        error (__FILE__ ": current lib is not null");
         d->error = 1;
+      } else {
+        d->curlib = hashtable_search (d->result->libs, (void *) d->libname, NULL);
+        if (!d->curlib) {
+          d->curlib = hashtable_create (128, NULL, &hashtable_pointer_compare);
+          hashtable_insert (d->result->libs, (void *) d->libname, d->curlib);
+        }
       }
-      d->libname = dup_string (txt, txtlen);
     }
     break;
   }
 }
 
-struct hashtable *nids_load_xml (const char *path)
+struct nidstable *nids_load (const char *xmlpath)
 {
   XML_Parser p;
   struct xml_data data;
   size_t size;
   void *buf;
 
-  buf = read_file (path, &size);
+  buf = read_file (xmlpath, &size);
   if (!buf) {
     return NULL;
   }
 
-  report ("%d\n", size);
   p = XML_ParserCreate (NULL);
   if (!p) {
     error (__FILE__ ": can't create XML parser");
@@ -216,7 +197,11 @@ struct hashtable *nids_load_xml (const char *path)
   data.scope = XMLS_LIBRARY;
   data.last = XMLE_DEFAULT;
 
-  data.ht = hashtable_create (32, &hashtable_hash_string, &hashtable_string_compare);
+  data.result = (struct nidstable *) xmalloc (sizeof (struct nidstable));
+  data.result->libs = hashtable_create (32, &hashtable_hash_string, &hashtable_string_compare);
+
+  data.buffer_pos = 0;
+  data.result->buffer = xmalloc (size);
 
   XML_SetUserData (p, (void *) &data);
   XML_SetElementHandler (p, &start_hndl, &end_hndl);
@@ -232,11 +217,11 @@ struct hashtable *nids_load_xml (const char *path)
   free (buf);
 
   if (data.error) {
-    nids_free (data.ht);
+    nids_free (data.result);
     return NULL;
   }
 
-  return data.ht;
+  return data.result;
 }
 
 static
@@ -248,25 +233,25 @@ void print_level1 (void *key, void *value, unsigned int hash, void *arg)
 static
 void print_level0 (void *key, void *value, unsigned int hash, void *arg)
 {
-  struct hashtable *ht = (struct hashtable *) value;
+  struct hashtable *lib = (struct hashtable *) value;
   report ("  %s:\n", (char *) key);
-  hashtable_traverse (ht, &print_level1, NULL);
+  hashtable_traverse (lib, &print_level1, NULL);
   report ("\n");
 }
 
-void nids_print (struct hashtable *nids)
+void nids_print (struct nidstable *nids)
 {
   report ("Libraries:\n");
-  hashtable_traverse (nids, &print_level0, NULL);
+  hashtable_traverse (nids->libs, &print_level0, NULL);
 }
 
 
-const char *nids_find (struct hashtable *nids, const char *library, unsigned int nid)
+const char *nids_find (struct nidstable *nids, const char *library, unsigned int nid)
 {
-  struct hashtable *ht;
+  struct hashtable *lib;
 
-  ht = hashtable_search (nids, (void *) library, NULL);
-  if (ht) return hashtable_searchh (ht, NULL, NULL, nid);
+  lib = hashtable_search (nids->libs, (void *) library, NULL);
+  if (lib) return hashtable_searchh (lib, NULL, NULL, nid);
   return NULL;
 }
 
@@ -274,12 +259,13 @@ const char *nids_find (struct hashtable *nids, const char *library, unsigned int
 #ifdef TEST_NIDS
 int main (int argc, char **argv)
 {
-  struct hashtable *nids = NULL;
+  struct nidstable *nids = NULL;
 
-  nids = nids_load_xml (argv[1]);
-  /* nids_print (nids); */
-  report ("%d %d\n", dupcount, dupsize);
-  nids_free (nids);
+  nids = nids_load (argv[1]);
+  if (nids) {
+    nids_print (nids);
+    nids_free (nids);
+  }
   return 0;
 }
 

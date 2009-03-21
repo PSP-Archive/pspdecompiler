@@ -8,8 +8,6 @@ struct hashtable;
 typedef unsigned int (*hashfunction) (void *key);
 typedef int (*equalsfunction) (void *key1, void *key2, unsigned int hash);
 typedef void (*traversefunction) (void *key, void *value, unsigned int hash, void *arg);
-typedef void (*repeatedfunction) (void *outkey, void *outvalue, void *inkey, void *invalue,
-                                  unsigned int hash, void *arg);
 
 struct hashtable *hashtable_create (unsigned int size, hashfunction hashfn, equalsfunction eqfn);
 void hashtable_free (struct hashtable *ht, traversefunction destroyfn, void *arg);
@@ -26,7 +24,6 @@ int hashtable_haskeyh (struct hashtable *ht, void *key, void **key_found, unsign
 void *hashtable_remove (struct hashtable *ht, void *key, void **key_found);
 void *hashtable_removeh (struct hashtable *ht, void *key, void **key_found, unsigned int hash);
 
-int hashtable_merge (struct hashtable *out, struct hashtable *in, repeatedfunction repeatedfn, void *arg);
 void hashtable_traverse (struct hashtable *ht, traversefunction traversefn, void *arg);
 
 int hashtable_string_compare (void *key1, void *key2, unsigned int hash);

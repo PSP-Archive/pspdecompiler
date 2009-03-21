@@ -1,11 +1,11 @@
 #ifndef __NIDS_H
 #define __NIDS_H
 
-#include "hash.h"
+struct nidstable;
 
-void nids_free (struct hashtable *nids);
-struct hashtable *nids_load_xml (const char *path);
-void nids_print (struct hashtable *nids);
-const char *nids_find (struct hashtable *nids, const char *library, unsigned int nid);
+struct nidstable *nids_load (const char *xmlpath);
+const char *nids_find (struct nidstable *nids, const char *library, unsigned int nid);
+void nids_print (struct nidstable *nids);
+void nids_free (struct nidstable *nids);
 
 #endif /* __NIDS_H */
