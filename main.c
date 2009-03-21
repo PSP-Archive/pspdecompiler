@@ -7,11 +7,11 @@
 
 int main (int argc, char **argv)
 {
-  struct hashtable *nids = NULL;
+  struct nidstable *nids = NULL;
   struct prx *p = NULL;
 
   if (argc > 2) {
-    nids = nids_load_xml (argv[2]);
+    nids = nids_load (argv[2]);
   }
 
 
@@ -24,11 +24,11 @@ int main (int argc, char **argv)
 
     if (nids)
       prx_resolve_nids (p, nids);
-    /* prx_print (p); */
+    prx_print (p);
 
     c = analyse_code (p->programs->data, p->modinfo->expvaddr - 4, p->programs->vaddr);
     if (c) {
-      /* print_code (c); */
+      print_code (c);
       free_code (c);
     }
     prx_free (p);

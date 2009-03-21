@@ -126,7 +126,7 @@ int check_program_header (struct prx *p, uint32 index)
     break;
   case PT_PRX:
     if (program->memsz) {
-      error (__FILE__ ": program type is not loaded (program %d)", index);
+      error (__FILE__ ": program type must not loaded (program %d)", index);
       return 0;
     }
     break;
@@ -159,15 +159,16 @@ int check_module_info (struct prx *p)
       return 0;
     }
     info->numexports = 0;
+    offset = prx_translate (p, info->expvaddr);
     for (vaddr = info->expvaddr; vaddr < info->expvaddrbtm; info->numexports++) {
       uint32 size;
-      offset = prx_translate (p, vaddr);
       size = p->data[offset+8];
       if (size < 4) {
         error (__FILE__ ": export size less than 4 words: %d", size);
         return 0;
       }
       vaddr += size << 2;
+      offset += size << 2;
     }
     if (vaddr != info->expvaddrbtm) {
       error (__FILE__ ": invalid exports boundary");
@@ -185,10 +186,10 @@ int check_module_info (struct prx *p)
       return 0;
     }
     info->numimports = 0;
+    offset = prx_translate (p, info->impvaddr);
     for (vaddr = info->impvaddr; vaddr < info->impvaddrbtm; info->numimports++) {
       uint32 size;
       uint8 nvars;
-      offset = prx_translate (p, vaddr);
       size = p->data[offset+8];
       nvars = p->data[offset+9];
       if (size < 5) {
@@ -200,6 +201,7 @@ int check_module_info (struct prx *p)
         return 0;
       }
       vaddr += size << 2;
+      offset += size << 2;
     }
     if (vaddr != info->impvaddrbtm) {
       error (__FILE__ ": invalid imports boundary");
@@ -929,19 +931,35 @@ void prx_print (struct prx *p)
   report ("\n");
 }
 
-void prx_resolve_nids (struct prx *p, struct hashtable *nids)
+void prx_resolve_nids (struct prx *p, struct nidstable *nids)
 {
   uint32 i, j;
+  const char *name;
   struct prx_modinfo *info = p->modinfo;
   for (i = 0; i < info->numimports; i++) {
     struct prx_import *imp = &info->imports[i];
     for (j = 0; j < imp->nfuncs; j++) {
       struct prx_function *f = &imp->funcs[j];
-      f->name = nids_find (nids, imp->name, f->nid);
+      name = nids_find (nids, imp->name, f->nid);
+      if (name) f->name = name;
     }
     for (j = 0; j < imp->nvars; j++) {
       struct prx_variable *v = &imp->vars[j];
-      v->name = nids_find (nids, imp->name, v->nid);
+      name = nids_find (nids, imp->name, v->nid);
+      if (name) v->name = name;
+    }
+  }
+  for (i = 0; i < info->numexports; i++) {
+    struct prx_export *exp = &info->exports[i];
+    for (j = 0; j < exp->nfuncs; j++) {
+      struct prx_function *f = &exp->funcs[j];
+      name = nids_find (nids, exp->name, f->nid);
+      if (name) f->name = name;
+    }
+    for (j = 0; j < exp->nvars; j++) {
+      struct prx_variable *v = &exp->vars[j];
+      name = nids_find (nids, exp->name, v->nid);
+      if (name) v->name = name;
     }
   }
 }
