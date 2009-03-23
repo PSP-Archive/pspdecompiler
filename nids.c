@@ -88,7 +88,7 @@ void end_hndl (void *data, const char *el)
     d->libname = NULL;
   } else if (strcmp (el, "FUNCTION") == 0 || strcmp (el, "VARIABLE") == 0) {
     d->scope = XMLS_LIBRARY;
-    if (d->name && d->nid) {
+    if (d->name && d->nid && d->curlib) {
       const char *name = hashtable_searchh (d->curlib, NULL, NULL, d->nid);
       if (name) {
         if (strcmp (name, d->name)) {

@@ -40,6 +40,9 @@ struct prx
 
   struct elf_program *programs;
 
+  uint32 relocnum;
+  struct prx_reloc *relocs;
+
   struct prx_modinfo *modinfo;
 };
 
@@ -101,7 +104,30 @@ struct elf_program
   const uint8 *data;
 };
 
-#define PRX_MODULE_INFO       ".rodata.sceModuleInfo"
+
+#define PRX_RELOC_ADDR_BASE(i) (((i)>>16) & 0xFF)
+#define PRX_RELOC_OFS_BASE(i) (((i)>>8) & 0xFF)
+#define PRX_RELOC_TYPE(i) (i&0xFF)
+
+/* MIPS Reloc Entry Types */
+#define R_MIPS_NONE     0
+#define R_MIPS_16       1
+#define R_MIPS_32       2
+#define R_MIPS_REL32    3
+#define R_MIPS_26       4
+#define R_MIPS_HI16     5
+#define R_MIPS_LO16     6
+#define R_MIPS_GPREL16  7
+#define R_MIPS_LITERAL  8
+#define R_MIPS_GOT16    9
+#define R_MIPS_PC16     10
+#define R_MIPS_CALL16   11
+#define R_MIPS_GPREL32  12
+
+struct prx_reloc {
+  uint32 offset;
+  uint32 info;
+};
 
 struct prx_modinfo {
 
@@ -167,29 +193,6 @@ struct prx_variable {
 };
 
 
-/* MIPS Reloc Entry Types */
-#define R_MIPS_NONE     0
-#define R_MIPS_16       1
-#define R_MIPS_32       2
-#define R_MIPS_REL32    3
-#define R_MIPS_26       4
-#define R_MIPS_HI16     5
-#define R_MIPS_LO16     6
-#define R_MIPS_GPREL16  7
-#define R_MIPS_LITERAL  8
-#define R_MIPS_GOT16    9
-#define R_MIPS_PC16     10
-#define R_MIPS_CALL16   11
-#define R_MIPS_GPREL32  12
-
-
-
-#define ELF32_R_SYM(i) ((i)>>8)
-#define ELF32_R_TYPE(i) ((uint8)(i&0xFF))
-
-#define ELF32_ST_BIND(i) ((i)>>4)
-#define ELF32_ST_TYPE(i) ((i)&0xf)
-#define ELF32_ST_INFO(b,t) (((b)<<4)+((t)&0xf))
 
 struct prx *prx_load (const char *path);
 void prx_free (struct prx *p);

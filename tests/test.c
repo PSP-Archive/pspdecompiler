@@ -6,8 +6,25 @@ extern void dumpctrl1 (void);
 extern void dumpstatus1 (void);
 extern int testcc (float a, float b);
 
+
+int innerfunc (int a)
+{
+  return a * a;
+}
+
+
+int (*myfunc) (int a) = innerfunc;
+
+int func (int b)
+{
+  if (b & 1)
+    return myfunc (b + 2);
+  return myfunc (b - 1);
+}
+
 int main (int argc, char **argv)
 {
+  func (4);
   printf ("%d\n", testcc (2.0f, 3.0f));
   return 0;
 }

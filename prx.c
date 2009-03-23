@@ -436,6 +436,41 @@ int load_programs (struct prx *p)
 }
 
 static
+int load_relocs (struct prx *p)
+{
+  uint32 i, count = 0;
+  for (i = 0; i < p->shnum; i++) {
+    struct elf_section *section = &p->sections[i];
+    if (section->type == SHT_PRXRELOC) {
+      count += section->size >> 3;
+    }
+  }
+  p->relocs = NULL;
+  if (!count) return 1;
+
+  p->relocnum = count;
+  p->relocs = (struct prx_reloc *) xmalloc (count * sizeof (struct prx_reloc));
+
+  count = 0;
+  for (i = 0; i < p->shnum; i++) {
+    struct elf_section *section = &p->sections[i];
+    if (section->type == SHT_PRXRELOC) {
+      uint32 j, secsize;
+      uint32 offset;
+      offset = section->offset;
+      secsize = section->size >> 3;
+      for (j = 0; j < secsize; j++) {
+        p->relocs[count].offset = read_uint32_le (&p->data[offset]);
+        p->relocs[count].info = read_uint32_le (&p->data[offset + 4]);
+        count++;
+        offset += 8;
+      }
+    }
+  }
+  return 1;
+}
+
+static
 int load_module_import (struct prx *p, struct prx_import *imp)
 {
   uint32 i, offset;
@@ -586,10 +621,8 @@ int load_module_exports (struct prx *p)
 static
 int load_module_info (struct prx *p)
 {
-  struct elf_section *s;
   struct prx_modinfo *info;
   uint32 offset;
-  s = hashtable_search (p->secbyname, PRX_MODULE_INFO, NULL);
   p->modinfo = NULL;
   if (p->phnum > 0)
     offset = p->programs[0].paddr & 0x7FFFFFFF;
@@ -672,6 +705,11 @@ struct prx *prx_load (const char *path)
     return NULL;
   }
 
+  if (!load_relocs (p)) {
+    prx_free (p);
+    return NULL;
+  }
+
   if (!load_module_info (p)) {
     prx_free (p);
     return NULL;
@@ -697,6 +735,14 @@ void free_programs (struct prx *p)
   if (p->programs)
     free (p->programs);
   p->programs = NULL;
+}
+
+static
+void free_relocs (struct prx *p)
+{
+  if (p->relocs)
+    free (p->relocs);
+  p->relocs = NULL;
 }
 
 static
@@ -757,6 +803,7 @@ void prx_free (struct prx *p)
 {
   free_sections (p);
   free_programs (p);
+  free_relocs (p);
   free_module_info (p);
   if (p->data)
     free ((void *) p->data);

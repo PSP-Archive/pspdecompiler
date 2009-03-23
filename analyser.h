@@ -1,8 +1,10 @@
 #ifndef __ANALYSER_H
 #define __ANALYSER_H
 
-#include "types.h"
+#include "prx.h"
 #include "allegrex.h"
+#include "llist.h"
+#include "types.h"
 
 enum jump_type {
   JTYPE_NONE,
@@ -25,18 +27,23 @@ struct location {
   uint32 target_addr;
   enum jump_type jtype;
   struct location *target;
-  struct location *jumprefs;
-  struct location *callrefs;
 
-  struct location *nextref;
+  llist jumprefs;
+  llist callrefs;
 };
 
 struct code {
-  uint32 address, numopc;
-  struct location *loc;
+  struct prx *image;
+
+  uint32 baddr, numopc;
+  struct location *base;
+
+  llist subroutines;
+
+  llist_pool pool;
 };
 
-struct code* analyse_code (const uint8 *code, uint32 size, uint32 address);
+struct code* analyse_code (struct prx *p);
 void free_code (struct code *c);
 void print_code (struct code *c);
 
