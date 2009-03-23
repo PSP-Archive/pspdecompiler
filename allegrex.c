@@ -9,7 +9,7 @@
  * %s - Rs
  * %i - 16bit signed immediate
  * %I - 16bit unsigned immediate (always printed in hex)
- * %o - 16bit signed offset (rt base)
+ * %o - 16bit signed offset (rs base)
  * %O - 16bit signed offset (PC relative)
  * %j - 26bit absolute offset
  * %J - Register jump
