@@ -105,10 +105,6 @@ struct elf_program
 };
 
 
-#define PRX_RELOC_ADDR_BASE(i) (((i)>>16) & 0xFF)
-#define PRX_RELOC_OFS_BASE(i) (((i)>>8) & 0xFF)
-#define PRX_RELOC_TYPE(i) (i&0xFF)
-
 /* MIPS Reloc Entry Types */
 #define R_MIPS_NONE     0
 #define R_MIPS_16       1
@@ -126,7 +122,12 @@ struct elf_program
 
 struct prx_reloc {
   uint32 offset;
-  uint32 info;
+  uint8 type;
+  uint8 offsbase;
+  uint8 addrbase;
+  uint8 extra;
+  uint32 vaddr;
+  uint32 target;
 };
 
 struct prx_modinfo {

@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "prx.h"
+#include "allegrex.h"
 #include "hash.h"
 #include "utils.h"
 
@@ -42,7 +43,7 @@ uint16 read_uint16_le (const uint8 *bytes)
 }
 
 static
-int check_inside_prx (struct prx *p, uint32 offset, uint32 size)
+int inside_prx (struct prx *p, uint32 offset, uint32 size)
 {
   if (offset >= p->size || size > p->size ||
       size > (p->size - offset)) return 0;
@@ -50,9 +51,8 @@ int check_inside_prx (struct prx *p, uint32 offset, uint32 size)
 }
 
 static
-int check_inside_program0 (struct prx *p, uint32 vaddr, uint32 size)
+int inside_progfile (struct elf_program *program, uint32 vaddr, uint32 size)
 {
-  struct elf_program *program = p->programs;
   if (vaddr < program->vaddr || size > program->filesz) return 0;
 
   vaddr -= program->vaddr;
@@ -61,17 +61,26 @@ int check_inside_program0 (struct prx *p, uint32 vaddr, uint32 size)
 }
 
 static
-int check_string_program0 (struct prx *p, uint32 vaddr)
+int inside_progmem (struct elf_program *program, uint32 vaddr, uint32 size)
 {
-  struct elf_program *program = p->programs;
+  if (vaddr < program->vaddr || size > program->memsz) return 0;
 
+  vaddr -= program->vaddr;
+  if (vaddr >= program->memsz || (program->memsz - vaddr) < size) return 0;
+  return 1;
+}
+
+
+static
+int inside_strprogfile (struct elf_program *program, uint32 vaddr)
+{
   if (vaddr < program->vaddr) return 0;
 
   vaddr -= program->vaddr;
   if (vaddr >= program->filesz) return 0;
 
   while (vaddr < program->filesz) {
-    if (!p->data[program->offset + vaddr]) return 1;
+    if (!program->data[vaddr]) return 1;
     vaddr++;
   }
 
@@ -90,8 +99,8 @@ int check_section_header (struct prx *p, uint32 index)
   case SHT_STRTAB:
   case SHT_PROGBITS:
   case SHT_NULL:
-    if (!check_inside_prx (p, section->offset, section->size)) {
-      error (__FILE__ ": wrong section offset/size (section %d)", index);
+    if (!inside_prx (p, section->offset, section->size)) {
+      error (__FILE__ ": section is not inside ELF/PRX (section %d)", index);
       return 0;
     }
     break;
@@ -107,8 +116,8 @@ static
 int check_program_header (struct prx *p, uint32 index)
 {
   struct elf_program *program = &p->programs[index];
-  if (!check_inside_prx (p, program->offset, program->filesz)) {
-    error (__FILE__ ": wrong program offset/size (program %d)", index);
+  if (!inside_prx (p, program->offset, program->filesz)) {
+    error (__FILE__ ": program is not inside ELF/PRX (program %d)", index);
     return 0;
   }
 
@@ -139,6 +148,106 @@ int check_program_header (struct prx *p, uint32 index)
 }
 
 static
+int check_relocs (struct prx *p)
+{
+  struct prx_reloc *r;
+  struct elf_program *offsbase;
+  struct elf_program *addrbase;
+  uint32 index, lasthi = -1, addend;
+  int hiused = TRUE;
+
+
+  for (index = 0; index < p->relocnum; index++) {
+    r = &p->relocs[index];
+    if (r->offsbase >= p->phnum) {
+      error (__FILE__ ": invalid offset base for relocation (%d)", r->offsbase);
+      return 0;
+    }
+
+    if (r->addrbase >= p->phnum) {
+      error (__FILE__ ": invalid address base for relocation (%d)", r->offsbase);
+      return 0;
+    }
+
+    offsbase = &p->programs[r->offsbase];
+    addrbase = &p->programs[r->addrbase];
+
+    r->vaddr = r->offset + offsbase->vaddr;
+    if (!inside_progfile (offsbase, r->vaddr, 4)) {
+      error (__FILE__ ": relocation points to invalid address (0x%08X)", r->vaddr);
+      return 0;
+    }
+
+    addend = read_uint32_le (&offsbase->data[r->offset]);
+
+    switch (r->type) {
+    case R_MIPS_NONE:
+      break;
+    case R_MIPS_26:
+      r->target = (addrbase->vaddr & 0xF0000000) | ((addend & 0x3FFFFFF) << 2);
+      if (!inside_progfile (addrbase, r->target, 8)) {
+        error (__FILE__ ": mips26 relocation to invalid address at 0x%08X (0x%08X)", r->vaddr, r->target);
+        return 0;
+      }
+      break;
+    case R_MIPS_HI16:
+      if (!hiused) {
+        /*error (__FILE__ ": hi16 without a matching lo16 relocation at 0x%08X (now at 0x%08X)",
+            p->relocs[lasthi].vaddr, r->vaddr);
+        return 0; */
+      }
+      lasthi = index;
+      hiused = FALSE;
+      r->target = (addend & 0xFFFF) << 16;
+      break;
+    case R_MIPS_LO16:
+      if (lasthi == -1) {
+        error (__FILE__ ": lo16 without matching hi16");
+        return 0;
+      } else {
+        struct prx_reloc *last = &p->relocs[lasthi];
+        enum insn_type itype;
+
+        hiused = TRUE;
+        itype = allegrex_insn_type (addend);
+        r->target = addend & 0xFFFF;
+        if (/*itype != I_ORI &&*/ (r->target & 0x8000)) {
+          r->target |= ~0xFFFF;
+        }
+        r->target += last->target + addrbase->vaddr;
+        if (!inside_progmem (addrbase, r->target, 1)) {
+          error (__FILE__ ": invalid hi16/lo16 reference at 0x%08X (0x%08X) (matching hi: 0x%08X)", r->vaddr, r->target, last->vaddr);
+          return 0;
+        }
+      }
+      break;
+
+    case R_MIPS_32:
+      r->target = addend;
+      if (!inside_progmem (addrbase, r->target, 1)) {
+        error (__FILE__ ": invalid mips32 reference at 0x%08X (0x%08X)", r->vaddr, r->target);
+        /*return 0;*/
+      }
+      break;
+
+    case R_MIPS_16:
+    case R_MIPS_REL32:
+    case R_MIPS_GPREL16:
+    case R_MIPS_LITERAL:
+    case R_MIPS_GOT16:
+    case R_MIPS_PC16:
+    case R_MIPS_CALL16:
+    case R_MIPS_GPREL32:
+      error (__FILE__ ": invalid reference type %d", r->type);
+      return 0;
+    }
+
+  }
+
+  return 1;
+}
+
+static
 int check_module_info (struct prx *p)
 {
   struct prx_modinfo *info = p->modinfo;
@@ -154,7 +263,7 @@ int check_module_info (struct prx *p)
       error (__FILE__ ": exports bottom is above top (0x%08X - 0x%08X)", info->expvaddr, info->expvaddrbtm);
       return 0;
     }
-    if (!check_inside_program0 (p, info->expvaddr, info->expvaddrbtm - info->expvaddr)) {
+    if (!inside_progfile (p->programs, info->expvaddr, info->expvaddrbtm - info->expvaddr)) {
       error (__FILE__ ": exports not inside the first program (0x%08X - 0x%08X)", info->expvaddr, info->expvaddrbtm);
       return 0;
     }
@@ -181,7 +290,7 @@ int check_module_info (struct prx *p)
       error (__FILE__ ": imports bottom is above top (0x%08X - 0x%08X)", info->impvaddr, info->impvaddrbtm);
       return 0;
     }
-    if (!check_inside_program0 (p, info->impvaddr, info->impvaddrbtm - info->impvaddr)) {
+    if (!inside_progfile (p->programs, info->impvaddr, info->impvaddrbtm - info->impvaddr)) {
       error (__FILE__ ": imports not inside the first program (0x%08X - 0x%08X)", info->impvaddr, info->impvaddrbtm);
       return 0;
     }
@@ -216,7 +325,7 @@ int check_module_import (struct prx *p, uint32 index)
 {
   struct prx_import *imp = &p->modinfo->imports[index];
 
-  if (!check_string_program0 (p, imp->namevaddr)) {
+  if (!inside_strprogfile (p->programs, imp->namevaddr)) {
     error (__FILE__ ": import name not inside first program");
     return 0;
   }
@@ -226,18 +335,18 @@ int check_module_import (struct prx *p, uint32 index)
     return 0;
   }
 
-  if (!check_inside_program0 (p, imp->funcsvaddr, 8 * imp->nfuncs)) {
+  if (!inside_progfile (p->programs, imp->funcsvaddr, 8 * imp->nfuncs)) {
     error (__FILE__ ": functions not inside the first program");
     return 0;
   }
 
-  if (!check_inside_program0 (p, imp->nidsvaddr, 4 * imp->nfuncs)) {
+  if (!inside_progfile (p->programs, imp->nidsvaddr, 4 * imp->nfuncs)) {
     error (__FILE__ ": nids not inside the first program");
     return 0;
   }
 
   if (imp->nvars) {
-    if (!check_inside_program0 (p, imp->varsvaddr, 8 * imp->nvars)) {
+    if (!inside_progfile (p->programs, imp->varsvaddr, 8 * imp->nvars)) {
       error (__FILE__ ": variables not inside first program");
       return 0;
     }
@@ -252,7 +361,7 @@ int check_module_export (struct prx *p, uint32 index)
 {
   struct prx_export *exp = &p->modinfo->exports[index];
 
-  if (!check_string_program0 (p, exp->namevaddr)) {
+  if (!inside_strprogfile (p->programs, exp->namevaddr)) {
     error (__FILE__ ": export name not inside first program");
     return 0;
   }
@@ -262,7 +371,7 @@ int check_module_export (struct prx *p, uint32 index)
     return 0;
   }
 
-  if (!check_inside_program0 (p, exp->expvaddr, 8 * (exp->nfuncs + exp->nvars))) {
+  if (!inside_progfile (p->programs, exp->expvaddr, 8 * (exp->nfuncs + exp->nvars))) {
     error (__FILE__ ": functions and variables not inside the first program");
     return 0;
   }
@@ -317,7 +426,7 @@ int check_elf_header (struct prx *p)
 
   table_size = p->phentsize;
   table_size *= (uint32) p->phnum;
-  if (!check_inside_prx (p, p->phoff, table_size)) {
+  if (!inside_prx (p, p->phoff, table_size)) {
     error (__FILE__ ": wrong ELF program header table offset/size");
     return 0;
   }
@@ -329,7 +438,7 @@ int check_elf_header (struct prx *p)
 
   table_size = p->shentsize;
   table_size *= (uint32) p->shnum;
-  if (!check_inside_prx (p, p->shoff, table_size)) {
+  if (!inside_prx (p, p->shoff, table_size)) {
     error (__FILE__ ": wrong ELF section header table offset/size");
     return 0;
   }
@@ -461,12 +570,19 @@ int load_relocs (struct prx *p)
       secsize = section->size >> 3;
       for (j = 0; j < secsize; j++) {
         p->relocs[count].offset = read_uint32_le (&p->data[offset]);
-        p->relocs[count].info = read_uint32_le (&p->data[offset + 4]);
+        p->relocs[count].type = p->data[offset + 4];
+        p->relocs[count].offsbase = p->data[offset + 5];
+        p->relocs[count].addrbase = p->data[offset + 6];
+        p->relocs[count].extra = p->data[offset + 7];
+
         count++;
         offset += 8;
       }
     }
   }
+
+  if (!check_relocs (p)) return 0;
+
   return 1;
 }
 
@@ -671,6 +787,7 @@ struct prx *prx_load (const char *path)
   }
 
   p = xmalloc (sizeof (struct prx));
+  memset (p, 0, sizeof (struct prx));
   p->size = elf_size;
   p->data = elf_bytes;
 

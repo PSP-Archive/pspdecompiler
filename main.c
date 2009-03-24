@@ -45,7 +45,7 @@ int main (int argc, char **argv)
 
   p = prx_load (prxfilename);
   if (!p)
-    fatal (__FILE__ ": can't load prx");
+    fatal (__FILE__ ": can't load prx `%s'", prxfilename);
 
   if (nids)
     prx_resolve_nids (p, nids);
@@ -57,7 +57,7 @@ int main (int argc, char **argv)
 
   c = analyse_code (p);
   if (!c)
-    fatal (__FILE__ ": can't analyse code");
+    fatal (__FILE__ ": can't analyse code `%s'", prxfilename);
 
   if (verbose > 1) print_code (c);
   free_code (c);

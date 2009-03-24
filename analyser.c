@@ -151,6 +151,12 @@ int analyse_relocs (struct code *c)
   return 1;
 }
 
+static
+int analyse_registers (struct code *c)
+{
+  return 1;
+}
+
 
 struct code* analyse_code (struct prx *p)
 {

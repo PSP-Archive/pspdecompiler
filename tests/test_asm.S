@@ -77,7 +77,7 @@ dumpctrl1:
 
         lui     $a0, %hi($MSG2)
         jal     printf
-        ori     $a0, %lo($MSG2)
+        addiu   $a0, %lo($MSG2)
 
         jal     print_regs
         move    $a0, $sp
@@ -109,14 +109,14 @@ loop1:
         lw      $a2, 0($t0)
         lui     $a0, %hi($MSG1)
         jal     printf
-        ori     $a0, %lo($MSG1)
+        addiu   $a0, %lo($MSG1)
         li      $t0, 3
         bne     $s1, $t0, loop1
         addiu   $s1, $s1, 1
 
         lui     $a0, %hi($MSG3)
         jal     printf
-        ori     $a0, %lo($MSG3) 
+        addiu   $a0, %lo($MSG3) 
 
         li      $t0, 7
         bne     $s0, $t0, loop2
@@ -203,7 +203,7 @@ dumpstatus1:
 
         lui     $a0, %hi($MSG4)
         jal     printf
-        ori     $a0, %lo($MSG4)
+        addiu   $a0, %lo($MSG4)
 
         jal     print_regs
         move    $a0, $sp
