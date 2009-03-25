@@ -133,14 +133,15 @@ int check_program_header (struct prx *p, uint32 index)
       return 0;
     }
     break;
-  case PT_PRX:
+  case PT_PRXUNK:
+  case PT_PRXRELOC:
     if (program->memsz) {
       error (__FILE__ ": program type must not loaded (program %d)", index);
       return 0;
     }
     break;
   default:
-    error (__FILE__ ": invalid program type 0x$08X (program %d)", program->type, index);
+    error (__FILE__ ": invalid program type 0x%08X (program %d)", program->type, index);
     return 0;
   }
 
@@ -513,6 +514,193 @@ int load_sections (struct prx *p)
 }
 
 static
+int load_unk (uint32 *mempos, uint32 *poffsets, uint32 *filesz, uint32 prgidx, uint8 *data, uint32 size)
+{
+  uint32 nbits;                    /* t7 */
+  uint8 param1, param2;            /* t6, s2 */
+  uint32 block1s, block2s;         /* a2, s0 */
+  uint8 block1[256], block2[256];  /* s7, fp */
+  uint8 *ndata, *end;              /* t5, s6 */
+  uint32 t2, v0, v1, a0, a1;
+  uint32 cmd1, cmd2, lastcmd2;
+  uint32 addend, offset;
+  uint32 lastidx = 0xFFFFFFFF;
+  uint32 curidx;
+
+  end = data + size;
+  for (nbits = 1; (1 << nbits) < prgidx; nbits++) {
+    if (nbits >= 33) return 0;
+  }
+
+  if (read_uint16_le (data) != 0)
+    return 0;
+
+  param1 = data[2];
+  param2 = data[3];
+
+  block1s = data[4];
+  data += 4;
+
+  if (block1s) {
+    memcpy (block1, data, block1s);
+    data += block1s;
+  }
+
+  block2s = *data;
+  if (block2s) {
+    memcpy (block2, data, block2s);
+    data += block2s;
+  }
+
+
+  lastcmd2 = block2s;
+  for (ndata = data; ndata < end; data = ndata) {
+    uint32 cmd = read_uint16_le (data);
+    v1 = (cmd << (16 - param1)) & 0xFFFF;
+    v1 = (v1 >> (16 -param1)) & 0xFFFF;
+
+    ndata = data + 2;
+    if (v1 >= block1s) return 0;
+    cmd1= block1[v1];
+
+    a0 = param1 + nbits;
+    if ((cmd1 & 0x01) == 0) {
+      lastidx = (cmd << (16 - a0)) & 0xFFFF;
+      lastidx = (lastidx >> (16 + param1 - a0)) & 0xFFFF;
+      if (!(lastidx < prgidx)) return 0;
+      offset = cmd >> a0;
+      if ((cmd1 & 0x06) == 0) continue;
+      if ((cmd1 & 0x06) != 4) return 0;
+      offset = read_uint32_le (ndata);
+      ndata = data + 6;
+    } else {
+      v1 = (cmd << (16 - (a0 + param2))) & 0xFFFF;
+      v1 = (v1 >> (16 - param2)) & 0xFFFF;
+      if (v1 >= block2s) return 0;
+
+      curidx = (cmd << (16 - a0)) & 0xFFFF;
+      curidx = (curidx >> (16 + param1 - a0)) & 0xFFFF;
+      if (!(lastidx < prgidx)) return 0;
+      cmd2 = block2[v1];
+      a0 = cmd1 & 0x06;
+      if (a0 == 2) {
+        v1 = (cmd >> (param1 + param2 + nbits)) << 16;
+        cmd = v1 | read_uint16_le (&data[2]);
+        t2 = cmd << (param1 + param2 + nbits);
+        offset += t2 >> (param1 + param2 + nbits);
+        ndata = data + 4;
+      } else {
+        if (a0 >= 3) {
+          if (a0 != 4) return 0;
+          offset = read_uint32_le (ndata);
+          ndata = data + 6;
+        } else {
+          if (a0 != 0) return 0;
+          a0 = cmd << 16;
+          cmd = 16 + param1 + param2 + nbits;
+          offset += a0 >> cmd;
+        }
+      }
+      a0 = filesz[lastidx];
+      if (!(offset < a0)) return 0;
+      v1 = cmd1 & 0x38;
+      if (v1 == 8) {
+        v1 = lastcmd2 ^ 0x04;
+        if (v1 != 0) {
+          addend = 0;
+        }
+      } else {
+        if (v1 >= 9) {
+          if (v1 != 0x10) {
+            if (v1 != 0x18) return 0;
+            v0 = read_uint32_le (ndata);
+            return 0;
+          } else {
+            addend = read_uint16_le (ndata);
+            ndata += 2;
+          };
+        } else {
+          addend = 0;
+          if (v1 != 0)  return 0;
+        }
+      }
+      cmd = lastidx << 2;
+      t2 = mempos[curidx];
+      data = offset + poffsets[lastidx];
+      switch (cmd2) {
+      case 2:
+        v0 = read_uint32_le (data) + t2;
+        write_32 (data, v0);
+      case 0:
+        break;
+      case 3:
+        a1 = read_uint32_le (data);
+        v1 = a1 & 0x3FFFFFF;
+        v0 = offset + mempos[lastidx];
+        v0 &= 0xF0000000;
+        a0 = ((v1 << 2) | v0) + t2;
+        v0 = (a0 >> 2) & 0x3FFFFFF;
+        a1 &= ~0x3FFFFFF;
+        v0 |= a1;
+        write_32 (data, v0);
+        break;
+      case 4:
+        a0 = read_uint32_le (data);
+        v1 = addend;
+        cmd = (a0 << 16) + ((int) ((short) v1)) + t2;
+        a1 = cmd >> 15;
+        t2 = a1 + 1;
+        v0 = (t2 >> 1) & 0xFFFF;
+        a1 = read_uint32_le (data);
+        a1 &= ~0xFFFF;
+        v0 |= a1;
+        write_32 (data, v0);
+        break;
+      case 1:
+      case 5:
+        a1 = read_uint32_le (data);
+        v0 = (int) ((short) a1);
+        cmd = t2 + v0;
+        v0 = cmd & 0xFFFF;
+        a1 &= ~0xFFFF;
+        v0 |= a1;
+        write_32 (data, v0);
+        break;
+      case 6:
+        v1 = read_uint32_le (data);
+        a0 = mempos[lastidx];
+        v1 = ~0xFC000000;
+        v0 = offset + a0;
+        v0 &= ~0xF0000000;
+        a1 = ((v1 << 2) | v0) + t2;
+        v0 = (a1 >> 2) & 0x3FFFFFF;
+        a1 = 0x8000000;
+        v0 |= a1;
+        write_32 (data, v0);
+        break;
+      case 7:
+        v1 = read_uint32_le (data);
+        a0 = mempos[lastidx];;
+        v1 = ~0xFC000000;
+        v0 = offset + a0;
+        v0 &= ~0xF0000000;
+        a1 = ((v1 << 2) | v0) + t2;
+        v0 = (a1 >> 2) & 0x3FFFFFF;
+        a1 = 0xC000000;
+        v0 |= a1;
+        write_32 (data, v0);
+        break;
+      default: return 0;
+      }
+      lastcmd2 = cmd2;
+
+    }
+  }
+
+  return 1;
+}
+
+static
 int load_programs (struct prx *p)
 {
   struct elf_program *programs;
@@ -548,12 +736,20 @@ static
 int load_relocs (struct prx *p)
 {
   uint32 i, count = 0;
+
   for (i = 0; i < p->shnum; i++) {
     struct elf_section *section = &p->sections[i];
     if (section->type == SHT_PRXRELOC) {
       count += section->size >> 3;
     }
   }
+  for (i = 0; i < p->phnum; i++) {
+    struct elf_program *program = &p->programs[i];
+    if (program->type == PT_PRXRELOC) {
+      count += program->filesz >> 3;
+    }
+  }
+
   p->relocs = NULL;
   if (!count) return 1;
 
@@ -569,6 +765,26 @@ int load_relocs (struct prx *p)
       offset = section->offset;
       secsize = section->size >> 3;
       for (j = 0; j < secsize; j++) {
+        p->relocs[count].offset = read_uint32_le (&p->data[offset]);
+        p->relocs[count].type = p->data[offset + 4];
+        p->relocs[count].offsbase = p->data[offset + 5];
+        p->relocs[count].addrbase = p->data[offset + 6];
+        p->relocs[count].extra = p->data[offset + 7];
+
+        count++;
+        offset += 8;
+      }
+    }
+  }
+
+  for (i = 0; i < p->phnum; i++) {
+    struct elf_program *program = &p->programs[i];
+    if (program->type == PT_PRXRELOC) {
+      uint32 j, progsize;
+      uint32 offset;
+      offset = program->offset;
+      progsize = program->filesz >> 3;
+      for (j = 0; j < progsize; j++) {
         p->relocs[count].offset = read_uint32_le (&p->data[offset]);
         p->relocs[count].type = p->data[offset + 4];
         p->relocs[count].offsbase = p->data[offset + 5];
@@ -971,7 +1187,8 @@ void print_programs (struct prx *p)
     program = &p->programs[idx];
     switch (program->type) {
     case PT_LOAD: type = "LOAD"; break;
-    case PT_PRX: type = "PRX"; break;
+    case PT_PRXRELOC: type = "RELOC"; break;
+    case PT_PRXUNK: type = "UNK"; break;
     }
 
     report ("  %-5s 0x%08X 0x%08X 0x%08X 0x%08X 0x%08X %s%s%s 0x%02X\n",

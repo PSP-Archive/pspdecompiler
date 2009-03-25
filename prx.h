@@ -84,7 +84,8 @@ struct elf_section
 #define PT_LOAD                 1
 #define PT_LOPROC               0x70000000
 #define PT_HIPROC               0x7fffffff
-#define PT_PRX                  (PT_LOPROC | 0xA1)
+#define PT_PRXRELOC             (PT_LOPROC | 0xA0)
+#define PT_PRXUNK               (PT_LOPROC | 0xA1)
 
 #define PF_X                    1
 #define PF_W                    2
