@@ -85,7 +85,7 @@ struct elf_section
 #define PT_LOPROC               0x70000000
 #define PT_HIPROC               0x7fffffff
 #define PT_PRXRELOC             (PT_LOPROC | 0xA0)
-#define PT_PRXUNK               (PT_LOPROC | 0xA1)
+#define PT_PRXRELOC2            (PT_LOPROC | 0xA1)
 
 #define PF_X                    1
 #define PF_W                    2
@@ -110,16 +110,13 @@ struct elf_program
 #define R_MIPS_NONE     0
 #define R_MIPS_16       1
 #define R_MIPS_32       2
-#define R_MIPS_REL32    3
 #define R_MIPS_26       4
 #define R_MIPS_HI16     5
 #define R_MIPS_LO16     6
-#define R_MIPS_GPREL16  7
-#define R_MIPS_LITERAL  8
-#define R_MIPS_GOT16    9
-#define R_MIPS_PC16     10
-#define R_MIPS_CALL16   11
-#define R_MIPS_GPREL32  12
+#define R_MIPSX_HI16   13
+#define R_MIPSX_J26    14
+#define R_MIPSX_JAL26  15
+
 
 struct prx_reloc {
   uint32 offset;
@@ -127,6 +124,7 @@ struct prx_reloc {
   uint8 offsbase;
   uint8 addrbase;
   uint8 extra;
+  uint32 addend;
   uint32 vaddr;
   uint32 target;
 };

@@ -43,6 +43,15 @@ uint16 read_uint16_le (const uint8 *bytes)
 }
 
 static
+void write_uint32_le (uint8 *bytes, uint32 val)
+{
+  bytes[0] = val & 0xFF; val >>= 8;
+  bytes[1] = val & 0xFF; val >>= 8;
+  bytes[2] = val & 0xFF; val >>= 8;
+  bytes[3] = val & 0xFF;
+}
+
+static
 int inside_prx (struct prx *p, uint32 offset, uint32 size)
 {
   if (offset >= p->size || size > p->size ||
@@ -133,8 +142,8 @@ int check_program_header (struct prx *p, uint32 index)
       return 0;
     }
     break;
-  case PT_PRXUNK:
   case PT_PRXRELOC:
+  case PT_PRXRELOC2:
     if (program->memsz) {
       error (__FILE__ ": program type must not loaded (program %d)", index);
       return 0;
@@ -149,13 +158,13 @@ int check_program_header (struct prx *p, uint32 index)
 }
 
 static
-int check_relocs (struct prx *p)
+int check_apply_relocs (struct prx *p)
 {
   struct prx_reloc *r;
   struct elf_program *offsbase;
   struct elf_program *addrbase;
-  uint32 index, lasthi = -1, addend;
-  int hiused = TRUE;
+  uint32 index, addend, base, temp;
+  uint32 hiaddr, loaddr;
 
 
   for (index = 0; index < p->relocnum; index++) {
@@ -178,6 +187,12 @@ int check_relocs (struct prx *p)
       error (__FILE__ ": relocation points to invalid address (0x%08X)", r->vaddr);
       return 0;
     }
+  }
+
+  for (index = 0; index < p->relocnum; index++) {
+    r = &p->relocs[index];
+    offsbase = &p->programs[r->offsbase];
+    addrbase = &p->programs[r->addrbase];
 
     addend = read_uint32_le (&offsbase->data[r->offset]);
 
@@ -185,60 +200,110 @@ int check_relocs (struct prx *p)
     case R_MIPS_NONE:
       break;
     case R_MIPS_26:
-      r->target = (addrbase->vaddr & 0xF0000000) | ((addend & 0x3FFFFFF) << 2);
+    case R_MIPSX_J26:
+    case R_MIPSX_JAL26:
+      r->target = (r->offset + offsbase->vaddr) & 0xF0000000;
+      r->target = (((addend & 0x3FFFFFF) << 2) | r->target) + addrbase->vaddr;
+      addend = (addend & ~0x3FFFFFF) | (r->target >> 2);
       if (!inside_progfile (addrbase, r->target, 8)) {
-        error (__FILE__ ": mips26 relocation to invalid address at 0x%08X (0x%08X)", r->vaddr, r->target);
-        return 0;
+        error (__FILE__ ": mips26 reference out of range at 0x%08X (0x%08X)", r->vaddr, r->target);
       }
+      write_uint32_le ((uint8 *)&offsbase->data[r->offset], addend);
       break;
     case R_MIPS_HI16:
-      if (!hiused) {
-        /*error (__FILE__ ": hi16 without a matching lo16 relocation at 0x%08X (now at 0x%08X)",
-            p->relocs[lasthi].vaddr, r->vaddr);
-        return 0; */
-      }
-      lasthi = index;
-      hiused = FALSE;
-      r->target = (addend & 0xFFFF) << 16;
-      break;
-    case R_MIPS_LO16:
-      if (lasthi == -1) {
-        error (__FILE__ ": lo16 without matching hi16");
-        return 0;
-      } else {
-        struct prx_reloc *last = &p->relocs[lasthi];
-        enum insn_type itype;
-
-        hiused = TRUE;
-        itype = allegrex_insn_type (addend);
-        r->target = addend & 0xFFFF;
-        if (/*itype != I_ORI &&*/ (r->target & 0x8000)) {
-          r->target |= ~0xFFFF;
+      base = index;
+      while (++index < p->relocnum) {
+        if (p->relocs[index].type != R_MIPS_HI16) break;
+        if (p->relocs[index].offsbase != r->offsbase) {
+          error (__FILE__ ": changed offset base");
+          return 0;
         }
-        r->target += last->target + addrbase->vaddr;
-        if (!inside_progmem (addrbase, r->target, 1)) {
-          error (__FILE__ ": invalid hi16/lo16 reference at 0x%08X (0x%08X) (matching hi: 0x%08X)", r->vaddr, r->target, last->vaddr);
+        if (p->relocs[index].addrbase != r->addrbase) {
+          error (__FILE__ ": changed offset base");
+          return 0;
+        }
+        temp = read_uint32_le (&offsbase->data[p->relocs[index].offset]) & 0xFFFF;
+        if (temp != (addend & 0xFFFF)) {
+          error (__FILE__ ": changed hi");
           return 0;
         }
       }
-      break;
 
-    case R_MIPS_32:
-      r->target = addend;
-      if (!inside_progmem (addrbase, r->target, 1)) {
-        error (__FILE__ ": invalid mips32 reference at 0x%08X (0x%08X)", r->vaddr, r->target);
-        /*return 0;*/
+      if (index == p->relocnum) {
+        error (__FILE__ ": hi16 without matching lo16");
+        return 0;
       }
+
+      if (p->relocs[index].type != R_MIPS_LO16 ||
+          p->relocs[index].offsbase != r->offsbase ||
+          p->relocs[index].addrbase != r->addrbase) {
+        error (__FILE__ ": hi16 without matching lo16");
+        return 0;
+      }
+
+      temp = read_uint32_le (&offsbase->data[p->relocs[index].offset]) & 0xFFFF;
+      if (temp & 0x8000) temp |= ~0xFFFF;
+
+      r->target = ((addend & 0xFFFF) << 16) + addrbase->vaddr + temp;
+      addend = temp & 0xFFFF;
+      if (!inside_progmem (addrbase, r->target, 1)) {
+        error (__FILE__ ": hi16 reference out of range  at 0x%08X (0x%08X)", r->vaddr, r->target);
+      }
+
+      loaddr = r->target & 0xFFFF;
+      hiaddr = (((r->target >> 16) + 1) >> 1) & 0xFFFF;
+
+      while (base < index) {
+        p->relocs[base].target = r->target;
+        temp = (read_uint32_le (&offsbase->data[p->relocs[base].offset]) & ~0xFFFF) | hiaddr;
+        write_uint32_le ((uint8 *) &offsbase->data[p->relocs[base].offset], temp);
+        base++;
+      }
+
+      while (index < p->relocnum) {
+        temp = read_uint32_le (&offsbase->data[p->relocs[index].offset]);
+        if ((temp & 0xFFFF) != addend) break;
+        if (p->relocs[index].type != R_MIPS_LO16) break;
+        if (p->relocs[index].offsbase != r->offsbase) break;
+        if (p->relocs[index].addrbase != r->addrbase) break;
+
+        p->relocs[index].target = r->target;
+
+        temp = (temp & ~0xFFFF) | loaddr;
+        write_uint32_le ((uint8 *) &offsbase->data[p->relocs[index].offset], temp);
+        index++;
+      }
+
+      break;
+    case R_MIPSX_HI16:
+      r->target = ((addend & 0xFFFF) << 16) + addrbase->vaddr + r->addend;
+      addend = (addend & ~0xFFFF) | ((((r->target >> 16) + 1) >> 1) & 0xFFFF);
+      if (!inside_progmem (addrbase, r->target, 1)) {
+        error (__FILE__ ": xhi16 reference out of range at 0x%08X (0x%08X)", r->vaddr, r->target);
+      }
+      write_uint32_le ((uint8 *)&offsbase->data[r->offset], addend);
       break;
 
     case R_MIPS_16:
-    case R_MIPS_REL32:
-    case R_MIPS_GPREL16:
-    case R_MIPS_LITERAL:
-    case R_MIPS_GOT16:
-    case R_MIPS_PC16:
-    case R_MIPS_CALL16:
-    case R_MIPS_GPREL32:
+    case R_MIPS_LO16:
+      r->target = (addend & 0xFFFF) + addrbase->vaddr;
+      addend = (addend & ~0xFFFF) | (r->target & 0xFFFF);
+      if (!inside_progmem (addrbase, r->target, 1)) {
+        error (__FILE__ ": lo16 reference out of range at 0x%08X (0x%08X)", r->vaddr, r->target);
+      }
+      write_uint32_le ((uint8 *)&offsbase->data[r->offset], addend);
+      break;
+
+    case R_MIPS_32:
+      r->target = addend + addrbase->vaddr;
+      addend = r->target;
+      if (!inside_progmem (addrbase, r->target, 1)) {
+        error (__FILE__ ": mips32 reference out of range at 0x%08X (0x%08X)", r->vaddr, r->target);
+      }
+      write_uint32_le ((uint8 *)&offsbase->data[r->offset], addend);
+      break;
+
+    default:
       error (__FILE__ ": invalid reference type %d", r->type);
       return 0;
     }
@@ -514,220 +579,6 @@ int load_sections (struct prx *p)
 }
 
 static
-int load_unk (struct elf_program *programs, uint32 prgidx, uint8 *data, uint32 size)
-{
-  uint32 nbits;
-  uint8 part1s, part2s;
-  uint32 block1s, block2s;
-  uint8 block1[256], block2[256];
-  uint8 *ndata, *end;
-  uint32 vaddr, temp1, temp2;
-  uint32 part1, part2, lastpart2;
-  uint32 addend = 0, offset = 0;
-  uint32 ofsbase = 0xFFFFFFFF;
-  uint32 addrbase;
-  char *type;
-
-  end = data + size;
-  for (nbits = 1; (1 << nbits) < prgidx; nbits++) {
-    if (nbits >= 33) {
-      error (__FILE__  ": invalid number of bits for indexes");
-      return 0;
-    }
-  }
-
-  if (read_uint16_le (data) != 0) {
-    error (__FILE__  ": invalid header for relocation");
-    return 0;
-  }
-
-  part1s = data[2];
-  part2s = data[3];
-
-  block1s = data[4];
-  data += 4;
-
-  if (block1s) {
-    memcpy (block1, data, block1s);
-    data += block1s;
-  }
-
-  block2s = *data;
-  if (block2s) {
-    memcpy (block2, data, block2s);
-    data += block2s;
-  }
-
-
-  lastpart2 = block2s;
-  for (ndata = data; ndata < end; data = ndata) {
-    uint32 cmd = read_uint16_le (data);
-    temp1 = (cmd << (16 - part1s)) & 0xFFFF;
-    temp1 = (temp1 >> (16 -part1s)) & 0xFFFF;
-
-    ndata = data + 2;
-    if (temp1 >= block1s) {
-      error (__FILE__ ": invalid index for the first part");
-      return 0;
-    }
-    part1= block1[temp1];
-
-    if ((part1 & 0x01) == 0) {
-      ofsbase = (cmd << (16 - part1s - nbits)) & 0xFFFF;
-      ofsbase = (ofsbase >> (16 - nbits)) & 0xFFFF;
-      if (!(ofsbase < prgidx)) {
-        error (__FILE__ ": invalid offset base");
-        return 0;
-      }
-
-      offset = cmd >> (part1s + nbits);
-      if ((part1 & 0x06) == 0) continue;
-      if ((part1 & 0x06) != 4) {
-        error (__FILE__ ": invalid size");
-        return 0;
-      }
-      offset = read_uint32_le (ndata);
-      ndata = data + 6;
-    } else {
-      temp2 = (cmd << (16 - (part1s + nbits + part2s))) & 0xFFFF;
-      temp2 = (temp2 >> (16 - part2s)) & 0xFFFF;
-      if (temp2 >= block2s) {
-        error (__FILE__ ": invalid index for the second part");
-        return 0;
-      }
-
-      addrbase = (cmd << (16 - part1s - nbits)) & 0xFFFF;
-      addrbase = (addrbase >> (16 - nbits)) & 0xFFFF;
-      if (!(addrbase < prgidx)) {
-        error (__FILE__ ": invalid address base");
-        return 0;
-      }
-      part2 = block2[temp2];
-
-      switch (part1 & 0x06) {
-      case 0:
-        if (cmd & 0x8000) {
-          cmd |= ~0xFFFF;
-          cmd >>= part1s + part2s + nbits;
-          cmd |= ~0xFFFF;
-        } else {
-          cmd >>= part1s + part2s + nbits;
-        }
-        offset += cmd;
-        break;
-      case 2:
-        if (cmd & 0x8000) cmd |= ~0xFFFF;
-        cmd = (cmd >> (part1s + part2s + nbits)) << 16;
-        cmd |= read_uint16_le (&data[2]);
-        offset += cmd;
-        ndata = data + 4;
-        break;
-      case 4:
-        offset = read_uint32_le (ndata);
-        ndata = data + 6;
-        break;
-      default:
-        error (__FILE__ ": invalid part1 size");
-        return 0;
-      }
-
-      if (!(offset < programs[ofsbase].filesz)) {
-        error (__FILE__ ": invalid relocation offset");
-        return 0;
-      }
-
-      switch (part1 & 0x38) {
-      case 0x00:
-        addend = 0;
-        break;
-      case 0x08:
-        if ((lastpart2 ^ 0x04) != 0) {
-          addend = 0;
-        }
-        break;
-      case 0x10:
-        addend = read_uint16_le (ndata);
-        ndata += 2;
-        break;
-      case 0x18:
-        read_uint32_le (ndata);
-        return 0;
-      default:
-        error (__FILE__ ": invalid addendum size");
-        return 0;
-      }
-
-      lastpart2 = part2;
-
-      vaddr = programs[addrbase].vaddr;
-      data = (uint8 *) &programs[ofsbase].data[offset];
-      switch (part2) {
-      case 2:
-        temp2 = read_uint32_le (data) + vaddr;
-        type = "mips32";
-        break;
-      case 0:
-        continue;
-      case 3:
-        temp1 = read_uint32_le (data);
-        temp2 = offset + programs[ofsbase].vaddr;
-        temp2 &= 0xF0000000;
-        temp2 = (((((temp1 & 0x3FFFFFF) << 2) | temp2) + vaddr) >> 2) & 0x3FFFFFF;
-        temp1 &= ~0x3FFFFFF;
-        temp2 |= temp1;
-        type = "mips26";
-        break;
-      case 4:
-        temp1 = read_uint32_le (data);
-        temp2 = (temp1 << 16) + ((int) ((short) addend)) + vaddr;
-        temp2 = temp2 >> 15;
-        temp2 = ((temp2 + 1) >> 1) & 0xFFFF;
-        temp2 |= (temp1 & ~0xFFFF);
-        type = "hi16";
-        break;
-      case 1:
-      case 5:
-        temp1 = read_uint32_le (data);
-        temp2 = (int) ((short) temp1);
-        temp2 = (vaddr + temp2) & 0xFFFF;
-        temp1 &= ~0xFFFF;
-        temp2 |= temp1;
-        if (part2 == 1)
-          type = "lo16/clear";
-        else
-          type = "lo16";
-        break;
-      case 6:
-        temp1 = read_uint32_le (data) & ~0xFC000000;
-        temp2 = offset + programs[ofsbase].vaddr;
-        temp2 &= ~0xF0000000;
-        temp2 = ((temp1 << 2) | temp2) + vaddr;
-        temp2 = (temp2 >> 2) & 0x3FFFFFF;
-        temp2 |= 0x8000000;
-        type = "j26";
-        break;
-      case 7:
-        temp1 = read_uint32_le (data) & ~0xFC000000;
-        temp2 = offset + programs[ofsbase].vaddr;
-        temp2 &= ~0xF0000000;
-        temp2 = ((temp1 << 2) | temp2) + vaddr;
-        temp2 = (temp2 >> 2) & 0x3FFFFFF;
-        temp2 |= 0xC000000;
-        type = "jal26";
-        break;
-      default:
-        error (__FILE__ ": invalid relocation type");
-        return 0;
-      }
-      report ("Address base: %02d Offset base: %02d Type: %-12s Offset: 0x%08X Old data: 0x%08X New data: 0x%08X\n",
-          addrbase, ofsbase, type, offset, read_uint32_le (data), temp2);
-    }
-  }
-
-  return 1;
-}
-
-static
 int load_programs (struct prx *p)
 {
   struct elf_program *programs;
@@ -760,9 +611,267 @@ int load_programs (struct prx *p)
 }
 
 static
+uint32 count_relocs_b (uint32 prgidx, const uint8 *data, uint32 size)
+{
+  const uint8 *end;
+  uint8 part1s, part2s;
+  uint32 block1s, block2s;
+  uint8 block1[256], block2[256];
+  uint32 temp1, temp2, part1, part2;
+  uint32 count = 0, nbits;
+
+  end = data + size;
+  for (nbits = 1; (1 << nbits) < prgidx; nbits++) {
+    if (nbits >= 33) {
+      error (__FILE__  ": invalid number of bits for indexes");
+      return 0;
+    }
+  }
+
+  if (read_uint16_le (data) != 0) {
+    error (__FILE__  ": invalid header for relocation");
+    return 0;
+  }
+
+  part1s = data[2];
+  part2s = data[3];
+
+  block1s = data[4];
+  data += 4;
+
+  if (block1s) {
+    memcpy (block1, data, block1s);
+    data += block1s;
+  }
+
+  block2s = *data;
+  if (block2s) {
+    memcpy (block2, data, block2s);
+    data += block2s;
+  }
+
+
+  count = 0;
+  while (data < end) {
+    uint32 cmd = read_uint16_le (data);
+    temp1 = (cmd << (16 - part1s)) & 0xFFFF;
+    temp1 = (temp1 >> (16 -part1s)) & 0xFFFF;
+
+    data = data + 2;
+    if (temp1 >= block1s) {
+      error (__FILE__ ": invalid index for the first part");
+      return 0;
+    }
+    part1 = block1[temp1];
+    if ((part1 & 0x06) == 0x06) {
+      error (__FILE__ ": invalid size");
+      return 0;
+    }
+
+    data += part1 & 0x06;
+
+    if ((part1 & 0x01) == 0) {
+      if ((part1 & 0x06) == 2) {
+        error (__FILE__ ": invalid size of part1");
+        return 0;
+      }
+    } else {
+      temp2 = (cmd << (16 - (part1s + nbits + part2s))) & 0xFFFF;
+      temp2 = (temp2 >> (16 - part2s)) & 0xFFFF;
+      if (temp2 >= block2s) {
+        error (__FILE__ ": invalid index for the second part");
+        return 0;
+      }
+
+      part2 = block2[temp2];
+
+      switch (part1 & 0x38) {
+      case 0x00:
+        break;
+      case 0x08:
+        break;
+      case 0x10:
+        data += 2;
+        break;
+      default:
+        error (__FILE__ ": invalid addendum size");
+        return 0;
+      }
+
+      switch (part2) {
+      case 1: case 2: case 3:
+      case 4: case 5: case 6: case 7:
+        count++;
+        break;
+      case 0:
+        break;
+      default:
+        error (__FILE__ ": invalid relocation type %d", part2);
+        return 0;
+      }
+    }
+  }
+
+  return count;
+}
+
+static
+int load_relocs_b (struct elf_program *programs, struct prx_reloc *out, uint32 prgidx, const uint8 *data, uint32 size)
+{
+  const uint8 *end;
+  uint32 nbits;
+  uint8 part1s, part2s;
+  uint32 block1s, block2s;
+  uint8 block1[256], block2[256];
+  uint32 temp1, temp2;
+  uint32 part1, part2, lastpart2;
+  uint32 addend = 0, offset = 0;
+  uint32 offsbase = 0xFFFFFFFF;
+  uint32 addrbase;
+  uint32 count;
+
+  end = data + size;
+  for (nbits = 1; (1 << nbits) < prgidx; nbits++) {
+  }
+
+  part1s = data[2];
+  part2s = data[3];
+
+  block1s = data[4];
+  data += 4;
+
+  if (block1s) {
+    memcpy (block1, data, block1s);
+    data += block1s;
+  }
+
+  block2s = *data;
+  if (block2s) {
+    memcpy (block2, data, block2s);
+    data += block2s;
+  }
+
+
+  count = 0;
+  lastpart2 = block2s;
+  while (data < end) {
+    uint32 cmd = read_uint16_le (data);
+    temp1 = (cmd << (16 - part1s)) & 0xFFFF;
+    temp1 = (temp1 >> (16 -part1s)) & 0xFFFF;
+
+    data += 2;
+    part1= block1[temp1];
+
+    if ((part1 & 0x01) == 0) {
+      offsbase = (cmd << (16 - part1s - nbits)) & 0xFFFF;
+      offsbase = (offsbase >> (16 - nbits)) & 0xFFFF;
+      if (!(offsbase < prgidx)) {
+        error (__FILE__ ": invalid offset base");
+        return 0;
+      }
+
+      offset = cmd >> (part1s + nbits);
+      if ((part1 & 0x06) == 0) continue;
+      offset = read_uint32_le (data);
+      data += 4;
+    } else {
+      temp2 = (cmd << (16 - (part1s + nbits + part2s))) & 0xFFFF;
+      temp2 = (temp2 >> (16 - part2s)) & 0xFFFF;
+
+      addrbase = (cmd << (16 - part1s - nbits)) & 0xFFFF;
+      addrbase = (addrbase >> (16 - nbits)) & 0xFFFF;
+      if (!(addrbase < prgidx)) {
+        error (__FILE__ ": invalid address base");
+        return 0;
+      }
+      part2 = block2[temp2];
+
+      switch (part1 & 0x06) {
+      case 0:
+        if (cmd & 0x8000) {
+          cmd |= ~0xFFFF;
+          cmd >>= part1s + part2s + nbits;
+          cmd |= ~0xFFFF;
+        } else {
+          cmd >>= part1s + part2s + nbits;
+        }
+        offset += cmd;
+        break;
+      case 2:
+        if (cmd & 0x8000) cmd |= ~0xFFFF;
+        cmd = (cmd >> (part1s + part2s + nbits)) << 16;
+        cmd |= read_uint16_le (data);
+        offset += cmd;
+        data += 2;
+        break;
+      case 4:
+        offset = read_uint32_le (data);
+        data += 4;
+        break;
+      }
+
+      if (!(offset < programs[offsbase].filesz)) {
+        error (__FILE__ ": invalid relocation offset");
+        return 0;
+      }
+
+      switch (part1 & 0x38) {
+      case 0x00:
+        addend = 0;
+        break;
+      case 0x08:
+        if ((lastpart2 ^ 0x04) != 0) {
+          addend = 0;
+        }
+        break;
+      case 0x10:
+        addend = read_uint16_le (data);
+        data += 2;
+        break;
+      }
+
+      lastpart2 = part2;
+
+      out[count].addrbase = addrbase;
+      out[count].offsbase = offsbase;
+      out[count].offset = offset;
+      out[count].extra = 0;
+
+      switch (part2) {
+      case 2:
+        out[count++].type = R_MIPS_32;
+        break;
+      case 0:
+        break;
+      case 3:
+        out[count++].type = R_MIPS_26;
+        break;
+      case 4:
+        if (addend & 0x8000) addend |= ~0xFFFF;
+        out[count].addend = addend;
+        out[count++].type = R_MIPSX_HI16;
+        break;
+      case 1:
+      case 5:
+        out[count++].type = R_MIPS_LO16;
+        break;
+      case 6:
+        out[count++].type = R_MIPSX_J26;
+        break;
+      case 7:
+        out[count++].type = R_MIPSX_JAL26;
+        break;
+      }
+    }
+  }
+
+  return count;
+}
+
+static
 int load_relocs (struct prx *p)
 {
-  uint32 i, count = 0;
+  uint32 i, ret, count = 0;
 
   for (i = 0; i < p->shnum; i++) {
     struct elf_section *section = &p->sections[i];
@@ -774,9 +883,10 @@ int load_relocs (struct prx *p)
     struct elf_program *program = &p->programs[i];
     if (program->type == PT_PRXRELOC) {
       count += program->filesz >> 3;
-    } else if (program->type == PT_PRXUNK) {
-      if (!load_unk (p->programs, i, (uint8 *) program->data, program->filesz))
-        return 0;
+    } else if (program->type == PT_PRXRELOC2) {
+      ret = count_relocs_b (i, program->data, program->filesz);
+      if (!ret) return 0;
+      count += ret;
     }
   }
 
@@ -824,10 +934,16 @@ int load_relocs (struct prx *p)
         count++;
         offset += 8;
       }
+    } else if (program->type == PT_PRXRELOC2) {
+      ret = load_relocs_b (p->programs, &p->relocs[count], i, program->data, program->filesz);
+      if (!ret) {
+        return 0;
+      }
+      count += ret;
     }
   }
 
-  if (!check_relocs (p)) return 0;
+  if (!check_apply_relocs (p)) return 0;
 
   return 1;
 }
@@ -1217,8 +1333,8 @@ void print_programs (struct prx *p)
     program = &p->programs[idx];
     switch (program->type) {
     case PT_LOAD: type = "LOAD"; break;
-    case PT_PRXRELOC: type = "RELOC"; break;
-    case PT_PRXUNK: type = "UNK"; break;
+    case PT_PRXRELOC: type = "REL"; break;
+    case PT_PRXRELOC2: type = "REL2"; break;
     }
 
     report ("  %-5s 0x%08X 0x%08X 0x%08X 0x%08X 0x%08X %s%s%s 0x%02X\n",
