@@ -1,7 +1,7 @@
 
 #include <stdlib.h>
 
-#include "llist.h"
+#include "lists.h"
 #include "utils.h"
 
 #define LLIST_ALLOC_SIZE 4096

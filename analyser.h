@@ -3,7 +3,6 @@
 
 #include "prx.h"
 #include "allegrex.h"
-#include "llist.h"
 #include "types.h"
 
 enum jump_type {

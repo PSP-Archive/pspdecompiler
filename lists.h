@@ -1,6 +1,6 @@
 
-#ifndef __LLIST_H
-#define __LLIST_H
+#ifndef __LISTS_H
+#define __LISTS_H
 
 
 #define LLIST_ADD(pool, list, value) \
@@ -23,4 +23,4 @@ void llist_free (llist_pool pool, llist el);
 void llist_freeall (llist_pool pool, llist l);
 void llist_destroy (llist_pool pool);
 
-#endif /* __LLIST_H */
+#endif /* __LISTS_H */
