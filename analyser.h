@@ -22,25 +22,20 @@ struct location {
   uint32 opc;
   uint32 address;
 
+  int refcount;
+  int ext_refcount;
   enum insn_type itype;
 
   uint32 target_addr;
   enum jump_type jtype;
   struct location *target;
-
-  llist jumprefs;
-  llist callrefs;
 };
 
 struct code {
-  struct prx *image;
+  struct prx *file;
 
   uint32 baddr, numopc;
   struct location *base;
-
-  llist subroutines;
-
-  llist_pool pool;
 };
 
 struct code* analyse_code (struct prx *p);

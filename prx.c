@@ -108,9 +108,11 @@ int check_section_header (struct prx *p, uint32 index)
   case SHT_STRTAB:
   case SHT_PROGBITS:
   case SHT_NULL:
-    if (!inside_prx (p, section->offset, section->size)) {
-      error (__FILE__ ": section is not inside ELF/PRX (section %d)", index);
-      return 0;
+    if (section->size) {
+      if (!inside_prx (p, section->offset, section->size)) {
+        error (__FILE__ ": section is not inside ELF/PRX (section %d)", index);
+        return 0;
+      }
     }
     break;
   default:
@@ -247,7 +249,7 @@ int check_apply_relocs (struct prx *p)
       r->target = ((addend & 0xFFFF) << 16) + addrbase->vaddr + temp;
       addend = temp & 0xFFFF;
       if (!inside_progmem (addrbase, r->target, 1)) {
-        error (__FILE__ ": hi16 reference out of range  at 0x%08X (0x%08X)", r->vaddr, r->target);
+        error (__FILE__ ": hi16 reference out of range at 0x%08X (0x%08X)", r->vaddr, r->target);
       }
 
       loaddr = r->target & 0xFFFF;
@@ -297,9 +299,9 @@ int check_apply_relocs (struct prx *p)
     case R_MIPS_32:
       r->target = addend + addrbase->vaddr;
       addend = r->target;
-      if (!inside_progmem (addrbase, r->target, 1)) {
+      /*if (!inside_progmem (addrbase, r->target, 1)) {
         error (__FILE__ ": mips32 reference out of range at 0x%08X (0x%08X)", r->vaddr, r->target);
-      }
+      }*/
       write_uint32_le ((uint8 *)&offsbase->data[r->offset], addend);
       break;
 
@@ -891,7 +893,10 @@ int load_relocs (struct prx *p)
   }
 
   p->relocs = NULL;
-  if (!count) return 1;
+  if (!count) {
+    error (__FILE__ ": no relocation found");
+    return 0;
+  }
 
   p->relocnum = count;
   p->relocs = (struct prx_reloc *) xmalloc (count * sizeof (struct prx_reloc));

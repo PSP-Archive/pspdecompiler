@@ -10,6 +10,7 @@ int analyse_jumps (struct code *c, const uint8 *code, uint32 size, uint32 addres
 {
   struct location *base;
   uint32 i, numopc = size >> 2;
+  int dslot = FALSE, skip = FALSE;
 
   if (size & 0x03 || address & 0x03) {
     error (__FILE__ ": size/address is not multiple of 4");
@@ -31,61 +32,53 @@ int analyse_jumps (struct code *c, const uint8 *code, uint32 size, uint32 addres
     base[i].itype = allegrex_insn_type (base[i].opc);
     base[i].address = address + (i << 2);
 
+    if (!skip || dslot)
+      base[i].refcount++;
+
     switch (base[i].itype) {
-    case I_BEQ:
-    case I_BNE:
-    case I_BGEZ:
-    case I_BGTZ:
-    case I_BLEZ:
-    case I_BLTZ:
-    case I_BC1F:
-    case I_BC1T:
-    case I_BVF:
-    case I_BVT:
+    case I_BEQ: case I_BNE: case I_BGEZ: case I_BGTZ: case I_BLEZ:
+    case I_BLTZ: case I_BC1F: case I_BC1T: case I_BVF: case I_BVT:
       base[i].jtype = JTYPE_BRANCH;
       break;
-
-    case I_BEQL:
-    case I_BNEL:
-    case I_BGEZL:
-    case I_BGTZL:
-    case I_BLEZL:
-    case I_BLTZL:
-    case I_BC1FL:
-    case I_BC1TL:
-    case I_BVFL:
-    case I_BVTL:
+    case I_BEQL: case I_BNEL: case I_BGEZL: case I_BGTZL: case I_BLEZL:
+    case I_BLTZL: case I_BC1FL: case I_BC1TL: case I_BVFL: case I_BVTL:
       base[i].jtype = JTYPE_BRANCHLIKELY;
       break;
-
-    case I_BGEZAL:
-    case I_BLTZAL:
+    case I_BGEZAL: case I_BLTZAL:
       base[i].jtype = JTYPE_BRANCHANDLINK;
       break;
-
     case I_BLTZALL:
       base[i].jtype = JTYPE_BRANCHANDLINKLIKELY;
       break;
-
     case I_J:
       base[i].jtype = JTYPE_JUMP;
       break;
-
     case I_JAL:
       base[i].jtype = JTYPE_JUMPANDLINK;
       break;
-
     case I_JALR:
       base[i].jtype = JTYPE_JUMPANDLINKREGISTER;
       break;
-
     case I_JR:
       base[i].jtype = JTYPE_JUMPREGISTER;
       break;
-
     default:
       base[i].jtype = JTYPE_NONE;
       break;
+    }
+
+    if (base[i].jtype != JTYPE_NONE) {
+      if (dslot) error (__FILE__ ": jump inside a delay slot at 0x%08X", base[i].address);
+      else {
+        if (base[i].jtype == JTYPE_JUMP || base[i].jtype == JTYPE_JUMPREGISTER)
+          skip = TRUE;
+        else
+          skip = FALSE;
+      }
+      dslot = TRUE;
+    } else {
+      if (!dslot) skip = FALSE;
+      dslot = FALSE;
     }
 
     switch (base[i].jtype) {
@@ -94,17 +87,10 @@ int analyse_jumps (struct code *c, const uint8 *code, uint32 size, uint32 addres
     case JTYPE_BRANCHANDLINKLIKELY:
     case JTYPE_BRANCHLIKELY:
       tgt = base[i].opc & 0xFFFF;
-      if (tgt & 0x8000) {
-        tgt |= ~0xFFFF;
-      }
+      if (tgt & 0x8000) { tgt |= ~0xFFFF;  }
       tgt += i + 1;
       if (tgt < numopc) {
-        if (base[i].jtype == JTYPE_BRANCHANDLINK ||
-            base[i].jtype == JTYPE_BRANCHANDLINKLIKELY) {
-          LLIST_ADD (c->pool, base[tgt].callrefs, &base[i]);
-        } else {
-          LLIST_ADD (c->pool, base[tgt].jumprefs, &base[i]);
-        }
+        base[tgt].refcount++;
       } else {
         error (__FILE__ ": branch outside file\n%s", allegrex_disassemble (base[i].opc, base[i].address));
       }
@@ -116,16 +102,7 @@ int analyse_jumps (struct code *c, const uint8 *code, uint32 size, uint32 addres
       base[i].target_addr |= ((base[i].address) & 0xF0000000);
       tgt = (base[i].target_addr - address) >> 2;
       if (tgt < numopc) {
-        llist ref = llist_alloc (c->pool);
-        ref->value = &base[i];
-        base[i].target = &base[tgt];
-        if (base[i].jtype == JTYPE_JUMPANDLINK) {
-          ref->next = base[tgt].callrefs;
-          base[tgt].callrefs = ref;
-        } else {
-          ref->next = base[tgt].jumprefs;
-          base[tgt].jumprefs = ref;
-        }
+        base[tgt].refcount++;
       } else {
         error (__FILE__ ": jump outside file\n%s", allegrex_disassemble (base[i].opc, base[i].address));
       }
@@ -135,19 +112,22 @@ int analyse_jumps (struct code *c, const uint8 *code, uint32 size, uint32 addres
     }
   }
 
-  i = numopc - 1;
-  do {
-    if (base[i].callrefs) {
-      LLIST_ADD (c->pool, c->subroutines, &base[i]);
-    }
-  } while (i-- != 0);
-
   return 1;
 }
 
 static
 int analyse_relocs (struct code *c)
 {
+  uint32 i, opc;
+  for (i = 0; i < c->file->relocnum; i++) {
+    struct prx_reloc *rel = &c->file->relocs[i];
+    if (rel->target < c->baddr) continue;
+
+    opc = (rel->target - c->baddr) >> 2;
+    if (opc >= c->numopc) continue;
+
+    c->base[opc].ext_refcount++;
+  }
   return 1;
 }
 
@@ -162,9 +142,7 @@ struct code* analyse_code (struct prx *p)
 {
   struct code *c;
   c = (struct code *) xmalloc (sizeof (struct code));
-  c->image = p;
-  c->pool = llist_create ();
-  c->subroutines = NULL;
+  c->file = p;
 
   if (!analyse_jumps (c, p->programs->data,
        p->modinfo->expvaddr - 4, p->programs->vaddr)) {
@@ -186,9 +164,6 @@ void free_code (struct code *c)
   if (c->base)
     free (c->base);
   c->base = NULL;
-  if (c->pool)
-    llist_destroy (c->pool);
-  c->pool = NULL;
   free (c);
 }
 
@@ -197,28 +172,6 @@ void print_code (struct code *c)
   uint32 i;
 
   for (i = 0; i < c->numopc; i++) {
-    if (c->base[i].callrefs || c->base[i].jumprefs) {
-      report ("\n");
-    }
-
-    if (c->base[i].callrefs) {
-      llist l;
-      report ("; Called from: ");
-      for (l = c->base[i].callrefs; l; l = l->next) {
-        struct location *loc = (struct location *) l->value;
-        report ("0x%08X  ", loc->address);
-      }
-      report ("\n");
-    }
-    if (c->base[i].jumprefs) {
-      llist l;
-      report ("; Jumped from: ");
-      for (l = c->base[i].jumprefs; l; l = l->next) {
-        struct location *loc = (struct location *) l->value;
-        report ("0x%08X  ", loc->address);
-      }
-      report ("\n");
-    }
     report ("%s", allegrex_disassemble (c->base[i].opc, c->base[i].address));
     report ("\n");
   }
