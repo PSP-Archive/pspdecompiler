@@ -215,9 +215,11 @@ element list_inserthead (list l, void *val)
   element el = element_alloc (l->pool);
   el->value = val;
   el->next = l->head;
+  el->lst = l;
   if (l->head) l->head->prev = el;
   l->head = el;
   if (!l->tail) l->tail = el;
+  l->size++;
   return el;
 }
 
@@ -226,9 +228,11 @@ element list_inserttail (list l, void *val)
   element el = element_alloc (l->pool);
   el->value = val;
   el->prev = l->tail;
+  el->lst = l;
   if (l->tail) l->tail->next = el;
   l->tail = el;
   if (!l->head) l->head = el;
+  l->size++;
   return el;
 }
 
@@ -280,6 +284,60 @@ void element_remove (element el)
   }
   element_free (el);
 }
+
+
+#ifdef TEST_LISTS
+
+struct info {
+  int v1;
+  int v2;
+};
+
+int main (int argc, char **argv)
+{
+  list_pool pool;
+  list l1, l2;
+  element el;
+
+  pool = pool_create (sizeof (struct info));
+
+  l1 = list_create (pool);
+  report ("List 1 size: %d\n", list_size (l1));
+
+  l2 = list_create (pool);
+  report ("List 2 size: %d\n", list_size (l2));
+
+  el = list_inserthead (l1, NULL);
+  report ("Element %p\n", el);
+
+  el = list_inserthead (l1, NULL);
+  report ("Element %p\n", el);
+
+  report ("List 1 head: %p\n", list_head (l1));
+  report ("List 1 tail: %p\n", list_tail (l1));
+  report ("List 1 size: %d\n\n", list_size (l1));
+
+  element_remove (el);
+  report ("List 1 head: %p\n", list_head (l1));
+  report ("List 1 tail: %p\n", list_tail (l1));
+  report ("List 1 size: %d\n\n", list_size (l1));
+
+  list_reset (l1);
+  report ("List 1 size: %d\n", list_size (l1));
+
+  list_destroy (l1);
+
+  el = list_inserthead (l2, NULL);
+  report ("Element %p\n", el);
+
+  el = list_inserthead (l2, NULL);
+  report ("Element %p\n", el);
+
+  pool_destroy (pool);
+  return 0;
+}
+
+#endif /* TEST_LISTS */
 
 
 
