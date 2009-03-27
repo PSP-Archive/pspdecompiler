@@ -2,25 +2,41 @@
 #ifndef __LISTS_H
 #define __LISTS_H
 
+#include <stddef.h>
 
-#define LLIST_ADD(pool, list, value) \
-  (list) = llist_add ((pool), (list), (value))
+struct _element;
+typedef struct _element *element;
 
-typedef
-struct _llist {
-  struct _llist *next;
-  void *value;
-} *llist;
+struct _list;
+typedef struct _list *list;
 
-struct _llist_pool;
+struct _list_pool;
+typedef struct _list_pool *list_pool;
 
-typedef struct _llist_pool *llist_pool;
+list_pool pool_create (size_t addend_size);
+void pool_destroy (list_pool pool);
 
-llist_pool llist_create (void);
-llist llist_alloc (llist_pool pool);
-llist llist_add (llist_pool pool, llist l, void *val);
-void llist_free (llist_pool pool, llist el);
-void llist_freeall (llist_pool pool, llist l);
-void llist_destroy (llist_pool pool);
+list list_create (list_pool pool);
+void list_destroy (list l);
+void list_reset (list l);
+int  list_size (list l);
+
+element list_head (list l);
+element list_tail (list l);
+
+element list_inserthead (list l, void *val);
+element list_inserttail (list l, void *val);
+
+void list_removehead (list l);
+void list_removetail (list l);
+
+void *element_value (element el);
+void *element_addendum (element el);
+
+element element_next (element el);
+element element_previous (element el);
+
+void element_remove (element el);
+
 
 #endif /* __LISTS_H */
