@@ -3,6 +3,7 @@
 
 #include "prx.h"
 #include "allegrex.h"
+#include "lists.h"
 #include "types.h"
 
 enum jump_type {
@@ -21,8 +22,9 @@ struct location {
   uint32 opc;
   uint32 address;
 
-  int refcount;
-  int ext_refcount;
+  int notskipped;
+  int jumpcount, callcount;
+  struct prx_reloc *extref;
   enum insn_type itype;
 
   uint32 target_addr;
@@ -30,11 +32,19 @@ struct location {
   struct location *target;
 };
 
+struct subroutine {
+  struct prx_function *function;
+  struct location *loc;
+};
+
 struct code {
   struct prx *file;
 
   uint32 baddr, numopc;
   struct location *base;
+
+  list subroutines;
+  list_pool subs_pool;
 };
 
 struct code* analyse_code (struct prx *p);

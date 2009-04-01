@@ -59,6 +59,7 @@ int main (int argc, char **argv)
   if (!c)
     fatal (__FILE__ ": can't analyse code `%s'", prxfilename);
 
+  report ("%d\n", c->numopc);
   if (verbose > 1) print_code (c);
   free_code (c);
 

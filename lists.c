@@ -5,9 +5,6 @@
 #include "lists.h"
 #include "utils.h"
 
-#define POOL_ALLOC_ELEMENTS 4096
-#define POOL_ALLOC_LISTS      16
-
 struct _element {
   struct _list_pool *const pool;
 
@@ -33,17 +30,21 @@ struct _list_pool {
   struct _element *alloc_el;
   struct _list    *alloc_lst;
 
-  size_t addend_size;
+  size_t addendsize;
+  size_t numelms;
+  size_t numlsts;
 };
 
-list_pool pool_create (size_t addend_size)
+list_pool pool_create (size_t addendsize, size_t numelms, size_t numlsts)
 {
   list_pool result = (list_pool) xmalloc (sizeof (struct _list_pool));
   result->free_el = NULL;
   result->free_lst = NULL;
   result->alloc_el = NULL;
   result->alloc_lst = NULL;
-  result->addend_size = addend_size;
+  result->addendsize = addendsize;
+  result->numelms = numelms;
+  result->numlsts = numlsts;
   return result;
 }
 
@@ -77,28 +78,28 @@ element element_alloc (list_pool pool)
   if (!pool->free_el) {
     int i;
 
-    el = (element) xmalloc (POOL_ALLOC_ELEMENTS * sizeof (struct _element));
-    memset (el, 0, POOL_ALLOC_ELEMENTS * sizeof (struct _element));
+    el = (element) xmalloc (pool->numelms * sizeof (struct _element));
+    memset (el, 0, pool->numelms * sizeof (struct _element));
 
     el->next = pool->alloc_el;
     pool->alloc_el = el;
 
-    for (i = 0; i < POOL_ALLOC_ELEMENTS; i++) {
+    for (i = 0; i < pool->numelms; i++) {
       pptr = (struct _list_pool **) &el[i].pool;
       *pptr = pool;
     }
 
-    if (pool->addend_size) {
-      char *addend = xmalloc (POOL_ALLOC_ELEMENTS * pool->addend_size);
+    if (pool->addendsize) {
+      char *addend = xmalloc (pool->numelms * pool->addendsize);
       void **ptr;
 
-      for (i = 0; i < POOL_ALLOC_ELEMENTS; i++) {
+      for (i = 0; i < pool->numelms; i++) {
         ptr = (void **) &el[i].addend;  *ptr = addend;
-        addend += pool->addend_size;
+        addend += pool->addendsize;
       }
     }
 
-    for (i = 1; i < POOL_ALLOC_ELEMENTS - 1; i++)
+    for (i = 1; i < pool->numelms - 1; i++)
       el[i].next = &el[i + 1];
     el[i].next = NULL;
     pool->free_el = &el[1];
@@ -136,18 +137,18 @@ list list_alloc (list_pool pool)
   if (!pool->free_lst) {
     int i;
 
-    l = (list) xmalloc (POOL_ALLOC_LISTS * sizeof (struct _list));
-    memset (l, 0, POOL_ALLOC_LISTS * sizeof (struct _list));
+    l = (list) xmalloc (pool->numlsts * sizeof (struct _list));
+    memset (l, 0, pool->numlsts * sizeof (struct _list));
 
     l->next = pool->alloc_lst;
     pool->alloc_lst = l;
 
-    for (i = 0; i < POOL_ALLOC_LISTS; i++) {
+    for (i = 0; i < pool->numlsts; i++) {
       pptr = (struct _list_pool **) &l[i].pool;
       *pptr = pool;
     }
 
-    for (i = 1; i < POOL_ALLOC_LISTS - 1; i++)
+    for (i = 1; i < pool->numlsts - 1; i++)
       l[i].next = &l[i + 1];
     l[i].next = NULL;
     pool->free_lst = &l[1];

@@ -13,7 +13,7 @@ typedef struct _list *list;
 struct _list_pool;
 typedef struct _list_pool *list_pool;
 
-list_pool pool_create (size_t addend_size);
+list_pool pool_create (size_t addendsize, size_t numelms, size_t numlsts);
 void pool_destroy (list_pool pool);
 
 list list_create (list_pool pool);

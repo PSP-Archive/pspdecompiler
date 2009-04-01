@@ -33,7 +33,7 @@ int analyse_jumps (struct code *c, const uint8 *code, uint32 size, uint32 addres
     base[i].address = address + (i << 2);
 
     if (!skip || dslot)
-      base[i].refcount++;
+      base[i].notskipped = 1;
 
     switch (base[i].itype) {
     case I_BEQ: case I_BNE: case I_BGEZ: case I_BGTZ: case I_BLEZ:
@@ -90,7 +90,12 @@ int analyse_jumps (struct code *c, const uint8 *code, uint32 size, uint32 addres
       if (tgt & 0x8000) { tgt |= ~0xFFFF;  }
       tgt += i + 1;
       if (tgt < numopc) {
-        base[tgt].refcount++;
+        if (base[i].jtype == JTYPE_BRANCHANDLINK ||
+            base[i].jtype == JTYPE_BRANCHANDLINKLIKELY) {
+          base[tgt].callcount++;
+        } else {
+          base[tgt].jumpcount++;
+        }
       } else {
         error (__FILE__ ": branch outside file\n%s", allegrex_disassemble (base[i].opc, base[i].address));
       }
@@ -102,7 +107,10 @@ int analyse_jumps (struct code *c, const uint8 *code, uint32 size, uint32 addres
       base[i].target_addr |= ((base[i].address) & 0xF0000000);
       tgt = (base[i].target_addr - address) >> 2;
       if (tgt < numopc) {
-        base[tgt].refcount++;
+        if (base[i].jtype == JTYPE_JUMPANDLINK)
+          base[tgt].callcount++;
+        else
+          base[tgt].jumpcount++;
       } else {
         error (__FILE__ ": jump outside file\n%s", allegrex_disassemble (base[i].opc, base[i].address));
       }
@@ -110,6 +118,10 @@ int analyse_jumps (struct code *c, const uint8 *code, uint32 size, uint32 addres
     default:
       base[i].target_addr = 0;
     }
+  }
+
+  if (dslot) {
+    error (__FILE__ ": a delay slot at the end of code");
   }
 
   return 1;
@@ -126,16 +138,45 @@ int analyse_relocs (struct code *c)
     opc = (rel->target - c->baddr) >> 2;
     if (opc >= c->numopc) continue;
 
-    c->base[opc].ext_refcount++;
+    c->base[opc].extref = rel;
   }
   return 1;
 }
 
 static
-int analyse_registers (struct code *c)
+int analyse_subroutines (struct code *c)
 {
+  uint32 i, j;
+  struct prx_export *exp;
+
+  c->subs_pool = pool_create (sizeof (struct subroutine), 64, 8);
+  c->subroutines = list_create (c->subs_pool);
+
+  for (i = 0; i < c->file->modinfo->numexports; i++) {
+    exp = &c->file->modinfo->exports[i];
+    for (j = 0; j < exp->nfuncs; j++) {
+      struct subroutine *sub;
+      element el;
+      uint32 tgt;
+
+      tgt = (exp->funcs[j].vaddr - c->baddr) >> 2;
+      if (exp->funcs[j].vaddr < c->baddr ||
+          tgt >= c->numopc) {
+        error (__FILE__ ": invalid exported function");
+        continue;
+      }
+
+      el = list_inserttail (c->subroutines, NULL);
+      sub = element_addendum (el);
+      sub->function = &exp->funcs[j];
+      sub->loc = &c->base[tgt];
+    }
+  }
+
   return 1;
 }
+
+
 
 
 struct code* analyse_code (struct prx *p)
@@ -155,6 +196,11 @@ struct code* analyse_code (struct prx *p)
     return NULL;
   }
 
+  if (!analyse_subroutines (c)) {
+    free_code (c);
+    return NULL;
+  }
+
   return c;
 }
 
@@ -164,6 +210,9 @@ void free_code (struct code *c)
   if (c->base)
     free (c->base);
   c->base = NULL;
+  if (c->subs_pool)
+    pool_destroy (c->subs_pool);
+  c->subs_pool = NULL;
   free (c);
 }
 
