@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "lists.h"
+#include "alloc.h"
 #include "utils.h"
 
 struct _element {
@@ -13,7 +14,6 @@ struct _element {
   struct _element *prev;
 
   void *value;
-  void *const addend;
 };
 
 struct _list {
@@ -25,46 +25,22 @@ struct _list {
 };
 
 struct _list_pool {
-  struct _element *free_el;
-  struct _list    *free_lst;
-  struct _element *alloc_el;
-  struct _list    *alloc_lst;
-
-  size_t addendsize;
-  size_t numelms;
-  size_t numlsts;
+  fixedpool lstpool;
+  fixedpool elmpool;
 };
 
-list_pool pool_create (size_t addendsize, size_t numelms, size_t numlsts)
+list_pool pool_create (size_t numelms, size_t numlsts)
 {
   list_pool result = (list_pool) xmalloc (sizeof (struct _list_pool));
-  result->free_el = NULL;
-  result->free_lst = NULL;
-  result->alloc_el = NULL;
-  result->alloc_lst = NULL;
-  result->addendsize = addendsize;
-  result->numelms = numelms;
-  result->numlsts = numlsts;
+  result->elmpool = fixedpool_create (sizeof (struct _element), numelms);
+  result->lstpool = fixedpool_create (sizeof (struct _list), numlsts);
   return result;
 }
 
 void pool_destroy (list_pool pool)
 {
-  element el, ne;
-  list l, nl;
-
-  for (el = pool->alloc_el; el; el = ne) {
-    ne = el->next;
-    if (el->addend)
-      free ((void *) el->addend);
-    free (el);
-  }
-
-  for (l = pool->alloc_lst; l; l = nl) {
-    nl = l->next;
-    free (l);
-  }
-
+  fixedpool_destroy (pool->lstpool);
+  fixedpool_destroy (pool->elmpool);
   free (pool);
 }
 
@@ -73,39 +49,7 @@ static
 element element_alloc (list_pool pool)
 {
   element el;
-  struct _list_pool **pptr;
-
-  if (!pool->free_el) {
-    int i;
-
-    el = (element) xmalloc (pool->numelms * sizeof (struct _element));
-    memset (el, 0, pool->numelms * sizeof (struct _element));
-
-    el->next = pool->alloc_el;
-    pool->alloc_el = el;
-
-    for (i = 0; i < pool->numelms; i++) {
-      pptr = (struct _list_pool **) &el[i].pool;
-      *pptr = pool;
-    }
-
-    if (pool->addendsize) {
-      char *addend = xmalloc (pool->numelms * pool->addendsize);
-      void **ptr;
-
-      for (i = 0; i < pool->numelms; i++) {
-        ptr = (void **) &el[i].addend;  *ptr = addend;
-        addend += pool->addendsize;
-      }
-    }
-
-    for (i = 1; i < pool->numelms - 1; i++)
-      el[i].next = &el[i + 1];
-    el[i].next = NULL;
-    pool->free_el = &el[1];
-  }
-  el = pool->free_el;
-  pool->free_el = el->next;
+  el = fixedpool_alloc (pool->elmpool);
 
   el->prev = NULL;
   el->next = NULL;
@@ -120,11 +64,7 @@ void element_free (element el)
 {
   list_pool pool;
   pool = el->pool;
-  el->next = pool->free_el;
-  el->lst = NULL;
-  el->prev = NULL;
-  el->value = NULL;
-  pool->free_el = el;
+  fixedpool_free (pool->elmpool, el);
 }
 
 
@@ -132,29 +72,7 @@ static
 list list_alloc (list_pool pool)
 {
   list l;
-  struct _list_pool **pptr;
-
-  if (!pool->free_lst) {
-    int i;
-
-    l = (list) xmalloc (pool->numlsts * sizeof (struct _list));
-    memset (l, 0, pool->numlsts * sizeof (struct _list));
-
-    l->next = pool->alloc_lst;
-    pool->alloc_lst = l;
-
-    for (i = 0; i < pool->numlsts; i++) {
-      pptr = (struct _list_pool **) &l[i].pool;
-      *pptr = pool;
-    }
-
-    for (i = 1; i < pool->numlsts - 1; i++)
-      l[i].next = &l[i + 1];
-    l[i].next = NULL;
-    pool->free_lst = &l[1];
-  }
-  l = pool->free_lst;
-  pool->free_lst = l->next;
+  l = fixedpool_alloc (pool->lstpool);
   l->head = l->tail = NULL;
   l->size = 0;
   return l;
@@ -165,12 +83,7 @@ void list_free (list l)
 {
   list_pool pool;
   pool = l->pool;
-
-  l->next = pool->free_lst;
-
-  l->head = l->tail = NULL;
-  l->size = 0;
-  pool->free_lst = l;
+  fixedpool_free (pool->lstpool, l);
 }
 
 
@@ -250,11 +163,6 @@ void list_removetail (list l)
 void *element_value (element el)
 {
   return el->value;
-}
-
-void *element_addendum (element el)
-{
-  return el->addend;
 }
 
 element element_next (element el)

@@ -6,45 +6,67 @@
 #include "lists.h"
 #include "types.h"
 
-enum jump_type {
-  JTYPE_NONE,
-  JTYPE_BRANCH,
-  JTYPE_BRANCHLIKELY,
-  JTYPE_BRANCHANDLINK,
-  JTYPE_BRANCHANDLINKLIKELY,
-  JTYPE_JUMP,
-  JTYPE_JUMPANDLINK,
-  JTYPE_JUMPREGISTER,
-  JTYPE_JUMPANDLINKREGISTER
-};
+#define REGNUM_GPR_BASE 0
+#define REGNUM_GPR_END  31
+#define REGNUM_LO       32
+#define REGNUM_HI       33
+#define NUMREGS         34
+
+#define REF_CALL        0
+#define REF_JUMP        1
 
 struct location {
   uint32 opc;
   uint32 address;
 
-  int notskipped;
-  int jumpcount, callcount;
   struct prx_reloc *extref;
-  enum insn_type itype;
+  const struct allegrex_instruction *insn;
+
+  int mark;
+
+  int skipped, delayslot;
+  int callcount, jumpcount;
 
   uint32 target_addr;
-  enum jump_type jtype;
   struct location *target;
+
+  list reg_sources;
+  list reg_targets;
+
+  list references;
+  list targets;
+
+  struct register_info *where_used;
+  struct register_info *where_defined;
 };
+
+struct reference {
+  uint32 info;
+};
+
+struct register_info {
+  struct location *regs[NUMREGS];
+};
+
 
 struct subroutine {
   struct prx_function *function;
-  struct location *loc;
 };
 
 struct code {
   struct prx *file;
 
-  uint32 baddr, numopc;
+  uint32 baddr, lastaddr, numopc;
   struct location *base;
 
   list subroutines;
+
+  list branches;
+  list joints;
+
   list_pool subs_pool;
+  list_pool references_pool;
+  list_pool reginfo_pool;
 };
 
 struct code* analyse_code (struct prx *p);

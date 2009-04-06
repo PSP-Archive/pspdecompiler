@@ -201,7 +201,10 @@ struct nidstable *nids_load (const char *xmlpath)
   data.result->libs = hashtable_create (32, &hashtable_hash_string, &hashtable_string_compare);
 
   data.buffer_pos = 0;
-  data.result->buffer = xmalloc (size);
+  data.result->buffer = buf;
+  buf = xmalloc (size);
+
+  memcpy (buf, data.result->buffer, size);
 
   XML_SetUserData (p, (void *) &data);
   XML_SetElementHandler (p, &start_hndl, &end_hndl);

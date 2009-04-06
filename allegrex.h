@@ -446,8 +446,18 @@ enum allegrex_insn {
   I_MTVME
 };
 
+struct allegrex_instruction
+{
+  enum allegrex_insn insn;
+  const char *name;
+  unsigned int opcode;
+  unsigned int mask;
+  const char *fmt;
+  unsigned int flags;
+};
+
 char *allegrex_disassemble (unsigned int opcode, unsigned int PC);
-enum allegrex_insn allegrex_decode (unsigned int opcode);
+const struct allegrex_instruction *allegrex_decode (unsigned int opcode);
 
 #endif /* __ALLEGREX_H */
 

@@ -69,13 +69,34 @@ void *xrealloc (void *ptr, size_t size)
   return nptr;
 }
 
+
+static
+int _file_size (FILE *fp, const char *path, size_t *size)
+{
+  long r;
+
+  if (fseek (fp, 0L, SEEK_END)) {
+    xerror (__FILE__ ": can't seek file `%s'", path);
+    fclose (fp);
+    return 0;
+  }
+
+  r = ftell (fp);
+  if (r == -1) {
+    xerror (__FILE__ ": can't get file size of `%s'", path);
+    return 0;
+  }
+
+  if (size) *size = (size_t) r;
+  return 1;
+}
+
 void *read_file (const char *path, size_t *size)
 {
   FILE *fp;
   void *buffer;
   size_t file_size;
   size_t read_return;
-  long r;
 
   fp = fopen (path, "rb");
   if (!fp) {
@@ -83,20 +104,10 @@ void *read_file (const char *path, size_t *size)
     return NULL;
   }
 
-  if (fseek (fp, 0L, SEEK_END)) {
-    xerror (__FILE__ ": can't seek file `%s'", path);
-    fclose (fp);
+  if (!_file_size (fp, path, &file_size)) {
     return NULL;
   }
 
-  r = ftell (fp);
-  if (r == -1) {
-    xerror (__FILE__ ": can't get file size of `%s'", path);
-    fclose (fp);
-    return NULL;
-  }
-
-  file_size = (size_t) r;
   buffer = xmalloc (file_size);
   rewind (fp);
 
