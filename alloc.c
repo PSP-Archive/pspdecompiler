@@ -5,6 +5,7 @@
 
 struct _link {
   struct _link *next;
+  size_t size;
 };
 
 struct _fixedpool {
@@ -26,13 +27,29 @@ fixedpool fixedpool_create (size_t size, size_t grownum)
   return p;
 }
 
-void fixedpool_destroy (fixedpool p)
+void fixedpool_destroy (fixedpool p, pooltraversefn destroyfn, void *arg)
 {
   struct _link *ptr, *nptr;
+  char *c;
+  size_t count;
+
   for (ptr = p->allocated; ptr; ptr = nptr) {
+    if (destroyfn) {
+      c = (char *) ptr;
+      c += p->size;
+      count = 2 * p->size;
+
+      while (count <= ptr->size) {
+        destroyfn (c, arg);
+        c += p->size;
+        count += p->size;
+      }
+    }
+
     nptr = ptr->next;
     free (ptr);
   }
+
   p->allocated = NULL;
   p->nextfree = NULL;
   free (p);
@@ -40,7 +57,7 @@ void fixedpool_destroy (fixedpool p)
 
 void fixedpool_grow (fixedpool p, void *ptr, size_t size)
 {
-  char *cptr;
+  char *c;
   struct _link *l;
   size_t count;
 
@@ -48,19 +65,21 @@ void fixedpool_grow (fixedpool p, void *ptr, size_t size)
     free (ptr);
     return;
   }
+
   l = ptr;
   l->next = p->allocated;
+  l->size = size;
   p->allocated = l;
 
-  cptr = ptr;
-  cptr += p->size;
+  c = ptr;
+  c += p->size;
   count = 2 * p->size;
 
   while (count <= size) {
-    l = (struct _link *) cptr;
+    l = (struct _link *) c;
     l->next = p->nextfree;
     p->nextfree = l;
-    cptr += p->size;
+    c += p->size;
     count += p->size;
   }
 }

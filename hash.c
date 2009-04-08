@@ -5,92 +5,114 @@
 #include <math.h>
 
 #include "hash.h"
+#include "alloc.h"
 #include "utils.h"
 #include "types.h"
 
-#define DEFAULT_ALLOC_ENTRIES 512
 #define INDEX_FOR(hash, size) ((hash) & ((size) - 1))
 
-struct entry {
+struct _entry {
   void *key, *value;
   unsigned int hash;
-  struct entry *next;
+  struct _entry *next;
 };
 
-struct hashtable {
+typedef struct _entry *entry;
+
+struct _hashtable {
+  struct _hashpool *const pool;
   unsigned int tablelength;
   unsigned int entrycount;
   unsigned int loadlimit;
-  struct entry **table;
-  hashfunction hashfn;
-  equalsfunction eqfn;
+  struct _entry **table;
+  hashfn hashfn;
+  hashequalsfn eqfn;
+};
 
-  struct entry *alloclist;
-  struct entry *nextavail;
+struct _hashpool {
+  fixedpool tablepool;
+  fixedpool entrypool;
 };
 
 
-static
-struct entry *alloc_entry (struct hashtable *ht)
+hashpool hashpool_create (size_t numtables, size_t numentries)
 {
-  struct entry *e;
-  if (!ht->nextavail) {
-    int i;
-    e = (struct entry *) xmalloc (DEFAULT_ALLOC_ENTRIES * sizeof (struct entry));
-    e->next = ht->alloclist;
-    ht->alloclist = e;
+  hashpool pool = (hashpool) xmalloc (sizeof (struct _hashpool));
+  pool->tablepool = fixedpool_create (numtables, sizeof (struct _hashtable));
+  pool->entrypool = fixedpool_create (numentries, sizeof (struct _entry));
+  return pool;
+}
 
-    for (i = 1; i < DEFAULT_ALLOC_ENTRIES - 1; i++)
-      e[i].next = &e[i + 1];
-    e[i].next = NULL;
-
-    ht->nextavail = &e[1];
+static
+void destroy_hashtable (void *ptr, void *arg)
+{
+  hashtable ht = ptr;
+  if (ht->table) {
+    free (ht->table);
+    ht->table = NULL;
   }
-  e = ht->nextavail;
-  ht->nextavail = e->next;
-  return e;
+}
+
+void hashpool_destroy (hashpool pool)
+{
+  fixedpool_destroy (pool->tablepool, &destroy_hashtable, NULL);
+  fixedpool_destroy (pool->entrypool, NULL, NULL);
+  free (pool);
 }
 
 static
-void free_entry (struct hashtable *ht, struct entry *e)
+entry alloc_entry (hashpool pool)
 {
-  e->next = ht->nextavail;
-  ht->nextavail = e;
+  return fixedpool_alloc (pool->entrypool);
 }
 
-struct hashtable *hashtable_create (unsigned int size, hashfunction hashfn, equalsfunction eqfn)
+static
+void free_entry (hashpool pool, entry e)
 {
-  struct hashtable *ht;
+  fixedpool_free (pool->entrypool, e);
+}
 
-  ht = (struct hashtable *) xmalloc (sizeof (struct hashtable));
-  ht->table = (struct entry **) xmalloc (sizeof (struct entry *) * size);
-  memset (ht->table, 0, size * sizeof (struct entry *));
+
+hashtable hashtable_alloc (hashpool pool, unsigned int size, hashfn hashfn, hashequalsfn eqfn)
+{
+  hashtable ht;
+  hashpool *ptr;
+
+  ht = fixedpool_alloc (pool->tablepool);
+  ht->table = (entry *) xmalloc (sizeof (entry) * size);
+  memset (ht->table, 0, size * sizeof (entry));
+
+  ptr = (hashpool *) &ht->pool;
+  *ptr = pool;
 
   ht->tablelength = size;
   ht->entrycount = 0;
   ht->hashfn = hashfn;
   ht->eqfn = eqfn;
   ht->loadlimit = size >> 1;
-  ht->alloclist = NULL;
-  ht->nextavail = NULL;
 
   return ht;
 }
 
-void hashtable_free (struct hashtable *ht, traversefunction destroyfn, void *arg)
+void hashtable_free (hashtable ht, hashtraversefn destroyfn, void *arg)
 {
-  struct entry *e, *ne;
+  entry e;
+  unsigned int i;
 
-  if (destroyfn)
-    hashtable_traverse (ht, destroyfn, arg);
-
-  for (e = ht->alloclist; e; e = ne) {
-    ne = e->next;
-    free (e);
+  for (i = 0; i < ht->tablelength; i++) {
+    for (e = ht->table[i]; e; e = e->next) {
+      if (destroyfn)
+        destroyfn (e->key, e->value, e->hash, arg);
+      fixedpool_free (ht->pool->entrypool, e);
+    }
   }
 
-  free (ht->table);
-  free (ht);
+  fixedpool_grow (ht->pool->entrypool, ht->table, ht->tablelength);
+  ht->table = NULL;
+  ht->tablelength = 0;
+  ht->entrycount = 0;
+
+  fixedpool_free (ht->pool->tablepool, ht);
 }
 
 static
@@ -100,23 +122,23 @@ void free_all_callback (void *key, void *value, unsigned int hash, void *arg)
   if (value) free (value);
 }
 
-void hashtable_free_all (struct hashtable *ht)
+void hashtable_free_all (hashtable ht)
 {
   hashtable_free (ht, &free_all_callback, NULL);
 }
 
 
 static
-void hashtable_grow (struct hashtable *ht)
+void hashtable_grow (hashtable ht)
 {
-  struct entry **newtable;
-  struct entry *e, *ne;
+  entry *newtable;
+  entry e, ne;
   unsigned int newsize, i, index;
 
   newsize = ht->tablelength << 1;
 
-  newtable = (struct entry **) xmalloc (sizeof (struct entry *) * newsize);
-  memset (newtable, 0, newsize * sizeof (struct entry *));
+  newtable = (entry *) xmalloc (sizeof (entry) * newsize);
+  memset (newtable, 0, newsize * sizeof (entry));
 
   for (i = 0; i < ht->tablelength; i++) {
     for (e = ht->table[i]; e; e = ne) {
@@ -127,31 +149,33 @@ void hashtable_grow (struct hashtable *ht)
     }
   }
 
-  free (ht->table);
+  fixedpool_grow (ht->pool->entrypool, ht->table, ht->tablelength);
+
   ht->table = newtable;
   ht->tablelength = newsize;
   ht->loadlimit = newsize >> 1;
 }
 
-unsigned int hashtable_count (struct hashtable *ht)
+unsigned int hashtable_count (hashtable ht)
 {
   return ht->entrycount;
 }
 
-void hashtable_insert (struct hashtable *ht, void *key, void *value)
+void hashtable_insert (hashtable ht, void *key, void *value)
 {
-  hashtable_inserth (ht, key, value, ht->hashfn (key));
+  hashtable_inserthash (ht, key, value, ht->hashfn (key));
 }
 
-void hashtable_inserth (struct hashtable *ht, void *key, void *value, unsigned int hash)
+void hashtable_inserthash (hashtable ht, void *key, void *value, unsigned int hash)
 {
   unsigned int index;
-  struct entry *e;
+  entry e;
 
   if (ht->entrycount >= ht->loadlimit) {
     hashtable_grow (ht);
   }
-  e = alloc_entry (ht);
+
+  e = alloc_entry (ht->pool);
   e->hash = hash;
   index = INDEX_FOR (e->hash, ht->tablelength);
   e->key = key;
@@ -163,10 +187,10 @@ void hashtable_inserth (struct hashtable *ht, void *key, void *value, unsigned i
 
 
 static
-struct entry *find_entry (struct hashtable *ht, void *key, unsigned int hash, int remove)
+entry find_entry (hashtable ht, void *key, unsigned int hash, int remove)
 {
-  struct entry *e;
-  struct entry **prev;
+  entry e;
+  entry *prev;
   unsigned int index;
 
   index = INDEX_FOR (hash, ht->tablelength);
@@ -179,7 +203,7 @@ struct entry *find_entry (struct hashtable *ht, void *key, unsigned int hash, in
     if (remove) {
       *prev = e->next;
       ht->entrycount--;
-      free_entry (ht, e);
+      free_entry (ht->pool, e);
     }
 
     return e;
@@ -187,14 +211,14 @@ struct entry *find_entry (struct hashtable *ht, void *key, unsigned int hash, in
   return NULL;
 }
 
-void *hashtable_search (struct hashtable *ht, void *key, void **key_found)
+void *hashtable_search (hashtable ht, void *key, void **key_found)
 {
-  return hashtable_searchh (ht, key, key_found, ht->hashfn (key));
+  return hashtable_searchhash (ht, key, key_found, ht->hashfn (key));
 }
 
-void *hashtable_searchh (struct hashtable *ht, void *key, void **key_found, unsigned int hash)
+void *hashtable_searchhash (hashtable ht, void *key, void **key_found, unsigned int hash)
 {
-  struct entry *e = find_entry (ht, key, hash, 0);
+  entry e = find_entry (ht, key, hash, 0);
   if (e) {
     if (key_found)
       *key_found = e->key;
@@ -203,14 +227,14 @@ void *hashtable_searchh (struct hashtable *ht, void *key, void **key_found, unsi
   return NULL;
 }
 
-int hashtable_haskey (struct hashtable *ht, void *key, void **key_found)
+int hashtable_haskey (hashtable ht, void *key, void **key_found)
 {
-  return hashtable_haskeyh (ht, key, key_found, ht->hashfn (key));
+  return hashtable_haskeyhash (ht, key, key_found, ht->hashfn (key));
 }
 
-int hashtable_haskeyh (struct hashtable *ht, void *key, void **key_found, unsigned int hash)
+int hashtable_haskeyhash (hashtable ht, void *key, void **key_found, unsigned int hash)
 {
-  struct entry *e = find_entry (ht, key, hash, 0);
+  entry e = find_entry (ht, key, hash, 0);
   if (e) {
     if (key_found)
       *key_found = e->key;
@@ -219,14 +243,14 @@ int hashtable_haskeyh (struct hashtable *ht, void *key, void **key_found, unsign
   return FALSE;
 }
 
-void *hashtable_remove (struct hashtable *ht, void *key, void **key_found)
+void *hashtable_remove (hashtable ht, void *key, void **key_found)
 {
-  return hashtable_removeh (ht, key, key_found, ht->hashfn (key));
+  return hashtable_removehash (ht, key, key_found, ht->hashfn (key));
 }
 
-void *hashtable_removeh (struct hashtable *ht, void *key, void **key_found, unsigned int hash)
+void *hashtable_removehash (hashtable ht, void *key, void **key_found, unsigned int hash)
 {
-  struct entry *e = find_entry (ht, key, hash, 1);
+  entry e = find_entry (ht, key, hash, 1);
   if (e) {
     if (key_found)
       *key_found = e->key;
@@ -236,9 +260,9 @@ void *hashtable_removeh (struct hashtable *ht, void *key, void **key_found, unsi
 }
 
 
-void hashtable_traverse (struct hashtable *ht, traversefunction traversefn, void *arg)
+void hashtable_traverse (hashtable ht, hashtraversefn traversefn, void *arg)
 {
-  struct entry *e;
+  entry e;
   unsigned int i;
 
   for (i = 0; i < ht->tablelength; i++) {

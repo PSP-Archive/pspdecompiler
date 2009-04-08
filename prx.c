@@ -3,8 +3,7 @@
 #include <string.h>
 
 #include "prx.h"
-#include "allegrex.h"
-#include "hash.h"
+#include "nids.h"
 #include "utils.h"
 
 #define ELF_HEADER_SIZE              52
@@ -523,7 +522,6 @@ int load_sections (struct prx *p)
   uint32 offset;
 
   p->sections = NULL;
-  p->secbyname = hashtable_create (64, &hashtable_hash_string, &hashtable_string_compare);
   if (p->shnum == 0) return 1;
 
   sections = xmalloc (p->shnum * sizeof (struct elf_section));
@@ -569,9 +567,6 @@ int load_sections (struct prx *p)
             error (__FILE__ ": invalid section name");
             return 0;
           }
-        }
-        for (idx = 0; idx < p->shnum; idx++) {
-          hashtable_insert (p->secbyname, (void *) sections[idx].name, &sections[idx]);
         }
       }
     }
@@ -1208,9 +1203,6 @@ void free_sections (struct prx *p)
   if (p->sections)
     free (p->sections);
   p->sections = NULL;
-  if (p->secbyname)
-    hashtable_free (p->secbyname, NULL, NULL);
-  p->secbyname = NULL;
 }
 
 static

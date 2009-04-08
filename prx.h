@@ -2,7 +2,6 @@
 #define __PRX_H
 
 #include "types.h"
-#include "hash.h"
 #include "nids.h"
 
 #define ELF_HEADER_IDENT        16
@@ -36,7 +35,6 @@ struct prx
   const uint8 *data;
 
   struct elf_section *sections;
-  struct hashtable *secbyname;
 
   struct elf_program *programs;
 

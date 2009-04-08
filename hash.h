@@ -3,28 +3,36 @@
 
 #include <stddef.h>
 
-struct hashtable;
+struct _hashtable;
+typedef struct _hashtable *hashtable;
 
-typedef unsigned int (*hashfunction) (void *key);
-typedef int (*equalsfunction) (void *key1, void *key2, unsigned int hash);
-typedef void (*traversefunction) (void *key, void *value, unsigned int hash, void *arg);
+struct _hashpool;
+typedef struct _hashpool *hashpool;
 
-struct hashtable *hashtable_create (unsigned int size, hashfunction hashfn, equalsfunction eqfn);
-void hashtable_free (struct hashtable *ht, traversefunction destroyfn, void *arg);
-void hashtable_free_all (struct hashtable *ht);
+typedef unsigned int (*hashfn) (void *key);
+typedef int (*hashequalsfn) (void *key1, void *key2, unsigned int hash);
+typedef void (*hashtraversefn) (void *key, void *value, unsigned int hash, void *arg);
 
-unsigned int hashtable_count (struct hashtable *ht);
+hashpool hashpool_create (size_t numtables, size_t numentries);
+void hashpool_destroy (hashpool pool);
 
-void hashtable_insert (struct hashtable *ht, void *key, void *value);
-void hashtable_inserth (struct hashtable *ht, void *key, void *value, unsigned int hash);
-void *hashtable_search (struct hashtable *ht, void *key, void **key_found);
-void *hashtable_searchh (struct hashtable *ht, void *key, void **key_found, unsigned int hash);
-int hashtable_haskey (struct hashtable *ht, void *key, void **key_found);
-int hashtable_haskeyh (struct hashtable *ht, void *key, void **key_found, unsigned int hash);
-void *hashtable_remove (struct hashtable *ht, void *key, void **key_found);
-void *hashtable_removeh (struct hashtable *ht, void *key, void **key_found, unsigned int hash);
+hashtable hashtable_alloc (hashpool pool, unsigned int size, hashfn hashfn, hashequalsfn eqfn);
 
-void hashtable_traverse (struct hashtable *ht, traversefunction traversefn, void *arg);
+void hashtable_free (hashtable ht, hashtraversefn destroyfn, void *arg);
+void hashtable_free_all (hashtable ht);
+
+unsigned int hashtable_count (hashtable ht);
+
+void hashtable_insert (hashtable ht, void *key, void *value);
+void hashtable_inserthash (hashtable ht, void *key, void *value, unsigned int hash);
+void *hashtable_search (hashtable ht, void *key, void **key_found);
+void *hashtable_searchhash (hashtable ht, void *key, void **key_found, unsigned int hash);
+int hashtable_haskey (hashtable ht, void *key, void **key_found);
+int hashtable_haskeyhash (hashtable ht, void *key, void **key_found, unsigned int hash);
+void *hashtable_remove (hashtable ht, void *key, void **key_found);
+void *hashtable_removehash (hashtable ht, void *key, void **key_found, unsigned int hash);
+
+void hashtable_traverse (hashtable ht, hashtraversefn traversefn, void *arg);
 
 int hashtable_string_compare (void *key1, void *key2, unsigned int hash);
 int hashtable_pointer_compare (void *key1, void *key2, unsigned int hash);

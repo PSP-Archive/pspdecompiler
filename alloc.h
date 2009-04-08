@@ -7,8 +7,10 @@
 struct _fixedpool;
 typedef struct _fixedpool *fixedpool;
 
+typedef void (*pooltraversefn) (void *ptr, void *arg);
+
 fixedpool fixedpool_create (size_t size, size_t grownum);
-void fixedpool_destroy (fixedpool p);
+void fixedpool_destroy (fixedpool p, pooltraversefn destroyfn, void *arg);
 
 void fixedpool_grow (fixedpool p, void *ptr, size_t size);
 void *fixedpool_alloc (fixedpool p);

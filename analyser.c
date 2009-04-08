@@ -43,13 +43,9 @@ int decode_instructions (struct code *c, const uint8 *code, uint32 size, uint32 
     base[i].insn = allegrex_decode (base[i].opc);
     base[i].address = address + (i << 2);
 
-    base[i].reg_sources = list_create (c->references_pool);
-    base[i].reg_targets = list_create (c->references_pool);
-    base[i].references = list_create (c->references_pool);
-
     if (base[i].insn == NULL) {
       error (__FILE__ ": invalid opcode 0x%08X at 0x%08X", base[i].opc, base[i].address);
-      return 0;
+      continue;
     }
 
     base[i].skipped = skip && !dslot;
@@ -125,6 +121,7 @@ int analyse_relocs (struct code *c)
   return 1;
 }
 
+/*
 static
 void linkregs (struct register_info *sources, struct register_info *targets, struct location *loc, int regno)
 {
@@ -134,10 +131,8 @@ void linkregs (struct register_info *sources, struct register_info *targets, str
     targets->regs[regno] = loc;
 
   el = list_inserthead (sources->regs[regno]->reg_targets, loc);
-  ((struct reference *) element_addendum (el))->info = regno;
 
   el = list_inserthead (loc->reg_sources, sources->regs[regno]);
-  ((struct reference *) element_addendum (el))->info = regno;
 }
 
 static
@@ -246,7 +241,7 @@ int analyse_subroutines (struct code *c)
   struct prx_export *exp;
   element el;
 
-  c->subs_pool = pool_create (sizeof (struct subroutine), 64, 8);
+  c->subs_pool = pool_create (64, 8);
   c->subroutines = list_create (c->subs_pool);
 
   c->branches = list_create (c->reginfo_pool);
@@ -284,7 +279,7 @@ int analyse_subroutines (struct code *c)
   return 1;
 }
 
-
+*/
 
 
 struct code* analyse_code (struct prx *p)
@@ -294,8 +289,6 @@ struct code* analyse_code (struct prx *p)
   memset (c, 0, sizeof (struct code));
 
   c->file = p;
-  c->references_pool = pool_create (sizeof (struct reference), 4096, 4096);
-  c->reginfo_pool = pool_create (sizeof (struct register_info), 1024, 128);
 
   if (!decode_instructions (c, p->programs->data,
        p->modinfo->expvaddr - 4, p->programs->vaddr)) {
@@ -308,10 +301,13 @@ struct code* analyse_code (struct prx *p)
     return NULL;
   }
 
+
+  /*
   if (!analyse_subroutines (c)) {
     free_code (c);
     return NULL;
   }
+  */
 
   return c;
 }
@@ -322,24 +318,6 @@ void free_code (struct code *c)
   if (c->base)
     free (c->base);
   c->base = NULL;
-  if (c->subs_pool)
-    pool_destroy (c->subs_pool);
-  c->subs_pool = NULL;
-  if (c->references_pool)
-    pool_destroy (c->references_pool);
-  c->references_pool = NULL;
-  if (c->reginfo_pool)
-    pool_destroy (c->reginfo_pool);
-  c->reginfo_pool = NULL;
   free (c);
 }
 
-void print_code (struct code *c)
-{
-  uint32 i;
-
-  for (i = 0; i < c->numopc; i++) {
-    report ("%s", allegrex_disassemble (c->base[i].opc, c->base[i].address));
-    report ("\n");
-  }
-}
