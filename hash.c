@@ -38,8 +38,8 @@ struct _hashpool {
 hashpool hashpool_create (size_t numtables, size_t numentries)
 {
   hashpool pool = (hashpool) xmalloc (sizeof (struct _hashpool));
-  pool->tablepool = fixedpool_create (numtables, sizeof (struct _hashtable));
-  pool->entrypool = fixedpool_create (numentries, sizeof (struct _entry));
+  pool->tablepool = fixedpool_create (sizeof (struct _hashtable), numtables);
+  pool->entrypool = fixedpool_create (sizeof (struct _entry), numentries);
   return pool;
 }
 
@@ -114,19 +114,6 @@ void hashtable_free (hashtable ht, hashtraversefn destroyfn, void *arg)
 
   fixedpool_free (ht->pool->tablepool, ht);
 }
-
-static
-void free_all_callback (void *key, void *value, unsigned int hash, void *arg)
-{
-  if (key)   free (key);
-  if (value) free (value);
-}
-
-void hashtable_free_all (hashtable ht)
-{
-  hashtable_free (ht, &free_all_callback, NULL);
-}
-
 
 static
 void hashtable_grow (hashtable ht)
@@ -218,7 +205,8 @@ void *hashtable_search (hashtable ht, void *key, void **key_found)
 
 void *hashtable_searchhash (hashtable ht, void *key, void **key_found, unsigned int hash)
 {
-  entry e = find_entry (ht, key, hash, 0);
+  entry e;
+  e = find_entry (ht, key, hash, 0);
   if (e) {
     if (key_found)
       *key_found = e->key;

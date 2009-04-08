@@ -2,6 +2,7 @@
 
 #include "prx.h"
 #include "analyser.h"
+#include "output.h"
 #include "nids.h"
 #include "hash.h"
 #include "utils.h"
@@ -53,13 +54,13 @@ int main (int argc, char **argv)
   if (verbose > 2 && nids)
     nids_print (nids);
 
-  if (verbose > 0) prx_print (p);
+  if (verbose > 1) prx_print (p);
 
   c = analyse_code (p);
   if (!c)
     fatal (__FILE__ ": can't analyse code `%s'", prxfilename);
 
-  if (verbose > 1) print_code (c);
+  if (verbose > 0) print_code (c, prxfilename);
   free_code (c);
 
   prx_free (p);

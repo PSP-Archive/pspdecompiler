@@ -4,6 +4,6 @@
 
 #include "code.h"
 
-void print_code (struct code *c);
+int print_code (struct code *c, char *filename);
 
 #endif /* __OUTPUT_H */

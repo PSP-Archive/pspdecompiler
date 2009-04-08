@@ -17,9 +17,7 @@ hashpool hashpool_create (size_t numtables, size_t numentries);
 void hashpool_destroy (hashpool pool);
 
 hashtable hashtable_alloc (hashpool pool, unsigned int size, hashfn hashfn, hashequalsfn eqfn);
-
 void hashtable_free (hashtable ht, hashtraversefn destroyfn, void *arg);
-void hashtable_free_all (hashtable ht);
 
 unsigned int hashtable_count (hashtable ht);
 
