@@ -159,6 +159,16 @@ int check_program_header (struct prx *p, uint32 index)
 }
 
 static
+int cmp_relocs (const void *p1, const void *p2)
+{
+  const struct prx_reloc *r1 = p1;
+  const struct prx_reloc *r2 = p2;
+  if (r1->target < r2->target) return -1;
+  if (r1->target > r2->target) return 1;
+  return 0;
+}
+
+static
 int check_apply_relocs (struct prx *p)
 {
   struct prx_reloc *r;
@@ -310,6 +320,8 @@ int check_apply_relocs (struct prx *p)
     }
 
   }
+
+  qsort (p->relocs, p->relocnum, sizeof (struct prx_reloc), &cmp_relocs);
 
   return 1;
 }
@@ -895,6 +907,7 @@ int load_relocs (struct prx *p)
 
   p->relocnum = count;
   p->relocs = (struct prx_reloc *) xmalloc (count * sizeof (struct prx_reloc));
+  memset (p->relocs, 0, count * sizeof (struct prx_reloc));
 
   count = 0;
   for (i = 0; i < p->shnum; i++) {

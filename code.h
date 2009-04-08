@@ -36,11 +36,13 @@ struct location {
   struct location *regsource[2];
   list regtarget;
 
-  struct extraregs_info *extrainfo;
+  struct extradeps *extrainfo;
+
+  struct subroutine *sub;
 
 };
 
-struct extraregs_info {
+struct extradeps {
   struct location *regsource[2];
   list regtarget[2];
 };
@@ -56,6 +58,7 @@ struct regdep_target {
 
 struct subroutine {
   struct prx_function *function;
+  struct location *location;
 };
 
 struct code {
@@ -65,10 +68,13 @@ struct code {
   struct location *base;
   struct location *extra;
 
+  list subroutines;
+
   listpool  lstpool;
   fixedpool regsrcpool;
   fixedpool regtgtpool;
   fixedpool extrapool;
+  fixedpool subspool;
 };
 
 

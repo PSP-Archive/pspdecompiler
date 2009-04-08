@@ -30,7 +30,6 @@ int decode_instructions (struct code *c, const uint8 *code, uint32 size, uint32 
 
   base = (struct location *) xmalloc ((numopc) * sizeof (struct location));
   memset (base, 0, (numopc) * sizeof (struct location));
-  report ("base = %p, %d\n", base, numopc);
   c->base = base;
   c->baddr = address;
   c->numopc = numopc;
@@ -165,7 +164,6 @@ int analyse_relocs (struct code *c)
 
     opc = (rel->target - c->baddr) >> 2;
     if (opc >= c->numopc) continue;
-    report ("opc = %d\n", opc);
 
     if (!c->base[opc].externalrefs)
       c->base[opc].externalrefs = list_alloc (c->lstpool);
@@ -193,9 +191,11 @@ void linkregs (struct regdep_source *source, struct regdep_target *target,
   } else {
     if (!loc->extrainfo) {
       loc->extrainfo = fixedpool_alloc (c->extrapool);
+      memset (loc->extrainfo, 0, sizeof (struct extradeps));
     }
     if (!source->dependency[regno]->extrainfo) {
       source->dependency[regno]->extrainfo = fixedpool_alloc (c->extrapool);
+      memset (source->dependency[regno]->extrainfo, 0, sizeof (struct extradeps));
     }
 
     src = &loc->extrainfo->regsource[slot];
@@ -217,6 +217,10 @@ int analyse_register_dependencies (struct code *c)
   struct regdep_source *source;
   struct regdep_target *target;
   list locs, sources, targets;
+
+  c->regsrcpool = fixedpool_create (sizeof (struct regdep_source), 256);
+  c->regtgtpool = fixedpool_create (sizeof (struct regdep_target), 256);
+  c->extrapool = fixedpool_create (sizeof (struct extradeps), 128);
 
   locs = list_alloc (c->lstpool);
   sources = list_alloc (c->lstpool);
@@ -332,7 +336,11 @@ int analyse_register_dependencies (struct code *c)
   return 1;
 }
 
-/*
+static
+int analyse_subroutine (struct code *c, struct subroutine *sub)
+{
+  return 1;
+}
 
 static
 int analyse_subroutines (struct code *c)
@@ -341,12 +349,8 @@ int analyse_subroutines (struct code *c)
   struct prx_export *exp;
   element el;
 
-  c->subs_pool = pool_create (64, 8);
-  c->subroutines = list_create (c->subs_pool);
-
-  c->branches = list_create (c->reginfo_pool);
-  c->joints = list_create (c->reginfo_pool);
-
+  c->subspool = fixedpool_create (sizeof (struct subroutine), 128);
+  c->subroutines = list_alloc (c->lstpool);
 
   for (i = 0; i < c->file->modinfo->numexports; i++) {
     exp = &c->file->modinfo->exports[i];
@@ -362,15 +366,17 @@ int analyse_subroutines (struct code *c)
         continue;
       }
 
-      el = list_inserttail (c->subroutines, &c->base[tgt]);
-      sub = element_addendum (el);
+      sub = fixedpool_alloc (c->subspool);
+      el = list_inserttail (c->subroutines, sub);
       sub->function = &exp->funcs[j];
+      sub->location = &c->base[tgt];
+      sub->location->sub = sub;
     }
   }
 
   el = list_head (c->subroutines);
   while (el) {
-    if (!analyse_subroutine (c, element_value (el), element_addendum (el)))
+    if (!analyse_subroutine (c, element_getvalue (el)))
       return 0;
 
     el = element_next (el);
@@ -378,8 +384,6 @@ int analyse_subroutines (struct code *c)
 
   return 1;
 }
-
-*/
 
 
 struct code* analyse_code (struct prx *p)
@@ -390,9 +394,6 @@ struct code* analyse_code (struct prx *p)
 
   c->file = p;
   c->lstpool = listpool_create (1024, 1024);
-  c->regsrcpool = fixedpool_create (sizeof (struct regdep_source), 256);
-  c->regtgtpool = fixedpool_create (sizeof (struct regdep_target), 256);
-  c->extrapool = fixedpool_create (sizeof (struct extraregs_info), 128);
 
   if (!decode_instructions (c, p->programs->data,
        p->modinfo->expvaddr - 4, p->programs->vaddr)) {
@@ -410,12 +411,10 @@ struct code* analyse_code (struct prx *p)
     return NULL;
   }
 
-  /*
   if (!analyse_subroutines (c)) {
     free_code (c);
     return NULL;
   }
-  */
 
   return c;
 }
@@ -441,6 +440,9 @@ void free_code (struct code *c)
   if (c->extrapool)
     fixedpool_destroy (c->extrapool, NULL, NULL);
   c->extrapool = NULL;
+  if (c->subspool)
+    fixedpool_destroy (c->subspool, NULL, NULL);
+  c->subspool = NULL;
   free (c);
 }
 
