@@ -18,9 +18,10 @@
 static
 int decode_instructions (struct code *c, const uint8 *code, uint32 size, uint32 address)
 {
-  struct location *base;
-  uint32 i, numopc = size >> 2;
-  int dslot = FALSE, skip = FALSE;
+  struct location *base, *extra;
+  uint32 i, extracount = 0;
+  uint32 numopc = size >> 2;
+  int slot = FALSE;
 
   if (size & 0x03 || address & 0x03) {
     error (__FILE__ ": size/address is not multiple of 4");
@@ -29,13 +30,14 @@ int decode_instructions (struct code *c, const uint8 *code, uint32 size, uint32 
 
   base = (struct location *) xmalloc ((numopc) * sizeof (struct location));
   memset (base, 0, (numopc) * sizeof (struct location));
+  report ("base = %p, %d\n", base, numopc);
   c->base = base;
   c->baddr = address;
   c->numopc = numopc;
-  c->lastaddr = address + size - 4;
 
   for (i = 0; i < numopc; i++) {
     uint32 tgt;
+
     base[i].opc = code[i << 2];
     base[i].opc |= code[(i << 2) + 1] << 8;
     base[i].opc |= code[(i << 2) + 2] << 16;
@@ -43,13 +45,21 @@ int decode_instructions (struct code *c, const uint8 *code, uint32 size, uint32 
     base[i].insn = allegrex_decode (base[i].opc);
     base[i].address = address + (i << 2);
 
+    if ((i + 1) != numopc)
+      base[i].next = &base[i + 1];
+
     if (base[i].insn == NULL) {
       error (__FILE__ ": invalid opcode 0x%08X at 0x%08X", base[i].opc, base[i].address);
       continue;
     }
 
-    base[i].skipped = skip && !dslot;
-    base[i].delayslot = dslot;
+    if (base[i].insn->flags & (INSN_BRANCH | INSN_JUMP)) {
+      if (slot) error (__FILE__ ": branch/jump inside delay slot at 0x%08X", base[i].address);
+      extracount++;
+      slot = TRUE;
+    } else {
+      slot = FALSE;
+    }
 
     if (base[i].insn->flags & INSN_BRANCH) {
       tgt = base[i].opc & 0xFFFF;
@@ -57,11 +67,6 @@ int decode_instructions (struct code *c, const uint8 *code, uint32 size, uint32 
       tgt += i + 1;
       if (tgt < numopc) {
         base[i].target = &base[tgt];
-        if (base[i].insn->flags & INSN_LINK) {
-          base[tgt].callcount++;
-        } else {
-          base[tgt].jumpcount++;
-        }
       } else {
         error (__FILE__ ": branch outside file\n%s", allegrex_disassemble (base[i].opc, base[i].address));
       }
@@ -72,34 +77,79 @@ int decode_instructions (struct code *c, const uint8 *code, uint32 size, uint32 
       tgt = (base[i].target_addr - address) >> 2;
       if (tgt < numopc) {
         base[i].target = &base[tgt];
-        if (base[i].insn->flags & INSN_LINK)
-          base[tgt].callcount++;
-        else
-          base[tgt].jumpcount++;
       } else {
         error (__FILE__ ": jump outside file\n%s", allegrex_disassemble (base[i].opc, base[i].address));
       }
     } else {
       base[i].target_addr = 0;
     }
-
-    if (base[i].insn->flags & (INSN_JUMP | INSN_BRANCH)) {
-      if (dslot) error (__FILE__ ": jump or branch inside a delay slot at 0x%08X", base[i].address);
-      else {
-        if ((base[i].insn->flags & (INSN_JUMP | INSN_LINK)) == INSN_JUMP)
-          skip = TRUE;
-        else
-          skip = FALSE;
-      }
-      dslot = TRUE;
-    } else {
-      if (!dslot) skip = FALSE;
-      dslot = FALSE;
-    }
   }
 
-  if (dslot) {
-    error (__FILE__ ": a delay slot at the end of code");
+  extra = (struct location *) xmalloc ((extracount) * sizeof (struct location));
+  memset (extra, 0, (extracount) * sizeof (struct location));
+  c->extra = extra;
+  extracount = 0;
+
+  for (i = numopc; i > 0;) {
+    i--;
+    if (!base[i].insn) continue;
+    if (base[i].insn->flags & (INSN_BRANCH | INSN_JUMP)) {
+      if ((i + 1) != numopc) {
+        memcpy (&extra[extracount], &base[i + 1], sizeof (struct location));
+        extra[extracount].references = list_alloc (c->lstpool);
+
+        if (base[i].target) {
+          if (!base[i].target->references)
+            base[i].target->references = list_alloc (c->lstpool);
+          list_inserttail (base[i].target->references, &extra[extracount]);
+        }
+
+        if (base[i].insn->flags & INSN_LINK) {
+          extra[extracount].iscall = TRUE;
+          if ((i + 2) < numopc) {
+            extra[extracount].next = &base[i + 2];
+            if (!base[i + 2].references)
+              base[i + 2].references = list_alloc (c->lstpool);
+            list_inserttail (base[i + 2].references, &extra[extracount]);
+          } else {
+            error (__FILE__ ": call at the end of file");
+            extra[extracount].next = NULL;
+          }
+        } else {
+          extra[extracount].next = base[i].target;
+        }
+
+        base[i].tnext = &extra[extracount];
+        list_inserttail (extra[extracount].references, &base[i]);
+
+        if (base[i].insn->flags & INSN_BRANCHLIKELY) {
+          if ((i + 2) < numopc) {
+            base[i].next = &base[i + 2];
+            if (!base[i + 2].references)
+              base[i + 2].references = list_alloc (c->lstpool);
+            list_inserttail (base[i + 2].references, &base[i]);
+          } else {
+            error (__FILE__ ": branch likely at the end of file");
+            base[i].next = NULL;
+          }
+        } else if (base[i].insn->flags & INSN_BRANCH) {
+          if (!base[i + 1].references)
+            base[i + 1].references = list_alloc (c->lstpool);
+          list_inserttail (base[i + 1].references, &base[i]);
+        }
+      } else {
+        error (__FILE__ ": branch/jump at the end of file");
+        base[i].target = NULL;
+      }
+
+      extracount++;
+    } else {
+      if ((i + 1) != numopc) {
+        if (!base[i + 1].references)
+          base[i + 1].references = list_alloc (c->lstpool);
+        list_inserttail (base[i + 1].references, &base[i]);
+      }
+    }
   }
 
   return 1;
@@ -115,124 +165,174 @@ int analyse_relocs (struct code *c)
 
     opc = (rel->target - c->baddr) >> 2;
     if (opc >= c->numopc) continue;
+    report ("opc = %d\n", opc);
 
-    c->base[opc].extref = rel;
+    if (!c->base[opc].externalrefs)
+      c->base[opc].externalrefs = list_alloc (c->lstpool);
+    list_inserttail (c->base[opc].externalrefs, rel);
   }
+  return 1;
+}
+
+
+static
+void linkregs (struct regdep_source *source, struct regdep_target *target,
+               struct code *c, struct location *loc, int regno, int slot)
+{
+  struct location **src;
+  list *tgt;
+
+  if (!target->dependency[regno]) {
+    target->dependency[regno] = list_alloc (c->lstpool);
+    list_inserttail (target->dependency[regno], loc);
+  }
+
+  if ((regno >= REGNUM_GPR_BASE) && (regno <= REGNUM_GPR_END)) {
+    src = &loc->regsource[slot];
+    tgt = &source->dependency[regno]->regtarget;
+  } else {
+    if (!loc->extrainfo) {
+      loc->extrainfo = fixedpool_alloc (c->extrapool);
+    }
+    if (!source->dependency[regno]->extrainfo) {
+      source->dependency[regno]->extrainfo = fixedpool_alloc (c->extrapool);
+    }
+
+    src = &loc->extrainfo->regsource[slot];
+    tgt = &source->dependency[regno]->extrainfo->regtarget[slot];
+  }
+
+  if (!(*tgt)) {
+    *tgt = list_alloc (c->lstpool);
+  }
+
+  list_inserttail (*tgt, loc);
+  *src = source->dependency[regno];
+}
+
+static
+int analyse_register_dependencies (struct code *c)
+{
+  uint32 i;
+  struct regdep_source *source;
+  struct regdep_target *target;
+  list locs, sources, targets;
+
+  locs = list_alloc (c->lstpool);
+  sources = list_alloc (c->lstpool);
+  targets = list_alloc (c->lstpool);
+
+  for (i = 0; i < c->numopc; i++) {
+    if (!c->base[i].externalrefs) {
+      if (!c->base[i].references) continue;
+      if (list_size (c->base[i].references) == 1) {
+        if (!((struct location *) list_headvalue (c->base[i].references))->iscall)
+          continue;
+      }
+    }
+    list_inserttail (locs, &c->base[i]);
+    c->base[i].isjoint = 1;
+  }
+
+  while (list_size (locs) != 0) {
+    struct location *loc;
+    struct location *curr;
+
+    loc = list_removehead (locs);
+
+    if (loc->isjoint) {
+      source = fixedpool_alloc (c->regsrcpool);
+      target = fixedpool_alloc (c->regtgtpool);
+      for (i = 0; i < NUMREGS; i++) {
+        source->dependency[i] = loc;
+        target->dependency[i] = NULL;
+      }
+    } else {
+      source = list_removehead (sources);
+      target = list_removehead (targets);
+    }
+
+    curr = loc;
+
+    while (1) {
+      if (curr->insn) {
+        if (curr->insn->flags & INSN_READ_GPR_S) {
+          if (RS (curr->opc) != 0)
+            linkregs (source, target, c, curr, REGNUM_GPR_BASE + RS (curr->opc), 0);
+        }
+
+        if (curr->insn->flags & INSN_READ_GPR_T) {
+          if (RT (curr->opc) != 0)
+            linkregs (source, target, c, curr, REGNUM_GPR_BASE + RT (curr->opc), 1);
+        }
+
+        if (curr->insn->flags & INSN_READ_LO) {
+          linkregs (source, target, c, curr, REGNUM_LO, 0);
+        }
+
+        if (curr->insn->flags & INSN_READ_HI) {
+          linkregs (source, target, c, curr, REGNUM_HI, 1);
+        }
+
+        if (curr->insn->flags & INSN_WRITE_GPR_D) {
+          if (RD (curr->opc) != 0)
+            source->dependency[REGNUM_GPR_BASE + RD (curr->opc)] = curr;
+        }
+
+        if (curr->insn->flags & INSN_WRITE_GPR_T) {
+          if (RT (curr->opc) != 0)
+            source->dependency[REGNUM_GPR_BASE + RT (curr->opc)] = curr;
+        }
+
+        if (curr->insn->flags & INSN_WRITE_LO) {
+          source->dependency[REGNUM_LO] = curr;
+        }
+
+        if (curr->insn->flags & INSN_WRITE_HI) {
+          source->dependency[REGNUM_HI] = curr;
+        }
+
+        if (curr->insn->flags & INSN_LINK) {
+          source->dependency[REGNUM_GPR_BASE + 31] = curr;
+        }
+
+        if (curr->tnext) {
+          struct regdep_source *copy;
+          list_inserthead (locs, curr->tnext);
+
+          copy = fixedpool_alloc (c->regsrcpool);
+          memcpy (copy, source, sizeof (struct regdep_source));
+          list_inserthead (sources, copy);
+          list_inserthead (targets, target);
+        }
+      }
+
+      if (curr->iscall) {
+        curr->depcall = fixedpool_alloc (c->regsrcpool);
+        memcpy (curr->depcall, source, sizeof (struct regdep_source));
+      }
+
+      if (!curr->next) break;
+
+      if (curr->next->isjoint) {
+        curr->depsource = source;
+        break;
+      }
+
+      curr = curr->next;
+    }
+
+    if (loc->isjoint)
+      loc->deptarget = target;
+  }
+
+  list_free (locs);
+  list_free (sources);
+  list_free (targets);
   return 1;
 }
 
 /*
-static
-void linkregs (struct register_info *sources, struct register_info *targets, struct location *loc, int regno)
-{
-  element el;
-
-  if (!targets->regs[regno])
-    targets->regs[regno] = loc;
-
-  el = list_inserthead (sources->regs[regno]->reg_targets, loc);
-
-  el = list_inserthead (loc->reg_sources, sources->regs[regno]);
-}
-
-static
-int analyse_subroutine (struct code *c, struct location *loc, struct subroutine *sub)
-{
-  int i;
-  struct register_info *sources, *targets;
-  element branch, joint;
-
-  branch = list_inserttail (c->branches, NULL);
-  joint = list_inserttail (c->joints, loc);
-
-  sources = element_addendum (joint);
-  targets = element_addendum (branch);
-
-  for (i = 0; i < NUMREGS; i++) {
-    sources->regs[i] = loc;
-    targets->regs[i] = NULL;
-  }
-
-  do {
-    struct location *jumploc = NULL;
-    loc = element_value (joint);
-    loc->where_used = targets;
-
-    while (loc) {
-      struct location *nloc = NULL;
-      int flags = loc->insn->flags;
-
-      loc->mark = 1;
-      if (loc->address != c->lastaddr) {
-        nloc = loc + 1;
-        if (nloc->skipped) {
-          nloc = jumploc;
-        }
-      } else {
-      }
-
-
-      if (flags & INSN_READ_GPR_S) {
-        linkregs (sources, targets, loc, REGNUM_GPR_BASE + RS (loc->opc));
-      }
-
-      if (flags & INSN_READ_GPR_T) {
-        linkregs (sources, targets, loc, REGNUM_GPR_BASE + RT (loc->opc));
-      }
-
-      if (flags & INSN_READ_LO) {
-        linkregs (sources, targets, loc, REGNUM_LO);
-      }
-
-      if (flags & INSN_READ_HI) {
-        linkregs (sources, targets, loc, REGNUM_HI);
-      }
-
-      if (flags & INSN_WRITE_GPR_D) {
-        sources->regs[REGNUM_GPR_BASE + RD (loc->opc)] = loc;
-      }
-
-      if (flags & INSN_WRITE_GPR_T) {
-        sources->regs[REGNUM_GPR_BASE + RT (loc->opc)] = loc;
-      }
-
-      if (flags & INSN_WRITE_LO) {
-        sources->regs[REGNUM_LO] = loc;
-      }
-
-      if (flags & INSN_WRITE_HI) {
-        sources->regs[REGNUM_HI] = loc;
-      }
-
-      if (flags & INSN_LINK) {
-
-      } else {
-        if (flags & INSN_BRANCH) {
-          loc->where_defined = sources;
-          branch = list_inserthead (c->branches, loc);
-          sources = element_addendum (branch);
-          memcpy (sources, loc->where_defined, sizeof (struct register_info));
-          if (loc->target) {
-            list_inserthead (loc->target->references, loc);
-            if (!loc->target->mark)
-              list_inserthead (c->joints, loc->target);
-          }
-        } else if (flags & INSN_JUMP) {
-        }
-      }
-
-      if (nloc->callcount) {
-        error (__FILE__ ": call inside a subroutine");
-        return 0;
-      }
-
-      loc = nloc;
-    }
-    joint = element_next (joint);
-  } while (joint);
-
-  return 1;
-}
 
 static
 int analyse_subroutines (struct code *c)
@@ -289,6 +389,10 @@ struct code* analyse_code (struct prx *p)
   memset (c, 0, sizeof (struct code));
 
   c->file = p;
+  c->lstpool = listpool_create (1024, 1024);
+  c->regsrcpool = fixedpool_create (sizeof (struct regdep_source), 256);
+  c->regtgtpool = fixedpool_create (sizeof (struct regdep_target), 256);
+  c->extrapool = fixedpool_create (sizeof (struct extraregs_info), 128);
 
   if (!decode_instructions (c, p->programs->data,
        p->modinfo->expvaddr - 4, p->programs->vaddr)) {
@@ -301,6 +405,10 @@ struct code* analyse_code (struct prx *p)
     return NULL;
   }
 
+  if (!analyse_register_dependencies (c)) {
+    free_code (c);
+    return NULL;
+  }
 
   /*
   if (!analyse_subroutines (c)) {
@@ -318,6 +426,21 @@ void free_code (struct code *c)
   if (c->base)
     free (c->base);
   c->base = NULL;
+  if (c->extra)
+    free (c->extra);
+  c->extra = NULL;
+  if (c->lstpool)
+    listpool_destroy (c->lstpool);
+  c->lstpool = NULL;
+  if (c->regsrcpool)
+    fixedpool_destroy (c->regsrcpool, NULL, NULL);
+  c->regsrcpool = NULL;
+  if (c->regtgtpool)
+    fixedpool_destroy (c->regtgtpool, NULL, NULL);
+  c->regtgtpool = NULL;
+  if (c->extrapool)
+    fixedpool_destroy (c->extrapool, NULL, NULL);
+  c->extrapool = NULL;
   free (c);
 }
 

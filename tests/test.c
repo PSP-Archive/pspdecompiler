@@ -25,7 +25,7 @@ int func (int b)
 int main (int argc, char **argv)
 {
   func (4);
-  printf ("%d\n", testcc (2.0f, 3.0f));
+  printf ("0x%08X\n", testcc (2.0f, 3.0f));
   return 0;
 }
 

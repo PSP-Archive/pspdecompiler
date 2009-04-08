@@ -86,9 +86,23 @@ element list_head (list l)
   return l->head;
 }
 
+void *list_headvalue (list l)
+{
+  if (list_head (l))
+    return element_getvalue (list_head (l));
+  return NULL;
+}
+
 element list_tail (list l)
 {
   return l->tail;
+}
+
+void *list_tailvalue (list l)
+{
+  if (list_tail (l))
+    return element_getvalue (list_tail (l));
+  return NULL;
 }
 
 element list_inserthead (list l, void *val)
@@ -100,6 +114,7 @@ element list_inserthead (list l, void *val)
   } else {
     el->next = l->head;
     l->head->prev = el;
+    l->head = el;
   }
   l->size++;
   return el;
@@ -114,6 +129,7 @@ element list_inserttail (list l, void *val)
   } else {
     el->prev = l->tail;
     l->tail->next = el;
+    l->tail = el;
   }
   l->size++;
   return el;

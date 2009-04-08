@@ -4,7 +4,7 @@
         .set    noat
 
 
-        .global printf        
+        .global printf
         .global dumpctrl1
         .ent    dumpctrl1
 dumpctrl1:
@@ -81,7 +81,7 @@ dumpctrl1:
 
         jal     print_regs
         move    $a0, $sp
-        
+
         lw      $ra, 128($sp)
         jr      $ra
         addiu   $sp, $sp, 136
@@ -116,7 +116,7 @@ loop1:
 
         lui     $a0, %hi($MSG3)
         jal     printf
-        addiu   $a0, %lo($MSG3) 
+        addiu   $a0, %lo($MSG3)
 
         li      $t0, 7
         bne     $s0, $t0, loop2
@@ -225,12 +225,12 @@ testcc:
         jal     dumpstatus1
         nop
 
-        .word   0x460D6132
-        //c.lt.s  $f12, $f13
-        nop
+        c.eq.s  $f12, $f13
+        cfc1    $v0, $31
+        /*
         bc1f    OK
         move    $v0, $0
-        li      $v0, 1
+        li      $v0, 1*/
 OK:
         sw      $v0, 0($sp)
         jal     dumpctrl1
@@ -258,4 +258,4 @@ $MSG3:
         .ascii "\012\000"
 
 $MSG4:
-	.ascii  "FPU Status registers:\012\000"
+	.ascii  "FPU Registers:\012\000"

@@ -3,6 +3,7 @@
 
 #include "prx.h"
 #include "allegrex.h"
+#include "alloc.h"
 #include "lists.h"
 #include "types.h"
 
@@ -12,40 +13,44 @@
 #define REGNUM_HI       33
 #define NUMREGS         34
 
-#define REF_CALL        0
-#define REF_JUMP        1
 
 struct location {
   uint32 opc;
   uint32 address;
 
-  struct prx_reloc *extref;
   const struct allegrex_instruction *insn;
 
-  int mark;
-
-  int skipped, delayslot;
-  int callcount, jumpcount;
-
+  int    iscall;
   uint32 target_addr;
   struct location *target;
+  struct location *next, *tnext;
 
-  list reg_sources;
-  list reg_targets;
+  list   references;
+  list   externalrefs;
 
-  list references;
-  list targets;
+  int    isjoint;
 
-  struct register_info *where_used;
-  struct register_info *where_defined;
+  struct regdep_target *deptarget;
+  struct regdep_source *depsource, *depcall;
+
+  struct location *regsource[2];
+  list regtarget;
+
+  struct extraregs_info *extrainfo;
+
 };
 
-struct reference {
-  uint32 info;
+struct extraregs_info {
+  struct location *regsource[2];
+  list regtarget[2];
 };
 
-struct register_info {
-  struct location *regs[NUMREGS];
+struct regdep_source {
+  struct location *dependency[NUMREGS];
+};
+
+struct regdep_target {
+  list dependency[NUMREGS];
 };
 
 
@@ -56,8 +61,14 @@ struct subroutine {
 struct code {
   struct prx *file;
 
-  uint32 baddr, lastaddr, numopc;
+  uint32 baddr, numopc;
   struct location *base;
+  struct location *extra;
+
+  listpool  lstpool;
+  fixedpool regsrcpool;
+  fixedpool regtgtpool;
+  fixedpool extrapool;
 };
 
 
