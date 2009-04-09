@@ -41,7 +41,7 @@ int decode_instructions (struct code *c, const uint8 *code, uint32 size, uint32 
     base[i].opc |= code[(i << 2) + 1] << 8;
     base[i].opc |= code[(i << 2) + 2] << 16;
     base[i].opc |= code[(i << 2) + 3] << 24;
-    base[i].insn = allegrex_decode (base[i].opc);
+    base[i].insn = allegrex_decode (base[i].opc, FALSE);
     base[i].address = address + (i << 2);
 
     if ((i + 1) != numopc)
@@ -96,6 +96,7 @@ int decode_instructions (struct code *c, const uint8 *code, uint32 size, uint32 
       if ((i + 1) != numopc) {
         memcpy (&extra[extracount], &base[i + 1], sizeof (struct location));
         extra[extracount].references = list_alloc (c->lstpool);
+        base[i + 1].delayslot = &extra[extracount];
 
         if (base[i].target) {
           if (!base[i].target->references)
@@ -157,10 +158,15 @@ int decode_instructions (struct code *c, const uint8 *code, uint32 size, uint32 
 static
 int analyse_relocs (struct code *c)
 {
-  uint32 i, opc;
-  for (i = 0; i < c->file->relocnum; i++) {
+  uint32 i;
+
+  c->switchpool = fixedpool_create (sizeof (struct codeswitch), 32);
+  c->switches = list_alloc (c->lstpool);
+
+  i = prx_findreloc (c->file, c->baddr);
+  for(;i < c->file->relocnum; i++) {
+    uint32 j, opc;
     struct prx_reloc *rel = &c->file->relocs[i];
-    if (rel->target < c->baddr) continue;
 
     opc = (rel->target - c->baddr) >> 2;
     if (opc >= c->numopc) continue;
@@ -168,38 +174,68 @@ int analyse_relocs (struct code *c)
     if (!c->base[opc].externalrefs)
       c->base[opc].externalrefs = list_alloc (c->lstpool);
     list_inserttail (c->base[opc].externalrefs, rel);
+
+    if (rel->type == R_MIPS_32) {
+      uint32 end, count;
+      j = end = prx_findreloc (c->file, rel->vaddr);
+
+      for (; end < c->file->relocnum; end++) {
+        if (c->file->relocs[end].target != rel->vaddr)
+          break;
+      }
+      if (j < c->file->relocnum && end < c->file->relocnum)
+        count = (c->file->relocs[end].target - c->file->relocs[j].target) >> 2;
+      else
+        count = 0;
+
+      for (;j < end; j++) {
+        struct prx_reloc *frel;
+        frel = &c->file->relocs[j];
+        if (frel->type == R_MIPS_LO16) {
+          struct codeswitch *cs;
+          cs = fixedpool_alloc (c->switchpool);
+          memset (cs, 0, sizeof (struct codeswitch));
+
+          cs->basereloc = frel;
+          cs->count = count;
+          report ("reloc at 0x%08X count = %d\n", rel->vaddr, count);
+          list_inserttail (c->switches, cs);
+        }
+      }
+    }
   }
   return 1;
 }
 
 
+
 static
-void linkregs (struct regdep_source *source, struct regdep_target *target,
+void linkregs (struct sourcedeps *source, struct targetdeps *target,
                struct code *c, struct location *loc, int regno, int slot)
 {
   struct location **src;
   list *tgt;
 
-  if (!target->dependency[regno]) {
-    target->dependency[regno] = list_alloc (c->lstpool);
-    list_inserttail (target->dependency[regno], loc);
+  if (!target->regs[regno]) {
+    target->regs[regno] = list_alloc (c->lstpool);
+    list_inserttail (target->regs[regno], loc);
   }
 
   if ((regno >= REGNUM_GPR_BASE) && (regno <= REGNUM_GPR_END)) {
     src = &loc->regsource[slot];
-    tgt = &source->dependency[regno]->regtarget;
+    tgt = &source->regs[regno]->regtarget;
   } else {
     if (!loc->extrainfo) {
       loc->extrainfo = fixedpool_alloc (c->extrapool);
       memset (loc->extrainfo, 0, sizeof (struct extradeps));
     }
-    if (!source->dependency[regno]->extrainfo) {
-      source->dependency[regno]->extrainfo = fixedpool_alloc (c->extrapool);
-      memset (source->dependency[regno]->extrainfo, 0, sizeof (struct extradeps));
+    if (!source->regs[regno]->extrainfo) {
+      source->regs[regno]->extrainfo = fixedpool_alloc (c->extrapool);
+      memset (source->regs[regno]->extrainfo, 0, sizeof (struct extradeps));
     }
 
     src = &loc->extrainfo->regsource[slot];
-    tgt = &source->dependency[regno]->extrainfo->regtarget[slot];
+    tgt = &source->regs[regno]->extrainfo->regtarget[slot];
   }
 
   if (!(*tgt)) {
@@ -207,19 +243,19 @@ void linkregs (struct regdep_source *source, struct regdep_target *target,
   }
 
   list_inserttail (*tgt, loc);
-  *src = source->dependency[regno];
+  *src = source->regs[regno];
 }
 
 static
 int analyse_register_dependencies (struct code *c)
 {
   uint32 i;
-  struct regdep_source *source;
-  struct regdep_target *target;
+  struct sourcedeps *source;
+  struct targetdeps *target;
   list locs, sources, targets;
 
-  c->regsrcpool = fixedpool_create (sizeof (struct regdep_source), 256);
-  c->regtgtpool = fixedpool_create (sizeof (struct regdep_target), 256);
+  c->regsrcpool = fixedpool_create (sizeof (struct sourcedeps), 256);
+  c->regtgtpool = fixedpool_create (sizeof (struct targetdeps), 256);
   c->extrapool = fixedpool_create (sizeof (struct extradeps), 128);
 
   locs = list_alloc (c->lstpool);
@@ -248,8 +284,8 @@ int analyse_register_dependencies (struct code *c)
       source = fixedpool_alloc (c->regsrcpool);
       target = fixedpool_alloc (c->regtgtpool);
       for (i = 0; i < NUMREGS; i++) {
-        source->dependency[i] = loc;
-        target->dependency[i] = NULL;
+        source->regs[i] = loc;
+        target->regs[i] = NULL;
       }
     } else {
       source = list_removehead (sources);
@@ -280,32 +316,32 @@ int analyse_register_dependencies (struct code *c)
 
         if (curr->insn->flags & INSN_WRITE_GPR_D) {
           if (RD (curr->opc) != 0)
-            source->dependency[REGNUM_GPR_BASE + RD (curr->opc)] = curr;
+            source->regs[REGNUM_GPR_BASE + RD (curr->opc)] = curr;
         }
 
         if (curr->insn->flags & INSN_WRITE_GPR_T) {
           if (RT (curr->opc) != 0)
-            source->dependency[REGNUM_GPR_BASE + RT (curr->opc)] = curr;
+            source->regs[REGNUM_GPR_BASE + RT (curr->opc)] = curr;
         }
 
         if (curr->insn->flags & INSN_WRITE_LO) {
-          source->dependency[REGNUM_LO] = curr;
+          source->regs[REGNUM_LO] = curr;
         }
 
         if (curr->insn->flags & INSN_WRITE_HI) {
-          source->dependency[REGNUM_HI] = curr;
+          source->regs[REGNUM_HI] = curr;
         }
 
         if (curr->insn->flags & INSN_LINK) {
-          source->dependency[REGNUM_GPR_BASE + 31] = curr;
+          source->regs[REGNUM_GPR_BASE + 31] = curr;
         }
 
         if (curr->tnext) {
-          struct regdep_source *copy;
+          struct sourcedeps *copy;
           list_inserthead (locs, curr->tnext);
 
           copy = fixedpool_alloc (c->regsrcpool);
-          memcpy (copy, source, sizeof (struct regdep_source));
+          memcpy (copy, source, sizeof (struct sourcedeps));
           list_inserthead (sources, copy);
           list_inserthead (targets, target);
         }
@@ -313,7 +349,7 @@ int analyse_register_dependencies (struct code *c)
 
       if (curr->iscall) {
         curr->depcall = fixedpool_alloc (c->regsrcpool);
-        memcpy (curr->depcall, source, sizeof (struct regdep_source));
+        memcpy (curr->depcall, source, sizeof (struct sourcedeps));
       }
 
       if (!curr->next) break;
@@ -333,6 +369,12 @@ int analyse_register_dependencies (struct code *c)
   list_free (locs);
   list_free (sources);
   list_free (targets);
+  return 1;
+}
+
+static
+int analyse_switches (struct code *c)
+{
   return 1;
 }
 
@@ -411,6 +453,11 @@ struct code* analyse_code (struct prx *p)
     return NULL;
   }
 
+  if (!analyse_switches (c)) {
+    free_code (c);
+    return NULL;
+  }
+
   if (!analyse_subroutines (c)) {
     free_code (c);
     return NULL;
@@ -425,24 +472,34 @@ void free_code (struct code *c)
   if (c->base)
     free (c->base);
   c->base = NULL;
+
   if (c->extra)
     free (c->extra);
   c->extra = NULL;
+
   if (c->lstpool)
     listpool_destroy (c->lstpool);
   c->lstpool = NULL;
+
   if (c->regsrcpool)
     fixedpool_destroy (c->regsrcpool, NULL, NULL);
   c->regsrcpool = NULL;
+
   if (c->regtgtpool)
     fixedpool_destroy (c->regtgtpool, NULL, NULL);
   c->regtgtpool = NULL;
+
   if (c->extrapool)
     fixedpool_destroy (c->extrapool, NULL, NULL);
   c->extrapool = NULL;
+
   if (c->subspool)
     fixedpool_destroy (c->subspool, NULL, NULL);
-  c->subspool = NULL;
+  c->subspool = NULL
+  ;
+  if (c->switchpool)
+    fixedpool_destroy (c->switchpool, NULL, NULL);
+
   free (c);
 }
 

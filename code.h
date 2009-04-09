@@ -24,14 +24,15 @@ struct location {
   uint32 target_addr;
   struct location *target;
   struct location *next, *tnext;
+  struct location *delayslot;
 
   list   references;
   list   externalrefs;
 
   int    isjoint;
 
-  struct regdep_target *deptarget;
-  struct regdep_source *depsource, *depcall;
+  struct targetdeps *deptarget;
+  struct sourcedeps *depsource, *depcall;
 
   struct location *regsource[2];
   list regtarget;
@@ -47,14 +48,18 @@ struct extradeps {
   list regtarget[2];
 };
 
-struct regdep_source {
-  struct location *dependency[NUMREGS];
+struct sourcedeps {
+  struct location *regs[NUMREGS];
 };
 
-struct regdep_target {
-  list dependency[NUMREGS];
+struct targetdeps {
+  list regs[NUMREGS];
 };
 
+struct codeswitch {
+  struct prx_reloc *basereloc;
+  int count;
+};
 
 struct subroutine {
   struct prx_function *function;
@@ -69,12 +74,14 @@ struct code {
   struct location *extra;
 
   list subroutines;
+  list switches;
 
   listpool  lstpool;
   fixedpool regsrcpool;
   fixedpool regtgtpool;
   fixedpool extrapool;
   fixedpool subspool;
+  fixedpool switchpool;
 };
 
 

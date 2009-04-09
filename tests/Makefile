@@ -15,7 +15,7 @@ LIBS =
 #USE_KERNEL_LIBC = 1
 # Use only kernel libraries
 #USE_KERNEL_LIBS = 1
-BUILD_PRX=1
+#BUILD_PRX=1
 
 PSPSDK=$(shell psp-config --pspsdk-path)
-include $(PSPSDK)/lib/build.mak
+include $(PSPSDK)/lib/build_prx.mak

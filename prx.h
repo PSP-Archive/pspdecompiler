@@ -196,6 +196,7 @@ struct prx *prx_load (const char *path);
 void prx_free (struct prx *p);
 void prx_print (struct prx *p);
 void prx_resolve_nids (struct prx *p, struct nidstable *nids);
+uint32 prx_findreloc (struct prx *p, uint32 target);
 uint32 prx_translate (struct prx *p, uint32 vaddr);
 
 #endif /* __PRX_H */

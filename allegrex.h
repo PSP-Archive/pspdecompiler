@@ -457,7 +457,7 @@ struct allegrex_instruction
 };
 
 char *allegrex_disassemble (unsigned int opcode, unsigned int PC);
-const struct allegrex_instruction *allegrex_decode (unsigned int opcode);
+const struct allegrex_instruction *allegrex_decode (unsigned int opcode, int allowalias);
 
 #endif /* __ALLEGREX_H */
 

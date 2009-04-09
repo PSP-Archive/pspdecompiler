@@ -1501,6 +1501,24 @@ void prx_resolve_nids (struct prx *p, struct nidstable *nids)
   }
 }
 
+uint32 prx_findreloc (struct prx *p, uint32 target)
+{
+  uint32 first, last, i;
+
+  first = 0;
+  last = p->relocnum - 1;
+  while (first < last) {
+    i = (first + last) / 2;
+    if (p->relocs[i].target < target) {
+      first = i + 1;
+    } else {
+      last = i;
+    }
+  }
+
+  return first;
+}
+
 uint32 prx_translate (struct prx *p, uint32 vaddr)
 {
   uint32 idx;

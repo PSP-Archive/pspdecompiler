@@ -108,30 +108,26 @@ void *list_tailvalue (list l)
 element list_inserthead (list l, void *val)
 {
   element el = element_alloc (l->pool, val);
-  el->lst = l;
   if (l->size == 0) {
+    el->lst = l;
+    l->size++;
     l->head = l->tail = el;
   } else {
-    el->next = l->head;
-    l->head->prev = el;
-    l->head = el;
+    element_insertbefore (l->head, el);
   }
-  l->size++;
   return el;
 }
 
 element list_inserttail (list l, void *val)
 {
   element el = element_alloc (l->pool, val);
-  el->lst = l;
   if (l->size == 0) {
+    el->lst = l;
+    l->size++;
     l->head = l->tail = el;
   } else {
-    el->prev = l->tail;
-    l->tail->next = el;
-    l->tail = el;
+    element_insertafter (l->tail, el);
   }
-  l->size++;
   return el;
 }
 

@@ -1113,13 +1113,16 @@ void print_instruction (const struct allegrex_instruction *insn, unsigned int op
 }
 
 #ifdef SLOW_VERSION
-const struct allegrex_instruction *allegrex_decode (unsigned int opcode)
+const struct allegrex_instruction *allegrex_decode (unsigned int opcode, int allowalias)
 {
   int i;
 
   for (i = 0; i < sizeof (instructions) / sizeof (struct allegrex_instruction); i++) {
     if ((instructions[i].mask & opcode) == instructions[i].opcode) {
-      return &instructions[i];
+      if (!allowalias && (instructions[i].flags & INSN_ALIAS))
+        return &instructions[instructions[i].insn];
+      else
+        return &instructions[i];
     }
   }
   return NULL;
@@ -1129,7 +1132,7 @@ const struct allegrex_instruction *allegrex_decode (unsigned int opcode)
 
 #include "allefast.c"
 
-const struct allegrex_instruction *allegrex_decode (unsigned int opcode)
+const struct allegrex_instruction *allegrex_decode (unsigned int opcode, int allowalias)
 {
   int cmdpos = 0;
   unsigned int temp;
@@ -1141,7 +1144,10 @@ const struct allegrex_instruction *allegrex_decode (unsigned int opcode)
     case COMMAND_TEST:
     case COMMAND_END:
       if ((cmd->param2 & opcode) == cmd->param1) {
-        return &instructions[cmd->param3];
+        if (!allowalias && (instructions[cmd->param3].flags & INSN_ALIAS))
+          return &instructions[instructions[cmd->param3].insn];
+        else
+          return &instructions[cmd->param3];
       }
       if (cmd->type == COMMAND_TEST) {
         cmdpos++;
@@ -1180,7 +1186,7 @@ const struct allegrex_instruction *allegrex_decode (unsigned int opcode)
 
 char *allegrex_disassemble (unsigned int opcode, unsigned int PC)
 {
-  const struct allegrex_instruction *insn = allegrex_decode (opcode);
+  const struct allegrex_instruction *insn = allegrex_decode (opcode, 1);
   print_instruction (insn, opcode, PC);
   return (char *) buffer;
 }
