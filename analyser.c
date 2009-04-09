@@ -158,13 +158,14 @@ int decode_instructions (struct code *c, const uint8 *code, uint32 size, uint32 
 static
 int analyse_relocs (struct code *c)
 {
-  uint32 i;
+  uint32 i, relocnum;
 
   c->switchpool = fixedpool_create (sizeof (struct codeswitch), 32);
   c->switches = list_alloc (c->lstpool);
+  relocnum = c->file->relocnum;
 
   i = prx_findreloc (c->file, c->baddr);
-  for(;i < c->file->relocnum; i++) {
+  for(;i < relocnum; i++) {
     uint32 j, opc;
     struct prx_reloc *rel = &c->file->relocs[i];
 
@@ -176,20 +177,30 @@ int analyse_relocs (struct code *c)
     list_inserttail (c->base[opc].externalrefs, rel);
 
     if (rel->type == R_MIPS_32) {
-      uint32 end, count;
+      struct prx_reloc *frel;
+      uint32 end, count = 0;
+
+      j = prx_findrelocbyaddr (c->file, rel->vaddr);
+      while (j < relocnum) {
+        if (c->file->relocsbyaddr[j].vaddr != (rel->vaddr + (count << 2)))
+          break;
+        count++; j++;
+      }
+
       j = end = prx_findreloc (c->file, rel->vaddr);
 
-      for (; end < c->file->relocnum; end++) {
-        if (c->file->relocs[end].target != rel->vaddr)
+      for (;end < relocnum; end++) {
+        frel = &c->file->relocs[end];
+        if (frel->target != rel->vaddr) {
+          if (count > ((frel->target - rel->vaddr) >> 2))
+            count = (frel->target - rel->vaddr) >> 2;
           break;
+        }
       }
-      if (j < c->file->relocnum && end < c->file->relocnum)
-        count = (c->file->relocs[end].target - c->file->relocs[j].target) >> 2;
-      else
-        count = 0;
+
+      if (count == 1) continue;
 
       for (;j < end; j++) {
-        struct prx_reloc *frel;
         frel = &c->file->relocs[j];
         if (frel->type == R_MIPS_LO16) {
           struct codeswitch *cs;
@@ -198,7 +209,7 @@ int analyse_relocs (struct code *c)
 
           cs->basereloc = frel;
           cs->count = count;
-          report ("reloc at 0x%08X count = %d\n", rel->vaddr, count);
+          report ("switch at 0x%08X to 0x%08X count = %d\n", rel->vaddr, rel->target, count);
           list_inserttail (c->switches, cs);
         }
       }

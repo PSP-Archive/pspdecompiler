@@ -169,6 +169,16 @@ int cmp_relocs (const void *p1, const void *p2)
 }
 
 static
+int cmp_relocs_by_addr (const void *p1, const void *p2)
+{
+  const struct prx_reloc *r1 = p1;
+  const struct prx_reloc *r2 = p2;
+  if (r1->vaddr < r2->vaddr) return -1;
+  if (r1->vaddr > r2->vaddr) return 1;
+  return 0;
+}
+
+static
 int check_apply_relocs (struct prx *p)
 {
   struct prx_reloc *r;
@@ -284,7 +294,7 @@ int check_apply_relocs (struct prx *p)
         write_uint32_le ((uint8 *) &offsbase->data[p->relocs[index].offset], temp);
         index++;
       }
-
+      index--;
       break;
     case R_MIPSX_HI16:
       r->target = ((addend & 0xFFFF) << 16) + addrbase->vaddr + r->addend;
@@ -321,7 +331,12 @@ int check_apply_relocs (struct prx *p)
 
   }
 
+
+  p->relocsbyaddr = xmalloc (p->relocnum * sizeof (struct prx_reloc));
+  memcpy (p->relocsbyaddr, p->relocs, p->relocnum * sizeof (struct prx_reloc));
+
   qsort (p->relocs, p->relocnum, sizeof (struct prx_reloc), &cmp_relocs);
+  qsort (p->relocsbyaddr, p->relocnum, sizeof (struct prx_reloc), &cmp_relocs_by_addr);
 
   return 1;
 }
@@ -1232,6 +1247,10 @@ void free_relocs (struct prx *p)
   if (p->relocs)
     free (p->relocs);
   p->relocs = NULL;
+
+  if (p->relocsbyaddr)
+    free (p->relocsbyaddr);
+  p->relocsbyaddr = NULL;
 }
 
 static
@@ -1452,7 +1471,30 @@ void print_module_info (struct prx *p)
   print_module_exports (p);
 }
 
-void prx_print (struct prx *p)
+void print_relocs (struct prx *p)
+{
+  uint32 i;
+  report ("\nRelocs:\n");
+  for (i = 0; i < p->relocnum; i++) {
+    const char *type = "unk";
+
+    switch (p->relocs[i].type) {
+    case R_MIPSX_HI16:  type = "xhi16"; break;
+    case R_MIPSX_J26:   type = "xj26"; break;
+    case R_MIPSX_JAL26: type = "xjal26"; break;
+    case R_MIPS_16:     type = "mips16"; break;
+    case R_MIPS_26:     type = "mips26"; break;
+    case R_MIPS_32:     type = "mips32"; break;
+    case R_MIPS_HI16:   type = "hi16"; break;
+    case R_MIPS_LO16:   type = "lo16"; break;
+    case R_MIPS_NONE:   type = "none"; break;
+    }
+    report ("  Type: %8s Vaddr: 0x%08X Target: 0x%08X Addend: 0x%08X\n",
+        type, p->relocs[i].vaddr, p->relocs[i].target, p->relocs[i].addend);
+  }
+}
+
+void prx_print (struct prx *p, int prtrelocs)
 {
   report ("ELF header:\n");
   report ("  Entry point address:        0x%08X\n", p->entry);
@@ -1463,6 +1505,8 @@ void prx_print (struct prx *p)
 
   print_sections (p);
   print_programs (p);
+  if (prtrelocs)
+    print_relocs (p);
   print_module_info (p);
 
   report ("\n");
@@ -1501,6 +1545,26 @@ void prx_resolve_nids (struct prx *p, struct nidstable *nids)
   }
 }
 
+
+uint32 prx_translate (struct prx *p, uint32 vaddr)
+{
+  uint32 idx;
+  for (idx = 0; idx < p->phnum; idx++) {
+    struct elf_program *program = &p->programs[idx];
+    if (program->type != PT_LOAD) continue;
+    if (vaddr >= program->vaddr &&
+        (vaddr - program->vaddr) < program->memsz) {
+      vaddr -= program->vaddr;
+      if (vaddr < program->filesz)
+        return vaddr + program->offset;
+      else
+        return 0;
+    }
+  }
+  return 0;
+}
+
+
 uint32 prx_findreloc (struct prx *p, uint32 target)
 {
   uint32 first, last, i;
@@ -1519,20 +1583,20 @@ uint32 prx_findreloc (struct prx *p, uint32 target)
   return first;
 }
 
-uint32 prx_translate (struct prx *p, uint32 vaddr)
+uint32 prx_findrelocbyaddr (struct prx *p, uint32 vaddr)
 {
-  uint32 idx;
-  for (idx = 0; idx < p->phnum; idx++) {
-    struct elf_program *program = &p->programs[idx];
-    if (program->type != PT_LOAD) continue;
-    if (vaddr >= program->vaddr &&
-        (vaddr - program->vaddr) < program->memsz) {
-      vaddr -= program->vaddr;
-      if (vaddr < program->filesz)
-        return vaddr + program->offset;
-      else
-        return 0;
+  uint32 first, last, i;
+
+  first = 0;
+  last = p->relocnum - 1;
+  while (first < last) {
+    i = (first + last) / 2;
+    if (p->relocsbyaddr[i].vaddr < vaddr) {
+      first = i + 1;
+    } else {
+      last = i;
     }
   }
-  return 0;
+
+  return first;
 }

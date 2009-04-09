@@ -40,6 +40,7 @@ struct prx
 
   uint32 relocnum;
   struct prx_reloc *relocs;
+  struct prx_reloc *relocsbyaddr;
 
   struct prx_modinfo *modinfo;
 };
@@ -194,9 +195,11 @@ struct prx_variable {
 
 struct prx *prx_load (const char *path);
 void prx_free (struct prx *p);
-void prx_print (struct prx *p);
+void prx_print (struct prx *p, int prtrelocs);
 void prx_resolve_nids (struct prx *p, struct nidstable *nids);
-uint32 prx_findreloc (struct prx *p, uint32 target);
 uint32 prx_translate (struct prx *p, uint32 vaddr);
+
+uint32 prx_findreloc (struct prx *p, uint32 target);
+uint32 prx_findrelocbyaddr (struct prx *p, uint32 vaddr);
 
 #endif /* __PRX_H */

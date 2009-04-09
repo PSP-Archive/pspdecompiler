@@ -4,14 +4,26 @@
         .set    noat
 
 
-testcc:
-        addiu   $sp, $sp, -16
-        sw      $ra, 4($sp)
-        lw      $ra, 4($sp)
+testcall_inner:
+        mult    $a0, $a0
         jr      $ra
-        addiu   $sp, $sp, 16
+        mflo    $v0
 
-        .end    testcc
+        .global testcall
+        .ent    testcall
+testcall:
+        andi    $t0, $a0, 1
+        lui     $v0, %hi(testcall_callback)
+        bnez    $t0, 1f
+        lw      $v0, %lo(testcall_callback)($v0)
+        addiu   $a0, $a0, 2
+1:
+        jr      $v0
+        nop
+
+        .end    testcall
 
 
         .section .rodata
+testcall_callback:
+        .word   testcall_inner

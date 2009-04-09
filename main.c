@@ -54,7 +54,7 @@ int main (int argc, char **argv)
   if (verbose > 2 && nids)
     nids_print (nids);
 
-  if (verbose > 1) prx_print (p);
+  if (verbose > 1) prx_print (p, (verbose > 2));
 
   c = analyse_code (p);
   if (!c)

@@ -2,14 +2,18 @@
 
 PSP_MODULE_INFO ("test", 0x0, 1, 2);
 
-extern int testcc (float a, float b);
+static int array[1024];
 
+extern int testcall (int a);
 
+static
 int innerfunc (int a)
 {
+  array[a + 10] = a - 1;
   return a * a;
 }
 
+static
 int switchtest (int c)
 {
   switch (c) {
@@ -26,19 +30,20 @@ int switchtest (int c)
   return 2;
 }
 
-int (*myfunc) (int a) = innerfunc;
+int (*callback) (int a) = innerfunc;
 
 int func (int b)
 {
   if (b & 1)
-    return myfunc (b + 2);
-  return myfunc (b - 1);
+    return callback (b + 2);
+  return callback (b - 1);
 }
 
 int module_start (SceUInt argc, void *arg)
 {
   func (4);
-  switchtest (-2);
+  switchtest (array[2]);
+  testcall (4);
   sceKernelSleepThread ();
   return 0;
 }

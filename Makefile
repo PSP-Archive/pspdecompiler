@@ -10,10 +10,9 @@ TARGET = pspdecompiler
 .c.o:
 	$(CC) -c -o $@ $(CFLAGS) $< 
 
-all:	$(TARGET)
-
-$(TARGET): $(OBJS)
+all:	$(OBJS)
 	$(CC) -o $(TARGET) $(OBJS) $(LIBS)
+
 
 .PHONY: clean
 
