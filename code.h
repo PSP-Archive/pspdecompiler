@@ -62,7 +62,8 @@ struct codeswitch {
 };
 
 struct subroutine {
-  struct prx_function *function;
+  struct prx_function *export;
+  struct prx_function *import;
   struct location *location;
 };
 

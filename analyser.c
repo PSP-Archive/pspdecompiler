@@ -158,16 +158,14 @@ int decode_instructions (struct code *c, const uint8 *code, uint32 size, uint32 
 static
 int analyse_relocs (struct code *c)
 {
-  uint32 i, relocnum;
-
-  c->switchpool = fixedpool_create (sizeof (struct codeswitch), 32);
-  c->switches = list_alloc (c->lstpool);
-  relocnum = c->file->relocnum;
+  uint32 i;
 
   i = prx_findreloc (c->file, c->baddr);
-  for(;i < relocnum; i++) {
-    uint32 j, opc;
+  for(;i < c->file->relocnum; i++) {
+    uint32 opc;
     struct prx_reloc *rel = &c->file->relocs[i];
+
+    if (rel->target & 0x03) continue;
 
     opc = (rel->target - c->baddr) >> 2;
     if (opc >= c->numopc) continue;
@@ -175,45 +173,6 @@ int analyse_relocs (struct code *c)
     if (!c->base[opc].externalrefs)
       c->base[opc].externalrefs = list_alloc (c->lstpool);
     list_inserttail (c->base[opc].externalrefs, rel);
-
-    if (rel->type == R_MIPS_32) {
-      struct prx_reloc *frel;
-      uint32 end, count = 0;
-
-      j = prx_findrelocbyaddr (c->file, rel->vaddr);
-      while (j < relocnum) {
-        if (c->file->relocsbyaddr[j].vaddr != (rel->vaddr + (count << 2)))
-          break;
-        count++; j++;
-      }
-
-      j = end = prx_findreloc (c->file, rel->vaddr);
-
-      for (;end < relocnum; end++) {
-        frel = &c->file->relocs[end];
-        if (frel->target != rel->vaddr) {
-          if (count > ((frel->target - rel->vaddr) >> 2))
-            count = (frel->target - rel->vaddr) >> 2;
-          break;
-        }
-      }
-
-      if (count == 1) continue;
-
-      for (;j < end; j++) {
-        frel = &c->file->relocs[j];
-        if (frel->type == R_MIPS_LO16) {
-          struct codeswitch *cs;
-          cs = fixedpool_alloc (c->switchpool);
-          memset (cs, 0, sizeof (struct codeswitch));
-
-          cs->basereloc = frel;
-          cs->count = count;
-          report ("switch at 0x%08X to 0x%08X count = %d\n", rel->vaddr, rel->target, count);
-          list_inserttail (c->switches, cs);
-        }
-      }
-    }
   }
   return 1;
 }
@@ -395,22 +354,43 @@ int analyse_subroutine (struct code *c, struct subroutine *sub)
   return 1;
 }
 
+
+static
+void new_subroutine (struct code *c, struct location *loc, struct prx_function *imp, struct prx_function *exp)
+{
+  struct subroutine *sub = loc->sub;
+  if (!sub) {
+    sub = fixedpool_alloc (c->subspool);
+    memset (sub, 0, sizeof (struct subroutine));
+    sub->location = loc;
+    loc->sub = sub;
+  }
+  if (imp) sub->import = imp;
+  if (exp) sub->export = exp;
+
+  if (sub->import && sub->export) {
+    error (__FILE__ ": location 0x%08X is both import and export", loc->address);
+  }
+}
+
+
 static
 int analyse_subroutines (struct code *c)
 {
-  uint32 i, j;
-  struct prx_export *exp;
+  uint32 i, j, tgt;
   element el;
 
+  c->switchpool = fixedpool_create (sizeof (struct codeswitch), 32);
+  c->switches = list_alloc (c->lstpool);
   c->subspool = fixedpool_create (sizeof (struct subroutine), 128);
   c->subroutines = list_alloc (c->lstpool);
 
   for (i = 0; i < c->file->modinfo->numexports; i++) {
+    struct prx_export *exp;
+
     exp = &c->file->modinfo->exports[i];
     for (j = 0; j < exp->nfuncs; j++) {
-      struct subroutine *sub;
-      element el;
-      uint32 tgt;
+      struct location *loc;
 
       tgt = (exp->funcs[j].vaddr - c->baddr) >> 2;
       if (exp->funcs[j].vaddr < c->baddr ||
@@ -419,12 +399,92 @@ int analyse_subroutines (struct code *c)
         continue;
       }
 
-      sub = fixedpool_alloc (c->subspool);
-      el = list_inserttail (c->subroutines, sub);
-      sub->function = &exp->funcs[j];
-      sub->location = &c->base[tgt];
-      sub->location->sub = sub;
+      loc = &c->base[tgt];
+      new_subroutine (c, loc, NULL, &exp->funcs[j]);
     }
+  }
+
+  for (i = 0; i < c->file->modinfo->numimports; i++) {
+    struct prx_import *imp;
+
+    imp = &c->file->modinfo->imports[i];
+    for (j = 0; j < imp->nfuncs; j++) {
+      struct location *loc;
+
+      tgt = (imp->funcs[j].vaddr - c->baddr) >> 2;
+      if (imp->funcs[j].vaddr < c->baddr ||
+          tgt >= c->numopc) {
+        error (__FILE__ ": invalid imported function");
+        continue;
+      }
+
+      loc = &c->base[tgt];
+      new_subroutine (c, loc, &imp->funcs[j], NULL);
+    }
+  }
+
+  i = prx_findreloc (c->file, c->baddr);
+  for(;i < c->file->relocnum; i++) {
+    struct prx_reloc *rel;
+    struct location *loc;
+
+    rel = &c->file->relocs[i];
+    if (rel->target & 0x03) continue;
+
+    tgt = (rel->target - c->baddr) >> 2;
+    if (tgt >= c->numopc) continue;
+
+    loc = &c->base[tgt];
+
+    if (rel->type == R_MIPS_26 || rel->type == R_MIPSX_JAL26) {
+      if (rel->type == R_MIPS_26 && loc->insn->insn == I_J) continue;
+      new_subroutine (c, loc, NULL, NULL);
+    } else if (rel->type == R_MIPS_32) {
+      struct prx_reloc *frel;
+      uint32 end, count = 0;
+
+      j = prx_findrelocbyaddr (c->file, rel->vaddr);
+      while (j < c->file->relocnum) {
+        if (c->file->relocsbyaddr[j].vaddr != (rel->vaddr + (count << 2)))
+          break;
+        count++; j++;
+      }
+
+      j = end = prx_findreloc (c->file, rel->vaddr);
+
+      for (;end < c->file->relocnum; end++) {
+        frel = &c->file->relocs[end];
+        if (frel->target != rel->vaddr) {
+          if (count > ((frel->target - rel->vaddr) >> 2))
+            count = (frel->target - rel->vaddr) >> 2;
+          break;
+        }
+      }
+
+      if (count == 1) {
+        new_subroutine (c, loc, NULL, NULL);
+      } else {
+        for (;j < end; j++) {
+          frel = &c->file->relocs[j];
+          if (frel->type == R_MIPS_LO16) {
+            struct codeswitch *cs;
+            cs = fixedpool_alloc (c->switchpool);
+            memset (cs, 0, sizeof (struct codeswitch));
+
+            cs->basereloc = frel;
+            cs->count = count;
+            report ("switch at 0x%08X to 0x%08X count = %d\n", rel->vaddr, rel->target, count);
+            list_inserttail (c->switches, cs);
+          }
+        }
+      }
+    }
+  }
+
+
+  for (i = 0; i < c->numopc; i++) {
+    if (c->base[i].sub)
+      list_inserttail (c->subroutines, c->base[i].sub);
   }
 
   el = list_head (c->subroutines);
