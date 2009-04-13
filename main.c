@@ -61,7 +61,7 @@ int main (int argc, char **argv)
     fatal (__FILE__ ": can't analyse code `%s'", prxfilename);
 
   if (verbose > 0) print_code (c, prxfilename);
-  free_code (c);
+  code_free (c);
 
   prx_free (p);
 

@@ -49,7 +49,6 @@ void print_subroutine (FILE *out, struct code *c, struct subroutine *sub)
 {
   struct location *loc;
   fprintf (out, "/**\n * Subroutine at address 0x%08X\n", sub->location->address);
-  fprintf (out, " * Stack size: %d\n", sub->stacksize);
   fprintf (out, " */\n");
   if (sub->export) {
     if (sub->export->name) {

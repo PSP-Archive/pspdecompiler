@@ -101,6 +101,7 @@
 #define VFPU_MASK_ROT_NEG       0x1
 
 /* Alias (shorter version) */
+#define _AL   INSN_ALIAS
 #define _RS   INSN_READ_GPR_S
 #define _RT   INSN_READ_GPR_T
 #define _Rs   INSN_READ_FPR_S
@@ -146,43 +147,23 @@ struct bsearch_index {
 
 static const struct allegrex_instruction instructions[] =
 {
-  /* Macro instructions */
-  { I_SLL,       "nop",       0x00000000, 0xFFFFFFFF, "",         INSN_ALIAS },
-  { I_ADDIU,     "li",        0x24000000, 0xFFE00000, "%t, %i",   INSN_ALIAS },
-  { I_ORI,       "li",        0x34000000, 0xFFE00000, "%t, %I",   INSN_ALIAS },
-  { I_ADDU,      "move",      0x00000021, 0xFC1F07FF, "%d, %s",   INSN_ALIAS },
-  { I_OR,        "move",      0x00000025, 0xFC1F07FF, "%d, %s",   INSN_ALIAS },
-  { I_BEQ,       "b",         0x10000000, 0xFFFF0000, "%O",       INSN_ALIAS },
-  { I_BGEZ,      "b",         0x04010000, 0xFFFF0000, "%O",       INSN_ALIAS },
-  { I_BGEZAL,    "bal",       0x04110000, 0xFFFF0000, "%O",       INSN_ALIAS },
-  { I_BNE,       "bnez",      0x14000000, 0xFC1F0000, "%s, %O",   INSN_ALIAS },
-  { I_BNEL,      "bnezl",     0x54000000, 0xFC1F0000, "%s, %O",   INSN_ALIAS },
-  { I_BEQ,       "beqz",      0x10000000, 0xFC1F0000, "%s, %O",   INSN_ALIAS },
-  { I_BEQL,      "beqzl",     0x50000000, 0xFC1F0000, "%s, %O",   INSN_ALIAS },
-  { I_SUB,       "neg",       0x00000022, 0xFFE007FF, "%d, %t",   INSN_ALIAS },
-  { I_SUBU,      "negu",      0x00000023, 0xFFE007FF, "%d, %t",   INSN_ALIAS },
-  { I_NOR,       "not",       0x00000027, 0xFC1F07FF, "%d, %s",   INSN_ALIAS },
-  { I_JALR,      "jalr",      0x0000F809, 0xFC1FFFFF, "%J",       INSN_ALIAS },
-  { I_VCMP_P,    "vcmp.p",    0x6C000080, 0xFFFFFFF0, "%Zn",      INSN_ALIAS }, /* [hlide] added "%Zn" */
-  { I_VCMP_P,    "vcmp.p",    0x6C000080, 0xFFFF80F0, "%Zn, %yp", INSN_ALIAS }, /* [hlide] added "%Zn, %xp" */
-  { I_VCMP_Q,    "vcmp.q",    0x6C008080, 0xFFFFFFF0, "%Zn",      INSN_ALIAS }, /* [hlide] added "%Zn" */
-  { I_VCMP_Q,    "vcmp.q",    0x6C008080, 0xFFFF80F0, "%Zn, %yq", INSN_ALIAS }, /* [hlide] added "%Zn, %yq" */
-  { I_VCMP_S,    "vcmp.s",    0x6C000000, 0xFFFFFFF0, "%Zn",      INSN_ALIAS }, /* [hlide] added "%Zn" */
-  { I_VCMP_S,    "vcmp.s",    0x6C000000, 0xFFFF80F0, "%Zn, %ys", INSN_ALIAS }, /* [hlide] added "%Zn, %ys" */
-  { I_VCMP_T,    "vcmp.t",    0x6C008000, 0xFFFFFFF0, "%Zn",      INSN_ALIAS }, /* [hlide] added "%zp" */
-  { I_VCMP_T,    "vcmp.t",    0x6C008000, 0xFFFF80F0, "%Zn, %yt", INSN_ALIAS }, /* [hlide] added "%Zn, %yt" */
-  { I_VSYNC,     "vsync",     0xFFFF0320, 0xFFFFFFFF, "",         INSN_ALIAS },
-
   /* MIPS instructions */
   { I_ADD,       "add",       0x00000020, 0xFC0007FF, "%d, %s, %t", _RS|_RT|_WD  },
   { I_ADDI,      "addi",      0x20000000, 0xFC000000, "%t, %s, %i", _RS|_WT      },
+  { I_ADDIU,     "li",        0x24000000, 0xFFE00000, "%t, %i",     _AL|_WT      },
   { I_ADDIU,     "addiu",     0x24000000, 0xFC000000, "%t, %s, %i", _RS|_WT      },
+  { I_ADDU,      "move",      0x00000021, 0xFC1F07FF, "%d, %s",     _AL|_RS|_WD  },
   { I_ADDU,      "addu",      0x00000021, 0xFC0007FF, "%d, %s, %t", _RS|_RT|_WD  },
   { I_AND,       "and",       0x00000024, 0xFC0007FF, "%d, %s, %t", _RS|_RT|_WD  },
   { I_ANDI,      "andi",      0x30000000, 0xFC000000, "%t, %s, %I", _RS|_WT      },
+  { I_BEQ,       "b",         0x10000000, 0xFFFF0000, "%O",         _AL|_BR      },
+  { I_BEQ,       "beqz",      0x10000000, 0xFC1F0000, "%s, %O",     _AL|_RS|_BR  },
   { I_BEQ,       "beq",       0x10000000, 0xFC000000, "%s, %t, %O", _RS|_RT|_BR  },
+  { I_BEQL,      "beqzl",     0x50000000, 0xFC1F0000, "%s, %O",     _AL|_RS|_BR|_BL  },
   { I_BEQL,      "beql",      0x50000000, 0xFC000000, "%s, %t, %O", _RS|_RT|_BR|_BL  },
+  { I_BGEZ,      "b",         0x04010000, 0xFFFF0000, "%O",         _AL|_BR      },
   { I_BGEZ,      "bgez",      0x04010000, 0xFC1F0000, "%s, %O",     _RS|_BR      },
+  { I_BGEZAL,    "bal",       0x04110000, 0xFFFF0000, "%O",         _AL|_BR|_LK  },
   { I_BGEZAL,    "bgezal",    0x04110000, 0xFC1F0000, "%s, %O",     _RS|_BR|_LK  },
   { I_BGEZL,     "bgezl",     0x04030000, 0xFC1F0000, "%s, %O",     _RS|_BR|_BL  },
   { I_BGTZ,      "bgtz",      0x1C000000, 0xFC1F0000, "%s, %O",     _RS|_BR      },
@@ -194,7 +175,9 @@ static const struct allegrex_instruction instructions[] =
   { I_BLTZL,     "bltzl",     0x04020000, 0xFC1F0000, "%s, %O",     _RS|_BR|_BL  },
   { I_BLTZAL,    "bltzal",    0x04100000, 0xFC1F0000, "%s, %O",     _RS|_BR|_LK  },
   { I_BLTZALL,   "bltzall",   0x04120000, 0xFC1F0000, "%s, %O",     _RS|_BR|_BL|_LK  },
+  { I_BNE,       "bnez",      0x14000000, 0xFC1F0000, "%s, %O",     _AL|_RS|_BR  },
   { I_BNE,       "bne",       0x14000000, 0xFC000000, "%s, %t, %O", _RS|_RT|_BR  },
+  { I_BNEL,      "bnezl",     0x54000000, 0xFC1F0000, "%s, %O",     _AL|_RS|_BR|_BL  },
   { I_BNEL,      "bnel",      0x54000000, 0xFC000000, "%s, %t, %O", _RS|_RT|_BR|_BL  },
   { I_BREAK,     "break",     0x0000000D, 0xFC00003F, "%c",         _C0          },
   { I_CACHE,     "cache",     0xBC000000, 0xFC000000, "%k, %o",     _RS|_C0      },
@@ -213,6 +196,7 @@ static const struct allegrex_instruction instructions[] =
   { I_INS,       "ins",       0x7C000004, 0xFC00003F, "%t, %s, %a, %ni", _RS|_WT },
   { I_J,         "j",         0x08000000, 0xFC000000, "%j",         _JP          },
   { I_JR,        "jr",        0x00000008, 0xFC1FFFFF, "%J",         _RS|_JP      },
+  { I_JALR,      "jalr",      0x0000F809, 0xFC1FFFFF, "%J",         _AL|_RS|_WD|_JP },
   { I_JALR,      "jalr",      0x00000009, 0xFC1F07FF, "%J, %d",     _RS|_WD|_JP  },
   { I_JAL,       "jal",       0x0C000000, 0xFC000000, "%j",         _JP|_LK      },
   { I_LB,        "lb",        0x80000000, 0xFC000000, "%t, %o",     _RS|_WT|_LD  },
@@ -243,8 +227,11 @@ static const struct allegrex_instruction instructions[] =
   { I_MTLO,      "mtlo",      0x00000013, 0xFC1FFFFF, "%s",         _RS|_WL      },
   { I_MULT,      "mult",      0x00000018, 0xFC00FFFF, "%s, %t",     _RS|_RT|_WL|_WH },
   { I_MULTU,     "multu",     0x00000019, 0xFC0007FF, "%s, %t",     _RS|_RT|_WL|_WH },
+  { I_NOR,       "not",       0x00000027, 0xFC1F07FF, "%d, %s",     _AL|_RS|_WD  },
   { I_NOR,       "nor",       0x00000027, 0xFC0007FF, "%d, %s, %t", _RS|_RT|_WD  },
+  { I_OR,        "move",      0x00000025, 0xFC1F07FF, "%d, %s",     _AL|_RS|_WD  },
   { I_OR,        "or",        0x00000025, 0xFC0007FF, "%d, %s, %t", _RS|_RT|_WD  },
+  { I_ORI,       "li",        0x34000000, 0xFFE00000, "%t, %I",     _AL|_WT      },
   { I_ORI,       "ori",       0x34000000, 0xFC000000, "%t, %s, %I", _RS|_WT      },
   { I_ROTR,      "rotr",      0x00200002, 0xFFE0003F, "%d, %t, %a", _RT|_WD      },
   { I_ROTV,      "rotv",      0x00000046, 0xFC0007FF, "%d, %t, %s", _RS|_RT|_WD  },
@@ -254,6 +241,7 @@ static const struct allegrex_instruction instructions[] =
   { I_SC,        "sc",        0xE0000000, 0xFC000000, "%t, %o",     _RS|_RT|_ST  },
   { I_SH,        "sh",        0xA4000000, 0xFC000000, "%t, %o",     _RS|_RT|_ST  },
   { I_SLLV,      "sllv",      0x00000004, 0xFC0007FF, "%d, %t, %s", _RS|_RT|_WD  },
+  { I_SLL,       "nop",       0x00000000, 0xFFFFFFFF, "",           _AL          },
   { I_SLL,       "sll",       0x00000000, 0xFFE0003F, "%d, %t, %a", _RT|_WD      },
   { I_SLT,       "slt",       0x0000002A, 0xFC0007FF, "%d, %s, %t", _RS|_RT|_WD  },
   { I_SLTI,      "slti",      0x28000000, 0xFC000000, "%t, %s, %i", _RS|_WT      },
@@ -266,7 +254,9 @@ static const struct allegrex_instruction instructions[] =
   { I_SW,        "sw",        0xAC000000, 0xFC000000, "%t, %o",     _RS|_RT|_ST  },
   { I_SWL,       "swl",       0xA8000000, 0xFC000000, "%t, %o",     _RS|_RT|_ST  },
   { I_SWR,       "swr",       0xB8000000, 0xFC000000, "%t, %o",     _RS|_RT|_ST  },
+  { I_SUB,       "neg",       0x00000022, 0xFFE007FF, "%d, %t",     _AL|_RT|_WD  },
   { I_SUB,       "sub",       0x00000022, 0xFC0007FF, "%d, %s, %t", _RS|_RT|_WD  },
+  { I_SUBU,      "negu",      0x00000023, 0xFFE007FF, "%d, %t",     _AL|_RT|_WD  },
   { I_SUBU,      "subu",      0x00000023, 0xFC0007FF, "%d, %s, %t", _RS|_RT|_WD  },
   { I_SYNC,      "sync",      0x0000000F, 0xFFFFFFFF, "",           _C0          },
   { I_SYSCALL,   "syscall",   0x0000000C, 0xFC00003F, "%c",         _C0          },
@@ -360,9 +350,17 @@ static const struct allegrex_instruction instructions[] =
   { I_VCMOVT_Q,  "vcmovt.q",  0xD2A08080, 0xFFF88080, "%zq, %yq, %v3",  _RC|_C2      }, /* [hlide] added "%zq, %yq, %v3" */
   { I_VCMOVT_S,  "vcmovt.s",  0xD2A00000, 0xFFF88080, "%zs, %ys, %v3",  _RC|_C2      }, /* [hlide] added "%zs, %ys, %v3" */
   { I_VCMOVT_T,  "vcmovt.t",  0xD2A08000, 0xFFF88080, "%zt, %yt, %v3",  _RC|_C2      }, /* [hlide] added "%zt, %yt, %v3" */
+  { I_VCMP_P,    "vcmp.p",    0x6C000080, 0xFFFFFFF0, "%Zn",            _AL|_WC|_C2  }, /* [hlide] added "%Zn" */
+  { I_VCMP_P,    "vcmp.p",    0x6C000080, 0xFFFF80F0, "%Zn, %yp",       _AL|_WC|_C2  }, /* [hlide] added "%Zn, %xp" */
   { I_VCMP_P,    "vcmp.p",    0x6C000080, 0xFF8080F0, "%Zn, %yp, %xp",  _WC|_C2      }, /* [hlide] added "%Zn, %zp, %xp" */
+  { I_VCMP_Q,    "vcmp.q",    0x6C008080, 0xFFFFFFF0, "%Zn",            _AL|_WC|_C2  }, /* [hlide] added "%Zn" */
+  { I_VCMP_Q,    "vcmp.q",    0x6C008080, 0xFFFF80F0, "%Zn, %yq",       _AL|_WC|_C2  }, /* [hlide] added "%Zn, %yq" */
   { I_VCMP_Q,    "vcmp.q",    0x6C008080, 0xFF8080F0, "%Zn, %yq, %xq",  _WC|_C2      }, /* [hlide] added "%Zn, %yq, %xq" */
+  { I_VCMP_S,    "vcmp.s",    0x6C000000, 0xFFFFFFF0, "%Zn",            _AL|_WC|_C2  }, /* [hlide] added "%Zn" */
+  { I_VCMP_S,    "vcmp.s",    0x6C000000, 0xFFFF80F0, "%Zn, %ys",       _AL|_WC|_C2  }, /* [hlide] added "%Zn, %ys" */
   { I_VCMP_S,    "vcmp.s",    0x6C000000, 0xFF8080F0, "%Zn, %ys, %xs",  _WC|_C2      }, /* [hlide] added "%Zn, %ys, %xs" */
+  { I_VCMP_T,    "vcmp.t",    0x6C008000, 0xFFFFFFF0, "%Zn",            _AL|_WC|_C2  }, /* [hlide] added "%zp" */
+  { I_VCMP_T,    "vcmp.t",    0x6C008000, 0xFFFF80F0, "%Zn, %yt",       _AL|_WC|_C2  }, /* [hlide] added "%Zn, %yt" */
   { I_VCMP_T,    "vcmp.t",    0x6C008000, 0xFF8080F0, "%Zn, %yt, %xt",  _WC|_C2      }, /* [hlide] added "%Zn, %yt, %xt" */
   { I_VCOS_P,    "vcos.p",    0xD0130080, 0xFFFF8080, "%zp, %yp",   _C2              },
   { I_VCOS_Q,    "vcos.q",    0xD0138080, 0xFFFF8080, "%zq, %yq",   _C2              },
@@ -573,6 +571,7 @@ static const struct allegrex_instruction instructions[] =
   { I_VSUB_Q,    "vsub.q",    0x60808080, 0xFF808080, "%zq, %yq, %xq",  _C2          },
   { I_VSUB_S,    "vsub.s",    0x60800000, 0xFF808080, "%zs, %ys, %xs",  _C2          },
   { I_VSUB_T,    "vsub.t",    0x60808000, 0xFF808080, "%zt, %yt, %xt",  _C2          },
+  { I_VSYNC,     "vsync",     0xFFFF0320, 0xFFFFFFFF, "",           _AL|_C2          },
   { I_VSYNC,     "vsync",     0xFFFF0000, 0xFFFF0000, "%I",         _C2              },
   { I_VT4444_Q,  "vt4444.q",  0xD0598080, 0xFFFF8080, "%zq, %yq",   _C2              }, /* [hlide] %zq -> %zp */
   { I_VT5551_Q,  "vt5551.q",  0xD05A8080, 0xFFFF8080, "%zq, %yq",   _C2              }, /* [hlide] %zq -> %zp */
@@ -1120,9 +1119,7 @@ const struct allegrex_instruction *allegrex_decode (unsigned int opcode, int all
 
   for (i = 0; i < sizeof (instructions) / sizeof (struct allegrex_instruction); i++) {
     if ((instructions[i].mask & opcode) == instructions[i].opcode) {
-      if (!allowalias && (instructions[i].flags & INSN_ALIAS))
-        return &instructions[instructions[i].insn];
-      else
+      if (allowalias || !(instructions[i].flags & INSN_ALIAS))
         return &instructions[i];
     }
   }
@@ -1145,9 +1142,7 @@ const struct allegrex_instruction *allegrex_decode (unsigned int opcode, int all
     case COMMAND_TEST:
     case COMMAND_END:
       if ((cmd->param2 & opcode) == cmd->param1) {
-        if (!allowalias && (instructions[cmd->param3].flags & INSN_ALIAS))
-          return &instructions[instructions[cmd->param3].insn];
-        else
+        if (allowalias || !(instructions[cmd->param3].flags & INSN_ALIAS))
           return &instructions[cmd->param3];
       }
       if (cmd->type == COMMAND_TEST) {
@@ -1203,7 +1198,7 @@ int main (int argc, char **argv)
   for (i = 0; i < NUM_INSTRUCTIONS; i++) {
     unsigned int opcode = rand ();
     opcode = (opcode & (~instructions[i].mask)) | instructions[i].opcode;
-    printf ("%s\n", allegrex_disassemble (opcode, 4 * i));
+    printf ("%s\n", allegrex_disassemble (opcode, 4 * i, 1));
   }
 
   return 0;
@@ -1340,26 +1335,6 @@ void sort (int bpos, int epos, unsigned int oldmask, int cmdcount)
 
 }
 
-void print_name (int index)
-{
-  int pos;
-  char buffer[32];
-  const char *name;
-
-  if (instructions[index].flags & INSN_ALIAS) {
-    printf ("%-12d ", index);
-  } else {
-    name = instructions[index].name;
-    for (pos = 0; name[pos]; pos++) {
-      char c = toupper (name[pos]);
-      if (name[pos] == '.') c = '_';
-      buffer[pos] = c;
-    }
-    buffer[pos] = '\0';
-    printf ("I_%-10s ", buffer);
-  }
-}
-
 int main (int argc, char **argv)
 {
   int i;
@@ -1403,16 +1378,12 @@ int main (int argc, char **argv)
           _command[i].param1, _command[i].param2, _command[i].param3);
       break;
     case COMMAND_TEST:
-      printf ("  { COMMAND_TEST,    0x%08X, 0x%08X, ",
-          _command[i].param1, _command[i].param2);
-      print_name (_command[i].param3);
-      printf (" }");
+      printf ("  { COMMAND_TEST,    0x%08X, 0x%08X, %-10d    }",
+          _command[i].param1, _command[i].param2, _command[i].param3);
       break;
     case COMMAND_END:
-      printf ("  { COMMAND_END,     0x%08X, 0x%08X, ",
-          _command[i].param1, _command[i].param2);
-      print_name (_command[i].param3);
-      printf (" }");
+      printf ("  { COMMAND_END,     0x%08X, 0x%08X, %-10d    }",
+          _command[i].param1, _command[i].param2, _command[i].param3);
       break;
     }
     if (i != (_command_pos - 1)) printf (",");

@@ -22,17 +22,18 @@
 #define INSN_LOAD            0x00040000
 #define INSN_STORE           0x00080000
 
+#define INSN_ALLEGREX        0x00000000
 #define INSN_COP0            0x00100000
 #define INSN_FPU             0x00200000
 #define INSN_VFPU            0x00300000
 
-#define INSN_PROCESSOR(flags)  (((flags) >> 20) & 0x03)
+#define INSN_PROCESSOR(flags)  ((flags) & 0x00300000)
 
 #define INSN_ALIAS           0x80000000
 
 enum allegrex_insn {
-  I_INVALID=-1,
-  I_ADD=25,
+  I_INVALID,
+  I_ADD,
   I_ADDI,
   I_ADDIU,
   I_ADDU,

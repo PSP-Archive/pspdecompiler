@@ -13,47 +13,23 @@
 #define REGNUM_HI       33
 #define NUMREGS         34
 
+#define BRANCH_NORMAL   0
+#define BRANCH_ALWAYS   1
+#define BRANCH_NEVER    2
 
 struct location {
   uint32 opc;
   uint32 address;
 
   const struct allegrex_instruction *insn;
-
-  int    iscall;
-  uint32 target_addr;
   struct location *target;
-  struct location *next, *tnext;
-  struct location *delayslot;
 
-  list   references;
-  list   externalrefs;
-
-  int    isjoint;
-
-  struct targetdeps *deptarget;
-  struct sourcedeps *depsource, *depcall;
-
-  struct location *regsource[2];
-  list regtarget;
-
-  struct extradeps *extrainfo;
+  list references;
+  int  branchtype;
+  int  reachable;
 
   struct subroutine *sub;
-
-};
-
-struct extradeps {
-  struct location *regsource[2];
-  list regtarget[2];
-};
-
-struct sourcedeps {
-  struct location *regs[NUMREGS];
-};
-
-struct targetdeps {
-  list regs[NUMREGS];
+  struct bblock *block;
 };
 
 struct codeswitch {
@@ -66,15 +42,13 @@ struct subroutine {
   struct prx_function *import;
   struct location *location;
   struct location *end;
+  int    haserror;
+};
 
-  uint32 stacksize;
-  int    framereg;
-  int    variablestack;
-
-  uint32 savedregs;
-  uint32 usedregs;
-
-  uint32 savedoffset[32];
+struct bblock {
+  struct location *begin;
+  struct location *end;
+  list   outrefs, inrefs;
 };
 
 struct code {
@@ -82,18 +56,18 @@ struct code {
 
   uint32 baddr, numopc;
   struct location *base;
-  struct location *extra;
+  struct location *end;
 
   list subroutines;
   list switches;
 
   listpool  lstpool;
-  fixedpool regsrcpool;
-  fixedpool regtgtpool;
-  fixedpool extrapool;
-  fixedpool subspool;
   fixedpool switchpool;
+  fixedpool subspool;
 };
+
+struct code *code_alloc (void);
+void code_free (struct code *c);
 
 
 

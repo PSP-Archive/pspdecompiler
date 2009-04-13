@@ -289,6 +289,7 @@ int check_apply_relocs (struct prx *p)
         if (p->relocs[index].addrbase != r->addrbase) break;
 
         p->relocs[index].target = r->target;
+        p->relocs[index].matched = TRUE;
 
         temp = (temp & ~0xFFFF) | loaddr;
         write_uint32_le ((uint8 *) &offsbase->data[p->relocs[index].offset], temp);
