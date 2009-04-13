@@ -15,6 +15,8 @@
 #define IMM(op) ((signed short) (op & 0xFFFF))
 #define IMMU(op) ((unsigned short) (op & 0xFFFF))
 
+#define REG_SP   29
+
 static
 int decode_instructions (struct code *c, const uint8 *code, uint32 size, uint32 address)
 {
@@ -67,7 +69,7 @@ int decode_instructions (struct code *c, const uint8 *code, uint32 size, uint32 
       if (tgt < numopc) {
         base[i].target = &base[tgt];
       } else {
-        error (__FILE__ ": branch outside file\n%s", allegrex_disassemble (base[i].opc, base[i].address));
+        error (__FILE__ ": branch outside file\n%s", allegrex_disassemble (base[i].opc, base[i].address, TRUE));
       }
       base[i].target_addr = (tgt << 2) + address;
     } else if ((base[i].insn->flags & (INSN_JUMP | INSN_READ_GPR_S)) == INSN_JUMP) {
@@ -77,7 +79,7 @@ int decode_instructions (struct code *c, const uint8 *code, uint32 size, uint32 
       if (tgt < numopc) {
         base[i].target = &base[tgt];
       } else {
-        error (__FILE__ ": jump outside file\n%s", allegrex_disassemble (base[i].opc, base[i].address));
+        error (__FILE__ ": jump outside file\n%s", allegrex_disassemble (base[i].opc, base[i].address, TRUE));
       }
     } else {
       base[i].target_addr = 0;
@@ -343,14 +345,24 @@ int analyse_register_dependencies (struct code *c)
 }
 
 static
-int analyse_switches (struct code *c)
-{
-  return 1;
-}
-
-static
 int analyse_subroutine (struct code *c, struct subroutine *sub)
 {
+  struct location *loc;
+
+  loc = sub->location;
+  while (loc) {
+    int rs, rt, rd;
+    if (loc->tnext) {
+      break;
+    }
+    rs = RS (loc->opc);
+    rt = RT (loc->opc);
+    rd = RD (loc->opc);
+    if ((loc->insn->insn == I_ADDIU) && (rs == REG_SP) && (rt == REG_SP)) {
+      sub->stacksize = -(IMM (loc->opc));
+    }
+    loc = loc->next;
+  }
   return 1;
 }
 
@@ -359,6 +371,9 @@ static
 void new_subroutine (struct code *c, struct location *loc, struct prx_function *imp, struct prx_function *exp)
 {
   struct subroutine *sub = loc->sub;
+  if (loc->address == 0x00D8) {
+    report ("Caralho\n");
+  }
   if (!sub) {
     sub = fixedpool_alloc (c->subspool);
     memset (sub, 0, sizeof (struct subroutine));
@@ -378,6 +393,7 @@ static
 int analyse_subroutines (struct code *c)
 {
   uint32 i, j, tgt;
+  struct subroutine *prevsub = NULL;
   element el;
 
   c->switchpool = fixedpool_create (sizeof (struct codeswitch), 32);
@@ -436,9 +452,20 @@ int analyse_subroutines (struct code *c)
 
     loc = &c->base[tgt];
 
-    if (rel->type == R_MIPS_26 || rel->type == R_MIPSX_JAL26) {
-      if (rel->type == R_MIPS_26 && loc->insn->insn == I_J) continue;
+    if (rel->type == R_MIPSX_JAL26) {
       new_subroutine (c, loc, NULL, NULL);
+    } else if (rel->type == R_MIPS_26) {
+      struct location *calledfrom;
+      uint32 ctgt;
+
+      if (rel->vaddr < c->baddr) continue;
+      ctgt = (rel->vaddr - c->baddr) >> 2;
+      if (ctgt >= c->numopc) continue;
+
+      calledfrom = &c->base[ctgt];
+      if (calledfrom->insn->insn == I_JAL) {
+        new_subroutine (c, loc, NULL, NULL);
+      }
     } else if (rel->type == R_MIPS_32) {
       struct prx_reloc *frel;
       uint32 end, count = 0;
@@ -483,8 +510,16 @@ int analyse_subroutines (struct code *c)
 
 
   for (i = 0; i < c->numopc; i++) {
-    if (c->base[i].sub)
+    if (c->base[i].sub) {
       list_inserttail (c->subroutines, c->base[i].sub);
+      if (prevsub) {
+        prevsub->end = &c->base[i - 1];
+      }
+      prevsub = c->base[i].sub;
+    }
+  }
+  if (prevsub) {
+    prevsub->end = &c->base[i - 1];
   }
 
   el = list_head (c->subroutines);
@@ -520,11 +555,6 @@ struct code* analyse_code (struct prx *p)
   }
 
   if (!analyse_register_dependencies (c)) {
-    free_code (c);
-    return NULL;
-  }
-
-  if (!analyse_switches (c)) {
     free_code (c);
     return NULL;
   }

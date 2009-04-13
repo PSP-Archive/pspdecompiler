@@ -4,10 +4,11 @@
 #include <ctype.h>
 
 #include "output.h"
+#include "allegrex.h"
 #include "utils.h"
 
 static
-int print_header (FILE *out, struct code *c, char *headerfilename)
+void print_header (FILE *out, struct code *c, char *headerfilename)
 {
   uint32 i, j;
   char buffer[256];
@@ -41,11 +42,35 @@ int print_header (FILE *out, struct code *c, char *headerfilename)
   }
 
   fprintf (out, "#endif /* __%s */\n", buffer);
-  return 1;
 }
 
 static
-int print_cfile (FILE *out, struct code *c, char *headerfilename)
+void print_subroutine (FILE *out, struct code *c, struct subroutine *sub)
+{
+  struct location *loc;
+  fprintf (out, "/**\n * Subroutine at address 0x%08X\n", sub->location->address);
+  fprintf (out, " * Stack size: %d\n", sub->stacksize);
+  fprintf (out, " */\n");
+  if (sub->export) {
+    if (sub->export->name) {
+      fprintf (out, "void %s (void)\n", sub->export->name);
+    } else {
+      fprintf (out, "void nid_%08X (void)\n", sub->export->nid);
+    }
+  } else {
+    fprintf (out, "void sub_%05X (void)\n", sub->location->address);
+  }
+  fprintf (out, "{\n");
+
+  for (loc = sub->location; ; loc++) {
+    fprintf (out, "  %s\n", allegrex_disassemble (loc->opc, loc->address, FALSE));
+    if (loc == sub->end) break;
+  }
+  fprintf (out, "}\n\n");
+}
+
+static
+void print_cfile (FILE *out, struct code *c, char *headerfilename)
 {
   uint32 i, j;
   element el;
@@ -53,7 +78,6 @@ int print_cfile (FILE *out, struct code *c, char *headerfilename)
   fprintf (out, "#include <pspsdk.h>\n");
   fprintf (out, "#include \"%s\"\n\n", headerfilename);
 
-  fprintf (out, "/**\n * Imports\n */\n");
   for (i = 0; i < c->file->modinfo->numimports; i++) {
     struct prx_import *imp = &c->file->modinfo->imports[i];
 
@@ -70,28 +94,15 @@ int print_cfile (FILE *out, struct code *c, char *headerfilename)
     fprintf (out, "\n");
   }
 
-  fprintf (out, "\n\n/**\n * Code\n */\n");
-
   el = list_head (c->subroutines);
   while (el) {
     struct subroutine *sub;
     sub = element_getvalue (el);
 
-    fprintf (out, "/**\n * Subroutine at address 0x%08X\n */\n", sub->location->address);
-    if (sub->export) {
-      if (sub->export->name) {
-        fprintf (out, "void %s (void)\n{\n}\n\n", sub->export->name);
-      } else {
-        fprintf (out, "void nid_%08X (void)\n{\n}\n\n", sub->export->nid);
-      }
-    } else {
-      fprintf (out, "void sub_%05X (void)\n{\n}\n\n", sub->location->address);
-    }
-
+    print_subroutine (out, c, sub);
     el = element_next (el);
   }
 
-  return 1;
 }
 
 int print_code (struct code *c, char *filename)

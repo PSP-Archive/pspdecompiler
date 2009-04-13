@@ -45,7 +45,16 @@ int module_start (SceUInt argc, void *arg)
   switchtest (array[2]);
   testcall (4);
   sceKernelSleepThread ();
-  return 0;
+  return complexifs (10, 9, 8, 7, 6, 5);
 }
 
-
+int complexifs (int a, int b, int c, int d, int e, int f)
+{
+  if ((a = ((b < c) ? (d + 1) : e)) == f) {
+    f = a * a;
+    return f - 1;
+  } else {
+    a = complexifs (a, b, c - 1, d, e, f + 1);
+    return e - a;
+  }
+}

@@ -956,25 +956,26 @@ int print_cop2 (int reg, char *output)
 
 
 static
-void print_instruction (const struct allegrex_instruction *insn, unsigned int opcode, unsigned int PC)
+void print_instruction (const struct allegrex_instruction *insn, unsigned int opcode, unsigned int PC, int prtall)
 {
   int i = 0, len = 0, vmmul = 0;
   unsigned int data = opcode;
-  len += sprintf (buffer, "\t0x%08X: 0x%08X '", PC, opcode);
-  for (i = 0; i < 4; i++) {
-    char c = (char) (data & 0xFF);
-    if (isprint (c)) { len += sprintf (&buffer[len], "%c", c); }
-    else { len += sprintf (&buffer[len], "."); }
-    data >>= 8;
-  }
 
+  if (prtall) {
+    len += sprintf (buffer, "    0x%08X: 0x%08X '", PC, opcode);
+    for (i = 0; i < 4; i++) {
+      char c = (char) (data & 0xFF);
+      if (isprint (c)) { len += sprintf (&buffer[len], "%c", c); }
+      else { len += sprintf (&buffer[len], "."); }
+      data >>= 8;
+    }
+    len += sprintf (&buffer[len], "' - ");
+  }
   if (!insn) {
-    sprintf (&buffer[len], "' - Invalid");
+    sprintf (&buffer[len], "Invalid");
     return;
   }
-
-  sprintf (&buffer[len], "' - %s                  ", insn->name);
-  len = 44;
+  len += sprintf (&buffer[len], "%-10s ", insn->name);
 
   i = 0;
   while (1) {
@@ -1184,10 +1185,10 @@ const struct allegrex_instruction *allegrex_decode (unsigned int opcode, int all
 
 #endif /* !SLOW_VERSION */
 
-char *allegrex_disassemble (unsigned int opcode, unsigned int PC)
+char *allegrex_disassemble (unsigned int opcode, unsigned int PC, int prtall)
 {
   const struct allegrex_instruction *insn = allegrex_decode (opcode, 1);
-  print_instruction (insn, opcode, PC);
+  print_instruction (insn, opcode, PC, prtall);
   return (char *) buffer;
 }
 

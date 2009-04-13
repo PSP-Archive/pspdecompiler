@@ -65,6 +65,16 @@ struct subroutine {
   struct prx_function *export;
   struct prx_function *import;
   struct location *location;
+  struct location *end;
+
+  uint32 stacksize;
+  int    framereg;
+  int    variablestack;
+
+  uint32 savedregs;
+  uint32 usedregs;
+
+  uint32 savedoffset[32];
 };
 
 struct code {
