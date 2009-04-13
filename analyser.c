@@ -47,17 +47,23 @@ int decode_instructions (struct code *c, const uint8 *code, uint32 size, uint32 
     loc->address = address + (i << 2);
 
     if (loc->insn == NULL) {
+      loc->haserror = TRUE;
       error (__FILE__ ": invalid opcode 0x%08X at 0x%08X", loc->opc, loc->address);
       continue;
     }
 
     if (loc->insn->flags & (INSN_BRANCH | INSN_JUMP)) {
-      if (slot) error (__FILE__ ": branch/jump inside delay slot at 0x%08X", loc->address);
+      if (slot) {
+        loc->haserror = TRUE;
+        c->base[i - 1].haserror = TRUE;
+        error (__FILE__ ": branch/jump inside delay slot at 0x%08X", loc->address);
+      }
       slot = TRUE;
     } else {
       slot = FALSE;
     }
 
+    loc->branchtype = BRANCH_NORMAL;
     if (loc->insn->flags & INSN_BRANCH) {
       int normal = FALSE;
 
@@ -70,6 +76,7 @@ int decode_instructions (struct code *c, const uint8 *code, uint32 size, uint32 
       if (tgt < numopc) {
         loc->target = &base[tgt];
       } else {
+        loc->haserror = TRUE;
         error (__FILE__ ": branch outside file\n%s", allegrex_disassemble (loc->opc, loc->address, TRUE));
       }
 
@@ -85,7 +92,6 @@ int decode_instructions (struct code *c, const uint8 *code, uint32 size, uint32 
         normal = TRUE;
       }
 
-      loc->branchtype = BRANCH_NORMAL;
       if (!normal) {
         switch (loc->insn->insn) {
         case I_BEQ:
@@ -105,6 +111,7 @@ int decode_instructions (struct code *c, const uint8 *code, uint32 size, uint32 
         case I_BLTZL:
         case I_BNE:
         case I_BNEL:
+          report (__FILE__ ": branch never occurs at 0x%08X\n", loc->address);
           loc->branchtype = BRANCH_NEVER;
           break;
         default:
@@ -119,17 +126,19 @@ int decode_instructions (struct code *c, const uint8 *code, uint32 size, uint32 
       if (tgt < numopc) {
         loc->target = &base[tgt];
       } else {
+        loc->haserror = TRUE;
         error (__FILE__ ": jump outside file\n%s", allegrex_disassemble (loc->opc, loc->address, TRUE));
       }
     }
 
-    if (loc->target) {
+    if (loc->target && (loc->branchtype != BRANCH_NEVER)) {
       if (!loc->target->references)
         loc->target->references = list_alloc (c->lstpool);
       list_inserttail (loc->target->references, &base[i]);
     }
   }
   if (slot) {
+    c->base[i - 1].haserror = TRUE;
     error (__FILE__ ": delay slot at the end of file");
   }
 
@@ -150,13 +159,14 @@ void new_subroutine (struct code *c, struct location *loc, struct prx_function *
   if (exp) sub->export = exp;
 
   if (sub->import && sub->export) {
+    sub->haserror = TRUE;
     error (__FILE__ ": location 0x%08X is both import and export", loc->address);
   }
 }
 
 
 static
-int analyse_relocs (struct code *c)
+void analyse_relocs (struct code *c)
 {
   uint32 i, j, tgt;
 
@@ -169,7 +179,7 @@ int analyse_relocs (struct code *c)
     tgt = (rel->target - c->baddr) >> 2;
     if (tgt >= c->numopc) continue;
     if (rel->target & 0x03) {
-      error (__FILE__ ": .text reloc not word aligned 0x%08X", rel->target);
+      error (__FILE__ ": relocation not word aligned 0x%08X", rel->target);
       continue;
     }
 
@@ -191,12 +201,17 @@ int analyse_relocs (struct code *c)
       }
     } else if (rel->type == R_MIPS_32) {
       struct prx_reloc *frel;
-      uint32 end, count = 0;
+      struct prx_reloc *swcrel;
+      uint32 ctgt, end, count = 0;
 
       j = prx_findrelocbyaddr (c->file, rel->vaddr);
+      swcrel = &c->file->relocsbyaddr[j];
       while (j < c->file->relocnum) {
         if (c->file->relocsbyaddr[j].vaddr != (rel->vaddr + (count << 2)))
           break;
+        if (c->file->relocsbyaddr[j].target & 0x03) break;
+        ctgt = (c->file->relocsbyaddr[j].target - c->baddr) >> 2;
+        if (ctgt >= c->numopc) break;
         count++; j++;
       }
 
@@ -217,11 +232,18 @@ int analyse_relocs (struct code *c)
             frel = &c->file->relocs[j];
             if (frel->type == R_MIPS_LO16) {
               struct codeswitch *cs;
+              int i;
+
               cs = fixedpool_alloc (c->switchpool);
               memset (cs, 0, sizeof (struct codeswitch));
 
               cs->basereloc = frel;
               cs->count = count;
+              cs->references = list_alloc (c->lstpool);
+              for (i = 0; i < count; i++) {
+                ctgt = (swcrel->target - c->baddr) >> 2;
+                list_inserttail (cs->references, &c->base[ctgt]);
+              }
               report ("switch at 0x%08X to 0x%08X count = %d\n", rel->vaddr, rel->target, count);
               list_inserttail (c->switches, cs);
             }
@@ -230,55 +252,129 @@ int analyse_relocs (struct code *c)
       }
     }
   }
-  return 1;
 }
 
 static
 void mark_reachable (struct code *c, struct location *loc)
 {
-  do {
-    loc->reachable = TRUE;
-    if (!(loc->insn)) continue;
-    if (loc->insn->flags & (INSN_JUMP | INSN_BRANCH)) {
+  while (1) {
+    if (loc->reachable == 1) break;
+    loc->reachable = 1;
 
+    if (loc->insn) {
+      if (loc->insn->flags & INSN_JUMP) {
+        if (loc != c->end) loc[1].reachable = 2;
+
+        if (loc->target) {
+          loc = loc->target;
+          continue;
+        } else return;
+      } else if (loc->insn->flags & INSN_BRANCH) {
+        if (loc != c->end) {
+          if (!(loc->insn->flags & INSN_BRANCHLIKELY) || (loc->branchtype != BRANCH_NEVER))
+            loc[1].reachable = 2;
+        }
+
+        if (loc->branchtype == BRANCH_ALWAYS) {
+          loc = loc->target;
+          continue;
+        }
+        if (loc->branchtype == BRANCH_NORMAL) {
+          mark_reachable (c, loc->target);
+        }
+        if ((loc->address + 8) > c->end->address)
+          return;
+        loc += 2;
+        continue;
+      }
     }
-  } while (loc++ != c->end);
+    if (loc++ == c->end) return;
+  };
+}
+
+static
+void find_hidden_subroutines (struct code *c)
+{
+  struct subroutine *cursub;
+  uint32 i;
+
+  for (i = 0; i < c->numopc; i++) {
+    struct location *loc = &c->base[i];
+    if (loc->sub)
+      mark_reachable (c, loc);
+  }
+
+  if (c->switches) {
+    element el = list_head (c->switches);
+    while (el) {
+      struct codeswitch *csw;
+      element sel;
+
+      csw = element_getvalue (el);
+      sel = list_head (csw->references);
+      while (sel) {
+        mark_reachable (c, element_getvalue (sel));
+        sel = element_next (sel);
+      }
+      el = element_next (el);
+    }
+  }
+
+  for (i = 0; i < c->numopc; i++) {
+    struct location *loc = &c->base[i];
+    if (loc->sub) {
+      cursub = loc->sub;
+    }
+    if (loc->target && (loc->branchtype != BRANCH_NEVER)) {
+      struct location *target = loc->target;
+      if (!loc->target->sub) {
+        do {
+          if (target->sub) {
+            if (target->sub != cursub) {
+              if (!loc->reachable) {
+                report (__FILE__ ": hidden subroutine at 0x%08X discovered because of 0x%08X (cursub = 0x%08X, sub = 0x%08X)\n",
+                    loc->target->address, loc->address, cursub->location->address, target->sub->location->address);
+                new_subroutine (c, loc->target, NULL, NULL);
+                mark_reachable (c, loc->target);
+              } else {
+                loc->haserror = TRUE;
+                loc->target->haserror = TRUE;
+                error (__FILE__ ": jump to a different subroutine at 0x%08X", loc->address);
+              }
+            }
+            break;
+          }
+        } while (target-- != c->base);
+      }
+    }
+  }
 }
 
 
 static
-int analyse_subroutine (struct code *c, struct subroutine *sub)
+void analyse_subroutine (struct code *c, struct subroutine *sub)
 {
   struct location *loc;
   loc = sub->location;
   do {
-    if (!loc->insn) {
-      error (__FILE__ ": subroutine 0x%08X with unknown allegrex opcode 0x%08X", sub->location->address, loc->opc);
+    if (loc->haserror) {
       sub->haserror = 1;
-      return 1;
+      return;
     }
 
     if (loc->target) {
       if (loc->target->sub != loc->sub) {
-        if (loc->target->sub->location != loc->target) {
-          error (__FILE__ ": jump (0x%08X) outside subroutine 0x%08X at 0x%08X",
-              loc->target->address, sub->location->address, loc->address);
-          sub->haserror = 1;
-          loc->target->sub->haserror = 1;
-          return 1;
-        }
         if (!(loc->insn->flags & (INSN_LINK | INSN_WRITE_GPR_D))) {
           report (__FILE__ ": jumped call at 0x%08X\n", loc->address);
         }
       }
     }
   } while (loc++ != sub->end);
-  return 1;
 }
 
 
 static
-int analyse_subroutines (struct code *c)
+void analyse_subroutines (struct code *c)
 {
   uint32 i, j, tgt;
   struct subroutine *prevsub = NULL;
@@ -330,6 +426,8 @@ int analyse_subroutines (struct code *c)
     new_subroutine (c, c->base, NULL, NULL);
   }
 
+  find_hidden_subroutines (c);
+
   for (i = 0; i < c->numopc; i++) {
     if (c->base[i].sub) {
       list_inserttail (c->subroutines, c->base[i].sub);
@@ -347,13 +445,9 @@ int analyse_subroutines (struct code *c)
 
   el = list_head (c->subroutines);
   while (el) {
-    if (!analyse_subroutine (c, element_getvalue (el)))
-      return 0;
-
+    analyse_subroutine (c, element_getvalue (el));
     el = element_next (el);
   }
-
-  return 1;
 }
 
 
@@ -367,15 +461,8 @@ struct code* analyse_code (struct prx *p)
     return NULL;
   }
 
-  if (!analyse_relocs (c)) {
-    code_free (c);
-    return NULL;
-  }
-
-  if (!analyse_subroutines (c)) {
-    code_free (c);
-    return NULL;
-  }
+  analyse_relocs (c);
+  analyse_subroutines (c);
 
   return c;
 }

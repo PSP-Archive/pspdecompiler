@@ -27,6 +27,7 @@ struct location {
   list references;
   int  branchtype;
   int  reachable;
+  int  haserror;
 
   struct subroutine *sub;
   struct bblock *block;
@@ -34,6 +35,7 @@ struct location {
 
 struct codeswitch {
   struct prx_reloc *basereloc;
+  list references;
   int count;
 };
 
