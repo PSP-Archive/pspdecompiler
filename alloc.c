@@ -13,6 +13,7 @@ struct _fixedpool {
   struct _link *nextfree;
   size_t size;
   size_t grownum;
+  size_t bytes;
 };
 
 
@@ -24,6 +25,7 @@ fixedpool fixedpool_create (size_t size, size_t grownum)
   p->grownum = grownum;
   p->allocated = NULL;
   p->nextfree = NULL;
+  p->bytes = 0;
   return p;
 }
 
@@ -55,27 +57,28 @@ void fixedpool_destroy (fixedpool p, pooltraversefn destroyfn, void *arg)
   free (p);
 }
 
-void fixedpool_grow (fixedpool p, void *ptr, size_t size)
+void fixedpool_grow (fixedpool p, void *ptr, size_t ptrsize)
 {
   char *c;
   struct _link *l;
   size_t count;
 
-  if (size < 2 * p->size) {
+  if (ptrsize < 2 * p->size) {
     free (ptr);
     return;
   }
 
   l = ptr;
   l->next = p->allocated;
-  l->size = size;
+  l->size = ptrsize;
+  p->bytes += ptrsize;
   p->allocated = l;
 
   c = ptr;
   c += p->size;
   count = 2 * p->size;
 
-  while (count <= size) {
+  while (count <= ptrsize) {
     l = (struct _link *) c;
     l->next = p->nextfree;
     p->nextfree = l;

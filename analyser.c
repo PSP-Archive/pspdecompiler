@@ -12,9 +12,10 @@ struct code *code_alloc (void)
   c = (struct code *) xmalloc (sizeof (struct code));
   memset (c, 0, sizeof (struct code));
 
-  c->lstpool = listpool_create (1024, 1024);
-  c->switchpool = fixedpool_create (sizeof (struct codeswitch), 32);
-  c->subspool = fixedpool_create (sizeof (struct subroutine), 128);
+  c->lstpool = listpool_create (8192, 4096);
+  c->switchpool = fixedpool_create (sizeof (struct codeswitch), 64);
+  c->subspool = fixedpool_create (sizeof (struct subroutine), 1024);
+  c->blockspool = fixedpool_create (sizeof (struct basicblock), 4096);
 
   return c;
 }

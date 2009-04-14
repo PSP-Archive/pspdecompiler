@@ -193,7 +193,7 @@ struct nidstable *nids_load (const char *xmlpath)
   data.last = XMLE_DEFAULT;
 
   data.result = (struct nidstable *) xmalloc (sizeof (struct nidstable));
-  data.result->pool = hashpool_create (32, 1024);
+  data.result->pool = hashpool_create (256, 8192);
   data.result->libs = hashtable_alloc (data.result->pool, 32, &hashtable_hash_string, &hashtable_string_compare);
 
   data.buffer_pos = 0;

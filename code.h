@@ -10,7 +10,7 @@
 #define ERROR_INVALID_OPCODE       1
 #define ERROR_DELAY_SLOT           2
 #define ERROR_TARGET_OUTSIDE_FILE  3
-#define ERROR_ILLEGAL_JUMP         4
+#define ERROR_DELAY_SLOT_TARGET    4
 #define ERROR_ILLEGAL_BRANCH       5
 
 struct location {
@@ -46,11 +46,13 @@ struct subroutine {
   struct location *location;
   struct location *end;
   int    haserror;
+  list   blocks;
 };
 
 struct basicblock {
   struct location *begin;
   struct location *end;
+  struct location *jumploc;
   list   outrefs, inrefs;
 };
 
@@ -67,6 +69,7 @@ struct code {
   listpool  lstpool;
   fixedpool switchpool;
   fixedpool subspool;
+  fixedpool blockspool;
 };
 
 struct code* code_analyse (struct prx *p);

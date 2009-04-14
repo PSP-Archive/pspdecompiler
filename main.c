@@ -43,7 +43,6 @@ int main (int argc, char **argv)
   if (nidsfilename)
     nids = nids_load (nidsfilename);
 
-
   p = prx_load (prxfilename);
   if (!p)
     fatal (__FILE__ ": can't load prx `%s'", prxfilename);

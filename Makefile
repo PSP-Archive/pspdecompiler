@@ -1,17 +1,17 @@
 #!/usr/bin/make
 
 CC=gcc
-CFLAGS=	-O0 -g -Wall -ansi -pedantic
+CFLAGS=	-Wall -ansi -pedantic -g -O0
 LIBS = -lexpat
 
-OBJS = allegrex.o analyser.o decoder.o switches.o subs.o output.o prx.o nids.o hash.o lists.o alloc.o utils.o main.o
+OBJS = allegrex.o analyser.o decoder.o switches.o subs.o ctrlflow.o output.o prx.o nids.o hash.o lists.o alloc.o utils.o main.o
 TARGET = pspdecompiler
 
 all:	$(OBJS)
 	$(CC) -o $(TARGET) $(OBJS) $(LIBS)
 
 .c.o:
-	$(CC) -c -o $@ $(CFLAGS) $< 
+	$(CC) $(CFLAGS) -c -o $@ $< 
 
 
 .PHONY: clean

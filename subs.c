@@ -12,7 +12,7 @@ void mark_reachable (struct code *c, struct location *loc)
   for (; remaining--; loc++) {
     if (loc->reachable == 1) break;
     else if (loc->reachable == 2) {
-      loc->error = ERROR_DELAY_SLOT;
+      loc->error = ERROR_DELAY_SLOT_TARGET;
     }
     loc->reachable = 1;
 
@@ -245,6 +245,12 @@ void check_subroutine (struct code *c, struct subroutine *sub)
 {
   struct location *loc;
   loc = sub->location;
+
+  if ((sub->end->address - sub->location->address) < 8) {
+    sub->haserror = TRUE;
+    return;
+  }
+
   do {
     if (!loc->reachable) continue;
 
@@ -254,7 +260,7 @@ void check_subroutine (struct code *c, struct subroutine *sub)
         error (__FILE__ ": invalid opcode 0x%08X at 0x%08X", loc->opc, loc->address);
         break;
       case ERROR_TARGET_OUTSIDE_FILE:
-        error (__FILE__ ": branch/jump outside file at 0x%08X\n", loc->address);
+        error (__FILE__ ": branch/jump outside file at 0x%08X", loc->address);
         break;
       case ERROR_DELAY_SLOT:
         error (__FILE__ ": delay slot error at 0x%08X", loc->address);
@@ -262,12 +268,12 @@ void check_subroutine (struct code *c, struct subroutine *sub)
       case ERROR_ILLEGAL_BRANCH:
         error (__FILE__ ": illegal branch at 0x%08X", loc->address);
         break;
-      case ERROR_ILLEGAL_JUMP:
-        error (__FILE__ ": illegal jump at 0x%08X", loc->address);
+      case ERROR_DELAY_SLOT_TARGET:
+        error (__FILE__ ": delay slot can't be a target of a branch/jump (0x%08X)", loc->address);
         break;
       }
 
-      sub->haserror = 1;
+      sub->haserror = TRUE;
       return;
     }
 
@@ -295,9 +301,17 @@ void check_subroutine (struct code *c, struct subroutine *sub)
   } while (loc++ != sub->end);
   loc--;
 
-  if (loc->reachable != 2) {
-    error (__FILE__ ": subroutine at 0x%08X has no finish", sub->location->address);
-  }
+  if (!loc->reachable) return;
+  loc--;
+
+  if ((loc->insn->flags & (INSN_JUMP | INSN_LINK | INSN_WRITE_GPR_D)) == INSN_JUMP)
+    return;
+
+  if ((loc->insn->flags & (INSN_BRANCH | INSN_LINK)) == INSN_BRANCH && loc->branchalways)
+    return;
+
+  error (__FILE__ ": subroutine at 0x%08X has no finish", sub->location->address);
+  sub->haserror = TRUE;
 }
 
 void extract_subroutines (struct code *c)
@@ -321,7 +335,11 @@ void extract_subroutines (struct code *c)
 
   el = list_head (c->subroutines);
   while (el) {
-    check_subroutine (c, element_getvalue (el));
+    struct subroutine *sub = element_getvalue (el);
+    check_subroutine (c, sub);
+    if (!sub->haserror)
+      if (!extract_cfg (c, sub))
+        sub->haserror = TRUE;
     el = element_next (el);
   }
 }
