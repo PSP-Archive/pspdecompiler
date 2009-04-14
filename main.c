@@ -1,7 +1,7 @@
 #include <stdio.h>
 
+#include "code.h"
 #include "prx.h"
-#include "analyser.h"
 #include "output.h"
 #include "nids.h"
 #include "hash.h"
@@ -56,7 +56,7 @@ int main (int argc, char **argv)
 
   if (verbose > 1) prx_print (p, (verbose > 2));
 
-  c = analyse_code (p);
+  c = code_analyse (p);
   if (!c)
     fatal (__FILE__ ": can't analyse code `%s'", prxfilename);
 

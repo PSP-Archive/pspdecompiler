@@ -76,7 +76,7 @@ struct code {
   fixedpool subspool;
 };
 
-struct code *code_alloc (void);
+struct code* code_analyse (struct prx *p);
 void code_free (struct code *c);
 
 int decode_instructions (struct code *c);
