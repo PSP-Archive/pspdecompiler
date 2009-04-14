@@ -111,7 +111,7 @@ int decode_instructions (struct code *c, const uint8 *code, uint32 size, uint32 
         case I_BLTZL:
         case I_BNE:
         case I_BNEL:
-          report (__FILE__ ": branch never occurs at 0x%08X\n", loc->address);
+          report (__FILE__ ": branch never taken at 0x%08X\n", loc->address);
           loc->branchtype = BRANCH_NEVER;
           break;
         default:
@@ -130,13 +130,8 @@ int decode_instructions (struct code *c, const uint8 *code, uint32 size, uint32 
         error (__FILE__ ": jump outside file\n%s", allegrex_disassemble (loc->opc, loc->address, TRUE));
       }
     }
-
-    if (loc->target && (loc->branchtype != BRANCH_NEVER)) {
-      if (!loc->target->references)
-        loc->target->references = list_alloc (c->lstpool);
-      list_inserttail (loc->target->references, &base[i]);
-    }
   }
+
   if (slot) {
     c->base[i - 1].haserror = TRUE;
     error (__FILE__ ": delay slot at the end of file");
@@ -164,20 +159,79 @@ void new_subroutine (struct code *c, struct location *loc, struct prx_function *
   }
 }
 
+static
+void analyse_mips32_reloc (struct code *c, struct prx_reloc *rel)
+{
+  struct prx_reloc *aux;
+  struct prx_reloc *switchrel;
+  uint32 base, end, count = 0;
+  uint32 tgt;
+
+  base = prx_findrelocbyaddr (c->file, rel->vaddr);
+  switchrel = &c->file->relocsbyaddr[base];
+
+  while (base < c->file->relocnum) {
+    if (c->file->relocsbyaddr[base].vaddr != (rel->vaddr + (count << 2)))
+      break;
+    if (c->file->relocsbyaddr[base].target & 0x03) break;
+    tgt = (c->file->relocsbyaddr[base].target - c->baddr) >> 2;
+    if (tgt >= c->numopc) break;
+    count++; base++;
+  }
+
+  base = end = prx_findreloc (c->file, rel->vaddr);
+
+  if (c->file->relocs[base].target == rel->vaddr) {
+    for (;end < c->file->relocnum; end++) {
+      aux = &c->file->relocs[end];
+      if (aux->target != rel->vaddr) {
+        if (count > ((aux->target - rel->vaddr) >> 2))
+          count = (aux->target - rel->vaddr) >> 2;
+        break;
+      }
+    }
+
+    if (count > 1) {
+      for (;base < end; base++) {
+        aux = &c->file->relocs[base];
+        if (aux->type == R_MIPS_LO16) {
+          struct codeswitch *cs;
+          int i;
+
+          cs = fixedpool_alloc (c->switchpool);
+          memset (cs, 0, sizeof (struct codeswitch));
+
+          cs->jumpreloc = aux;
+          cs->switchreloc = switchrel;
+          cs->count = count;
+          cs->references = list_alloc (c->lstpool);
+          for (i = 0; i < count; i++) {
+            tgt = (switchrel->target - c->baddr) >> 2;
+            list_inserttail (cs->references, &c->base[tgt]);
+          }
+          report ("switch at 0x%08X to 0x%08X count = %d\n", rel->vaddr, rel->target, count);
+          list_inserttail (c->switches, cs);
+        }
+      }
+    }
+  }
+}
+
 
 static
 void analyse_relocs (struct code *c)
 {
-  uint32 i, j, tgt;
+  uint32 i, tgt;
 
   c->switches = list_alloc (c->lstpool);
   i = prx_findreloc (c->file, c->baddr);
-  for(;i < c->file->relocnum; i++) {
+  for (; i < c->file->relocnum; i++) {
     struct location *loc;
     struct prx_reloc *rel = &c->file->relocs[i];
 
     tgt = (rel->target - c->baddr) >> 2;
     if (tgt >= c->numopc) continue;
+
     if (rel->target & 0x03) {
       error (__FILE__ ": relocation not word aligned 0x%08X", rel->target);
       continue;
@@ -200,56 +254,7 @@ void analyse_relocs (struct code *c)
         new_subroutine (c, loc, NULL, NULL);
       }
     } else if (rel->type == R_MIPS_32) {
-      struct prx_reloc *frel;
-      struct prx_reloc *swcrel;
-      uint32 ctgt, end, count = 0;
-
-      j = prx_findrelocbyaddr (c->file, rel->vaddr);
-      swcrel = &c->file->relocsbyaddr[j];
-      while (j < c->file->relocnum) {
-        if (c->file->relocsbyaddr[j].vaddr != (rel->vaddr + (count << 2)))
-          break;
-        if (c->file->relocsbyaddr[j].target & 0x03) break;
-        ctgt = (c->file->relocsbyaddr[j].target - c->baddr) >> 2;
-        if (ctgt >= c->numopc) break;
-        count++; j++;
-      }
-
-      j = end = prx_findreloc (c->file, rel->vaddr);
-
-      if (c->file->relocs[j].target == rel->vaddr) {
-        for (;end < c->file->relocnum; end++) {
-          frel = &c->file->relocs[end];
-          if (frel->target != rel->vaddr) {
-            if (count > ((frel->target - rel->vaddr) >> 2))
-              count = (frel->target - rel->vaddr) >> 2;
-            break;
-          }
-        }
-
-        if (count > 1) {
-          for (;j < end; j++) {
-            frel = &c->file->relocs[j];
-            if (frel->type == R_MIPS_LO16) {
-              struct codeswitch *cs;
-              int i;
-
-              cs = fixedpool_alloc (c->switchpool);
-              memset (cs, 0, sizeof (struct codeswitch));
-
-              cs->basereloc = frel;
-              cs->count = count;
-              cs->references = list_alloc (c->lstpool);
-              for (i = 0; i < count; i++) {
-                ctgt = (swcrel->target - c->baddr) >> 2;
-                list_inserttail (cs->references, &c->base[ctgt]);
-              }
-              report ("switch at 0x%08X to 0x%08X count = %d\n", rel->vaddr, rel->target, count);
-              list_inserttail (c->switches, cs);
-            }
-          }
-        }
-      }
+      analyse_mips32_reloc (c, rel);
     }
   }
 }
@@ -257,38 +262,35 @@ void analyse_relocs (struct code *c)
 static
 void mark_reachable (struct code *c, struct location *loc)
 {
-  while (1) {
+  while (loc) {
     if (loc->reachable == 1) break;
     loc->reachable = 1;
 
-    if (loc->insn) {
-      if (loc->insn->flags & INSN_JUMP) {
-        if (loc != c->end) loc[1].reachable = 2;
+    if (!loc->insn) return;
 
-        if (loc->target) {
-          loc = loc->target;
-          continue;
-        } else return;
-      } else if (loc->insn->flags & INSN_BRANCH) {
-        if (loc != c->end) {
-          if (!(loc->insn->flags & INSN_BRANCHLIKELY) || (loc->branchtype != BRANCH_NEVER))
-            loc[1].reachable = 2;
-        }
+    if (loc->insn->flags & INSN_JUMP) {
+      if (loc != c->end) loc[1].reachable = 2;
+      loc = loc->target;
+    } else if (loc->insn->flags & INSN_BRANCH) {
+      if (loc != c->end) {
+        if (!(loc->insn->flags & INSN_BRANCHLIKELY) || (loc->branchtype != BRANCH_NEVER))
+          loc[1].reachable = 2;
+      }
 
-        if (loc->branchtype == BRANCH_ALWAYS) {
-          loc = loc->target;
-          continue;
-        }
+      if (loc->branchtype == BRANCH_ALWAYS) {
+        loc = loc->target;
+      } else {
         if (loc->branchtype == BRANCH_NORMAL) {
           mark_reachable (c, loc->target);
         }
+
         if ((loc->address + 8) > c->end->address)
           return;
         loc += 2;
-        continue;
       }
+    } else {
+      if (loc++ == c->end) return;
     }
-    if (loc++ == c->end) return;
   };
 }
 
@@ -325,6 +327,7 @@ void find_hidden_subroutines (struct code *c)
     if (loc->sub) {
       cursub = loc->sub;
     }
+
     if (loc->target && (loc->branchtype != BRANCH_NEVER)) {
       struct location *target = loc->target;
       if (!loc->target->sub) {
@@ -339,7 +342,7 @@ void find_hidden_subroutines (struct code *c)
               } else {
                 loc->haserror = TRUE;
                 loc->target->haserror = TRUE;
-                error (__FILE__ ": jump to a different subroutine at 0x%08X", loc->address);
+                error (__FILE__ ": jump to a subroutine internal location at 0x%08X", loc->address);
               }
             }
             break;

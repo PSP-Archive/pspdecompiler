@@ -31,7 +31,7 @@
  * %Y - VFPU offset
  * %Z? - VFPU condition code/name (? is (c, n))
  * %v? - VFPU immediate, ? (3, 5, 8, k, i, h, r, p? (? is (0, 1, 2, 3, 4, 5, 6, 7)))
- * %c - code (for break/dbreak/syscall/eret/dret)
+ * %c - code (for break/dbreak/syscall)
  * %? - Indicates vmmul special exception
  */
 
@@ -179,7 +179,7 @@ static const struct allegrex_instruction instructions[] =
   { I_BNE,       "bne",       0x14000000, 0xFC000000, "%s, %t, %O", _RS|_RT|_BR  },
   { I_BNEL,      "bnezl",     0x54000000, 0xFC1F0000, "%s, %O",     _AL|_RS|_BR|_BL  },
   { I_BNEL,      "bnel",      0x54000000, 0xFC000000, "%s, %t, %O", _RS|_RT|_BR|_BL  },
-  { I_BREAK,     "break",     0x0000000D, 0xFC00003F, "%c",         _C0          },
+  { I_BREAK,     "break",     0x0000000D, 0xFC00003F, "%c",                      },
   { I_CACHE,     "cache",     0xBC000000, 0xFC000000, "%k, %o",     _RS|_C0      },
   { I_CFC0,      "cfc0",      0x40400000, 0xFFE007FF, "%t, %p",     _WT|_C0      },
   { I_CLO,       "clo",       0x00000017, 0xFC1F07FF, "%d, %s",     _RS|_WD      },
@@ -187,11 +187,11 @@ static const struct allegrex_instruction instructions[] =
   { I_CTC0,      "ctc0",      0x40C00000, 0xFFE007FF, "%t, %p",     _RT|_C0      },
   { I_MAX,       "max",       0x0000002C, 0xFC0007FF, "%d, %s, %t", _RS|_RT|_WD  },
   { I_MIN,       "min",       0x0000002D, 0xFC0007FF, "%d, %s, %t", _RS|_RT|_WD  },
-  { I_DBREAK,    "dbreak",    0x7000003F, 0xFC00003F, "%c",         _C0          },
+  { I_DBREAK,    "dbreak",    0x7000003F, 0xFC00003F, "%c",                      },
   { I_DIV,       "div",       0x0000001A, 0xFC00FFFF, "%s, %t",     _RS|_RT|_WH|_WL },
   { I_DIVU,      "divu",      0x0000001B, 0xFC00FFFF, "%s, %t",     _RS|_RT|_WH|_WL },
-  { I_DRET,      "dret",      0x7000003E, 0xFC00003F, "%c",         _C0          },
-  { I_ERET,      "eret",      0x42000018, 0xFC00003F, "%c",         _C0          },
+  { I_DRET,      "dret",      0x7000003E, 0xFFFFFFFF, "",                        },
+  { I_ERET,      "eret",      0x42000018, 0xFFFFFFFF, "",           _C0          },
   { I_EXT,       "ext",       0x7C000000, 0xFC00003F, "%t, %s, %a, %ne", _RS|_WT },
   { I_INS,       "ins",       0x7C000004, 0xFC00003F, "%t, %s, %a, %ni", _RS|_WT },
   { I_J,         "j",         0x08000000, 0xFC000000, "%j",         _JP          },
@@ -211,18 +211,18 @@ static const struct allegrex_instruction instructions[] =
   { I_MADD,      "madd",      0x0000001C, 0xFC00FFFF, "%s, %t",     _RS|_RT|_RL|_RH|_WL|_WH },
   { I_MADDU,     "maddu",     0x0000001D, 0xFC00FFFF, "%s, %t",     _RS|_RT|_RL|_RH|_WL|_WH },
   { I_MFC0,      "mfc0",      0x40000000, 0xFFE007FF, "%t, %0",     _WT|_C0      },
-  { I_MFDR,      "mfdr",      0x7000003D, 0xFFE007FF, "%t, %r",     _WT|_C0      },
+  { I_MFDR,      "mfdr",      0x7000003D, 0xFFE007FF, "%t, %r",     _WT          },
   { I_MFHI,      "mfhi",      0x00000010, 0xFFFF07FF, "%d",         _WD|_RH      },
-  { I_MFIC,      "mfic",      0x70000024, 0xFFE007FF, "%t, %p",     _WT|_C0      },
+  { I_MFIC,      "mfic",      0x70000024, 0xFFE007FF, "%t, %p",     _WT          },
   { I_MFLO,      "mflo",      0x00000012, 0xFFFF07FF, "%d",         _WD|_RL      },
   { I_MOVN,      "movn",      0x0000000B, 0xFC0007FF, "%d, %s, %t", _RS|_RT|_WD  },
   { I_MOVZ,      "movz",      0x0000000A, 0xFC0007FF, "%d, %s, %t", _RS|_RT|_WD  },
   { I_MSUB,      "msub",      0x0000002e, 0xfc00ffff, "%d, %t",     _RS|_RT|_RL|_RH|_WL|_WH },
   { I_MSUBU,     "msubu",     0x0000002f, 0xfc00ffff, "%d, %t",     _RS|_RT|_RL|_RH|_WL|_WH },
   { I_MTC0,      "mtc0",      0x40800000, 0xFFE007FF, "%t, %0",     _RT|_C0      },
-  { I_MTDR,      "mtdr",      0x7080003D, 0xFFE007FF, "%t, %r",     _RT|_C0      },
-  { I_MTIC,      "mtic",      0x70000026, 0xFFE007FF, "%t, %p",     _RT|_C0      },
-  { I_HALT,      "halt",      0x70000000, 0xFFFFFFFF, "",           _C0          },
+  { I_MTDR,      "mtdr",      0x7080003D, 0xFFE007FF, "%t, %r",     _RT          },
+  { I_MTIC,      "mtic",      0x70000026, 0xFFE007FF, "%t, %p",     _RT          },
+  { I_HALT,      "halt",      0x70000000, 0xFFFFFFFF, "",                        },
   { I_MTHI,      "mthi",      0x00000011, 0xFC1FFFFF, "%s",         _RS|_WH      },
   { I_MTLO,      "mtlo",      0x00000013, 0xFC1FFFFF, "%s",         _RS|_WL      },
   { I_MULT,      "mult",      0x00000018, 0xFC00FFFF, "%s, %t",     _RS|_RT|_WL|_WH },
@@ -258,8 +258,8 @@ static const struct allegrex_instruction instructions[] =
   { I_SUB,       "sub",       0x00000022, 0xFC0007FF, "%d, %s, %t", _RS|_RT|_WD  },
   { I_SUBU,      "negu",      0x00000023, 0xFFE007FF, "%d, %t",     _AL|_RT|_WD  },
   { I_SUBU,      "subu",      0x00000023, 0xFC0007FF, "%d, %s, %t", _RS|_RT|_WD  },
-  { I_SYNC,      "sync",      0x0000000F, 0xFFFFFFFF, "",           _C0          },
-  { I_SYSCALL,   "syscall",   0x0000000C, 0xFC00003F, "%c",         _C0          },
+  { I_SYNC,      "sync",      0x0000000F, 0xFFFFFFFF, "",                        },
+  { I_SYSCALL,   "syscall",   0x0000000C, 0xFC00003F, "%c",                      },
   { I_XOR,       "xor",       0x00000026, 0xFC0007FF, "%d, %s, %t", _RS|_RT|_WD  },
   { I_XORI,      "xori",      0x38000000, 0xFC000000, "%t, %s, %I", _RS|_WT      },
   { I_WSBH,      "wsbh",      0x7C0000A0, 0xFFE007FF, "%d, %t",     _RT|_WD      },
@@ -1118,6 +1118,7 @@ const struct allegrex_instruction *allegrex_decode (unsigned int opcode, int all
   int i;
 
   for (i = 0; i < sizeof (instructions) / sizeof (struct allegrex_instruction); i++) {
+    printf ("Scanning %s 0x%08X 0x%08X\n", instructions[i].name, instructions[i].mask & opcode, instructions[i].opcode);
     if ((instructions[i].mask & opcode) == instructions[i].opcode) {
       if (allowalias || !(instructions[i].flags & INSN_ALIAS))
         return &instructions[i];
