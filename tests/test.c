@@ -39,15 +39,6 @@ int func (int b)
   return callback (b - 1);
 }
 
-int module_start (SceUInt argc, void *arg)
-{
-  func (4);
-  switchtest (array[2]);
-  testcall (4);
-  sceKernelSleepThread ();
-  return complexifs (10, 9, 8, 7, 6, 5);
-}
-
 int complexifs (int a, int b, int c, int d, int e, int f)
 {
   if ((a = ((b < c) ? (d + 1) : e)) == f) {
@@ -58,3 +49,18 @@ int complexifs (int a, int b, int c, int d, int e, int f)
     return e - a;
   }
 }
+
+int module_start (SceUInt argc, void *arg)
+{
+  func (4);
+  switchtest (array[2]);
+  testcall (4);
+  sceKernelSleepThread ();
+  return complexifs (10, 9, 8, 7, 6, 5);
+}
+
+int module_stop (SceUInt argc, void *arg)
+{
+  return 0;
+}
+

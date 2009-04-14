@@ -263,7 +263,7 @@ void analyse_switches (struct code *c)
       }
     }
 
-    if (count == 0) continue;
+    if (count <= 1) continue;
 
     for (;base < end; base++) {
       aux = &c->file->relocs[base];
