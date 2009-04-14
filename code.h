@@ -11,10 +11,7 @@
 #define ERROR_DELAY_SLOT           2
 #define ERROR_TARGET_OUTSIDE_FILE  3
 #define ERROR_ILLEGAL_JUMP         4
-
-#define BRANCH_NORMAL   0
-#define BRANCH_ALWAYS   1
-#define BRANCH_NEVER    2
+#define ERROR_ILLEGAL_BRANCH       5
 
 struct location {
   uint32 opc;
@@ -24,16 +21,12 @@ struct location {
   struct location *target;
 
   list references;
-  int  branchtype;
+  int  branchalways;
   int  reachable;
   int  error;
-  int  switchtarget;
-
-  uint32 gpr_used;
-  uint32 gpr_defined;
 
   struct subroutine *sub;
-  struct bblock *block;
+  struct basicblock *block;
 
   struct codeswitch *cswitch;
 };
@@ -55,7 +48,7 @@ struct subroutine {
   int    haserror;
 };
 
-struct bblock {
+struct basicblock {
   struct location *begin;
   struct location *end;
   list   outrefs, inrefs;
@@ -80,7 +73,12 @@ struct code* code_analyse (struct prx *p);
 void code_free (struct code *c);
 
 int decode_instructions (struct code *c);
+uint32 location_gpr_used (struct location *loc);
+uint32 location_gpr_defined (struct location *loc);
+
 void extract_switches (struct code *c);
 void extract_subroutines (struct code *c);
+
+int extract_cfg (struct code *c, struct subroutine *sub);
 
 #endif /* __CODE_H */

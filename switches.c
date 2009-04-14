@@ -5,20 +5,21 @@
 #include "utils.h"
 
 static
-int analyse_switch (struct code *c, struct codeswitch *cs)
+int check_switch (struct code *c, struct codeswitch *cs)
 {
   struct location *loc = cs->location;
   element el;
-  uint32 gpr;
+  uint32 def, used;
 
   if (!loc->insn) return 0;
 
   if (loc->insn->insn == I_LW) {
-    gpr = loc->gpr_defined;
+    def = location_gpr_defined (loc);
     while (1) {
       if (loc++ == c->end) return 0;
       if (!loc->insn) return 0;
-      if (loc->gpr_used & gpr) {
+      used = location_gpr_used (loc);
+      if (used & def) {
         if (loc->insn->insn != I_JR)
           return 0;
         break;
@@ -27,11 +28,12 @@ int analyse_switch (struct code *c, struct codeswitch *cs)
     }
   } else if (loc->insn->insn == I_ADDIU) {
     int count = 0;
-    gpr = loc->gpr_defined;
+    def = location_gpr_defined (loc);
     while (1) {
       if (loc++ == c->end) return 0;
       if (!loc->insn) return 0;
-      if (loc->gpr_used & gpr) {
+      used = location_gpr_used (loc);
+      if (used & def) {
         if (count == 0) {
           if (loc->insn->insn != I_ADDU) return 0;
         } else if (count == 1) {
@@ -42,7 +44,7 @@ int analyse_switch (struct code *c, struct codeswitch *cs)
           break;
         }
         count++;
-        gpr = loc->gpr_defined;
+        def = location_gpr_defined (loc);
       }
       if (loc->insn->flags & (INSN_JUMP | INSN_BRANCH)) return 0;
     }
@@ -54,13 +56,10 @@ int analyse_switch (struct code *c, struct codeswitch *cs)
   el = list_head (cs->references);
   while (el) {
     struct location *target = element_getvalue (el);
-    target->switchtarget = TRUE;
-    if (!target->references)
-      target->references = list_alloc (c->lstpool);
-    list_inserttail (target->references, cs->jumplocation);
-
+    target->cswitch = cs;
     el = element_next (el);
   }
+
   return 1;
 }
 
@@ -129,7 +128,7 @@ void extract_switches (struct code *c)
           list_inserttail (cs->references, &c->base[tgt]);
         }
 
-        if (analyse_switch (c, cs)) {
+        if (check_switch (c, cs)) {
           list_inserttail (c->switches, cs);
         } else {
           fixedpool_free (c->switchpool, cs);

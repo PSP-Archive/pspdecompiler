@@ -6,9 +6,64 @@
 
 
 static
+void mark_reachable (struct code *c, struct location *loc)
+{
+  uint32 remaining = 1 + ((c->end->address - loc->address) >> 2);
+  for (; remaining--; loc++) {
+    if (loc->reachable == 1) break;
+    else if (loc->reachable == 2) {
+      loc->error = ERROR_DELAY_SLOT;
+    }
+    loc->reachable = 1;
+
+    if (!loc->insn) return;
+
+    if (loc->insn->flags & INSN_JUMP) {
+      if (remaining > 0) loc[1].reachable = 2;
+
+      if (loc->target)
+        mark_reachable (c, loc->target);
+
+      if (loc->cswitch) {
+        if (loc->cswitch->jumplocation == loc) {
+          element el;
+          el = list_head (loc->cswitch->references);
+          while (el) {
+            mark_reachable (c, element_getvalue (el));
+            el = element_next (el);
+          }
+          return;
+        }
+      }
+
+      if ((remaining == 0) || !(loc->insn->flags & (INSN_LINK | INSN_WRITE_GPR_D)))
+        return;
+
+      loc++;
+      remaining--;
+    } else if (loc->insn->flags & INSN_BRANCH) {
+      if (remaining > 0) {
+        loc[1].reachable = 2;
+      }
+
+      if (loc->target) {
+        mark_reachable (c, loc->target);
+      }
+
+      if ((remaining == 0) || (loc->branchalways && !(loc->insn->flags & INSN_LINK)))
+        return;
+
+      loc++;
+      remaining--;
+    }
+  };
+}
+
+static
 void new_subroutine (struct code *c, struct location *loc, struct prx_function *imp, struct prx_function *exp)
 {
   struct subroutine *sub = loc->sub;
+
   if (!sub) {
     sub = fixedpool_alloc (c->subspool);
     memset (sub, 0, sizeof (struct subroutine));
@@ -22,10 +77,12 @@ void new_subroutine (struct code *c, struct location *loc, struct prx_function *
     sub->haserror = TRUE;
     error (__FILE__ ": location 0x%08X is both import and export", loc->address);
   }
+
+  mark_reachable (c, loc);
 }
 
 static
-void analyse_relocs (struct code *c)
+void extract_from_relocs (struct code *c)
 {
   uint32 i, tgt;
 
@@ -51,6 +108,11 @@ void analyse_relocs (struct code *c)
       uint32 ctgt;
 
       if (rel->vaddr < c->baddr) continue;
+      if (rel->vaddr & 0x03) {
+        error (__FILE__ ": relocation address not word aligned 0x%08X", rel->vaddr);
+        continue;
+      }
+
       ctgt = (rel->vaddr - c->baddr) >> 2;
       if (ctgt >= c->numopc) continue;
 
@@ -59,169 +121,20 @@ void analyse_relocs (struct code *c)
         new_subroutine (c, loc, NULL, NULL);
       }
     } else if (rel->type == R_MIPS_32) {
-      if (!loc->switchtarget)
+      if (!loc->cswitch)
         new_subroutine (c, loc, NULL, NULL);
     } else if (rel->type == R_MIPS_HI16 || rel->type == R_MIPSX_HI16) {
       /* TODO */
-      if (!loc->switchtarget)
+      if (!loc->cswitch)
         new_subroutine (c, loc, NULL, NULL);
     }
   }
 }
 
 static
-void mark_reachable (struct code *c, struct location *loc)
-{
-  while (loc) {
-    if (loc->reachable == 1) break;
-    loc->reachable = 1;
-
-    if (!loc->insn) return;
-
-    if (loc->insn->flags & INSN_JUMP) {
-      if (loc != c->end) loc[1].reachable = 2;
-
-      if (loc->cswitch) {
-        element el;
-        el = list_head (loc->cswitch->references);
-        while (el) {
-          mark_reachable (c, element_getvalue (el));
-          el = element_next (el);
-        }
-        return;
-      }
-
-      if (loc->insn->flags & (INSN_LINK | INSN_WRITE_GPR_D)) {
-        if (loc->target)
-          mark_reachable (c, loc->target);
-
-        if ((loc->address + 8) > c->end->address)
-          return;
-        loc += 2;
-      } else
-        loc = loc->target;
-    } else if (loc->insn->flags & INSN_BRANCH) {
-      if (loc != c->end) {
-        if (!(loc->insn->flags & INSN_BRANCHLIKELY) || (loc->branchtype != BRANCH_NEVER))
-          loc[1].reachable = 2;
-      }
-
-      if (loc->branchtype == BRANCH_ALWAYS) {
-        if (loc->insn->flags & INSN_LINK) {
-          mark_reachable (c, loc->target);
-          if ((loc->address + 8) > c->end->address)
-            return;
-          loc += 2;
-        } else
-          loc = loc->target;
-      } else {
-        if (loc->branchtype == BRANCH_NORMAL) {
-          mark_reachable (c, loc->target);
-        }
-
-        if ((loc->address + 8) > c->end->address)
-          return;
-        loc += 2;
-      }
-    } else {
-      if (loc++ == c->end) return;
-    }
-  };
-}
-
-static
-void find_hidden_subroutines (struct code *c)
-{
-  struct subroutine *cursub;
-  uint32 i;
-
-  for (i = 0; i < c->numopc; i++) {
-    struct location *loc = &c->base[i];
-    if (loc->sub)
-      mark_reachable (c, loc);
-  }
-
-  for (i = 0; i < c->numopc; i++) {
-    struct location *loc = &c->base[i];
-    if (loc->sub) {
-      cursub = loc->sub;
-    }
-
-    if (loc->target && (loc->branchtype != BRANCH_NEVER)) {
-      struct location *aux = loc->target;
-      if (!loc->target->sub) {
-        do {
-          if (aux->sub) {
-            if (aux->sub != cursub) {
-              if (!loc->reachable) {
-                report (__FILE__ ": hidden subroutine at 0x%08X discovered because of 0x%08X (cursub = 0x%08X, sub = 0x%08X)\n",
-                    loc->target->address, loc->address, cursub->location->address, aux->sub->location->address);
-                new_subroutine (c, loc->target, NULL, NULL);
-                mark_reachable (c, loc->target);
-              } else {
-                loc->error = ERROR_ILLEGAL_JUMP;
-                loc->target->error = ERROR_ILLEGAL_JUMP;
-                error (__FILE__ ": jump to a subroutine internal location at 0x%08X\n", loc->address);
-              }
-            }
-            break;
-          }
-        } while (aux-- != c->base);
-      }
-    }
-  }
-}
-
-
-static
-void analyse_subroutine (struct code *c, struct subroutine *sub)
-{
-  struct location *loc;
-  loc = sub->location;
-  do {
-    if (!loc->reachable) continue;
-
-    if (loc->error) {
-      switch (loc->error) {
-      case ERROR_INVALID_OPCODE:
-        error (__FILE__ ": invalid opcode 0x%08X at 0x%08X", loc->opc, loc->address);
-        break;
-      case ERROR_TARGET_OUTSIDE_FILE:
-        error (__FILE__ ": branch/jump outside file at 0x%08X\n", loc->address);
-        break;
-      case ERROR_DELAY_SLOT:
-        error (__FILE__ ": branch/jump inside delay slot at 0x%08X", loc->address);
-        break;
-      }
-
-      sub->haserror = 1;
-      return;
-    }
-
-
-    if (loc->target && (loc->branchtype != BRANCH_NEVER)) {
-      if (!loc->target->references)
-        loc->target->references = list_alloc (c->lstpool);
-      list_inserttail (loc->target->references, loc);
-
-      if (loc->target->sub != loc->sub) {
-        if (!(loc->insn->flags & (INSN_LINK | INSN_WRITE_GPR_D))) {
-          report (__FILE__ ": jumped call at 0x%08X\n", loc->address);
-        }
-      }
-    }
-  } while (loc++ != sub->end);
-}
-
-
-void extract_subroutines (struct code *c)
+void extract_from_exports (struct code *c)
 {
   uint32 i, j, tgt;
-  struct subroutine *prevsub = NULL;
-  element el;
-
-  c->subroutines = list_alloc (c->lstpool);
-  analyse_relocs (c);
 
   for (i = 0; i < c->file->modinfo->numexports; i++) {
     struct prx_export *exp;
@@ -241,6 +154,12 @@ void extract_subroutines (struct code *c)
       new_subroutine (c, loc, NULL, &exp->funcs[j]);
     }
   }
+}
+
+static
+void extract_from_imports (struct code *c)
+{
+  uint32 i, j, tgt;
 
   for (i = 0; i < c->file->modinfo->numimports; i++) {
     struct prx_import *imp;
@@ -260,13 +179,49 @@ void extract_subroutines (struct code *c)
       new_subroutine (c, loc, &imp->funcs[j], NULL);
     }
   }
+}
 
-  if (!c->base->sub) {
-    error (__FILE__ ": creating artificial subroutine at address 0x%08X", c->baddr);
-    new_subroutine (c, c->base, NULL, NULL);
+static
+struct subroutine *find_sub (struct code *c, struct location *loc)
+{
+  do {
+    if (loc->sub) return loc->sub;
+  } while (loc-- != c->base);
+  return NULL;
+}
+
+static
+void extract_hidden_subroutines (struct code *c)
+{
+  struct subroutine *cursub = NULL;
+  uint32 i;
+
+  for (i = 0; i < c->numopc; i++) {
+    struct location *loc = &c->base[i];
+    if (loc->sub) cursub = loc->sub;
+    if (!loc->reachable) continue;
+
+    if (loc->target) {
+      struct location *target;
+      struct subroutine *targetsub;
+
+      target = loc->target;
+      targetsub = find_sub (c, target);
+      if (!target->sub && (targetsub != cursub)) {
+        report (__FILE__ ": hidden subroutine at 0x%08X\n", target->address);
+        new_subroutine (c, target, NULL, NULL);
+      }
+    }
   }
+}
 
-  find_hidden_subroutines (c);
+
+
+static
+void delimit_borders (struct code *c)
+{
+  struct subroutine *prevsub = NULL;
+  uint32 i;
 
   for (i = 0; i < c->numopc; i++) {
     if (c->base[i].sub) {
@@ -282,12 +237,91 @@ void extract_subroutines (struct code *c)
   if (prevsub) {
     prevsub->end = &c->base[i - 1];
   }
+}
 
+
+static
+void check_subroutine (struct code *c, struct subroutine *sub)
+{
+  struct location *loc;
+  loc = sub->location;
+  do {
+    if (!loc->reachable) continue;
+
+    if (loc->error) {
+      switch (loc->error) {
+      case ERROR_INVALID_OPCODE:
+        error (__FILE__ ": invalid opcode 0x%08X at 0x%08X", loc->opc, loc->address);
+        break;
+      case ERROR_TARGET_OUTSIDE_FILE:
+        error (__FILE__ ": branch/jump outside file at 0x%08X\n", loc->address);
+        break;
+      case ERROR_DELAY_SLOT:
+        error (__FILE__ ": delay slot error at 0x%08X", loc->address);
+        break;
+      case ERROR_ILLEGAL_BRANCH:
+        error (__FILE__ ": illegal branch at 0x%08X", loc->address);
+        break;
+      case ERROR_ILLEGAL_JUMP:
+        error (__FILE__ ": illegal jump at 0x%08X", loc->address);
+        break;
+      }
+
+      sub->haserror = 1;
+      return;
+    }
+
+
+    if (loc->target) {
+      if (!loc->target->references)
+        loc->target->references = list_alloc (c->lstpool);
+      list_inserttail (loc->target->references, loc);
+
+      /*
+      if (loc->target->sub != loc->sub) {
+        if (!(loc->insn->flags & (INSN_LINK | INSN_WRITE_GPR_D))) {
+          report (__FILE__ ": jumped call at 0x%08X\n", loc->address);
+        }
+      }
+      */
+    }
+    if (loc->cswitch) {
+      if (loc != loc->cswitch->jumplocation) {
+        if (!loc->references)
+          loc->references = list_alloc (c->lstpool);
+        list_inserttail (loc->references, loc->cswitch->jumplocation);
+      }
+    }
+  } while (loc++ != sub->end);
+  loc--;
+
+  if (loc->reachable != 2) {
+    error (__FILE__ ": subroutine at 0x%08X has no finish", sub->location->address);
+  }
+}
+
+void extract_subroutines (struct code *c)
+{
+  element el;
+
+  c->subroutines = list_alloc (c->lstpool);
+
+  extract_from_exports (c);
+  extract_from_imports (c);
+  extract_from_relocs (c);
+
+  if (!c->base->sub) {
+    error (__FILE__ ": creating artificial subroutine at address 0x%08X", c->baddr);
+    new_subroutine (c, c->base, NULL, NULL);
+  }
+
+  extract_hidden_subroutines (c);
+  delimit_borders (c);
 
 
   el = list_head (c->subroutines);
   while (el) {
-    analyse_subroutine (c, element_getvalue (el));
+    check_subroutine (c, element_getvalue (el));
     el = element_next (el);
   }
 }

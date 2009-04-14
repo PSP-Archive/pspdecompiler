@@ -19,6 +19,8 @@ int decode_instructions (struct code *c)
   size = c->file->modinfo->expvaddr - 4;
   code = c->file->programs->data;
 
+  numopc = size >> 2;
+
   if ((size & 0x03) || (address & 0x03)) {
     error (__FILE__ ": size/address is not multiple of 4");
     return 0;
@@ -49,30 +51,6 @@ int decode_instructions (struct code *c)
       continue;
     }
 
-    if (loc->insn->flags & INSN_LINK) {
-      loc->gpr_defined |= 1 << (31 - 1);
-    }
-
-    if (loc->insn->flags & INSN_WRITE_GPR_D) {
-      if (RD (loc->opc) != 0)
-        loc->gpr_defined |= 1 << (RD (loc->opc) - 1);
-    }
-
-    if (loc->insn->flags & INSN_WRITE_GPR_T) {
-      if (RT (loc->opc) != 0)
-        loc->gpr_defined |= 1 << (RT (loc->opc) - 1);
-    }
-
-    if (loc->insn->flags & INSN_READ_GPR_S) {
-      if (RS (loc->opc) != 0)
-        loc->gpr_used |= 1 << (RS (loc->opc) - 1);
-    }
-
-    if (loc->insn->flags & INSN_READ_GPR_T) {
-      if (RT (loc->opc) != 0)
-        loc->gpr_used |= 1 << (RT (loc->opc) - 1);
-    }
-
     if (loc->insn->flags & (INSN_BRANCH | INSN_JUMP)) {
       if (slot) c->base[i - 1].error = ERROR_DELAY_SLOT;
       slot = TRUE;
@@ -80,14 +58,7 @@ int decode_instructions (struct code *c)
       slot = FALSE;
     }
 
-    loc->branchtype = BRANCH_NORMAL;
     if (loc->insn->flags & INSN_BRANCH) {
-      int normal = FALSE;
-
-      if (loc->insn->flags & INSN_LINK)
-        report (__FILE__ ": branch and link at 0x%08X\n%s\n", loc->address,
-            allegrex_disassemble (loc->opc, loc->address, TRUE));
-
       tgt = loc->opc & 0xFFFF;
       if (tgt & 0x8000) { tgt |= ~0xFFFF;  }
       tgt += i + 1;
@@ -97,19 +68,9 @@ int decode_instructions (struct code *c)
         loc->error = ERROR_TARGET_OUTSIDE_FILE;
       }
 
-      if (loc->insn->flags & INSN_READ_GPR_S) {
-        if (RS (loc->opc) != 0) normal = TRUE;
-      }
+      if (INSN_PROCESSOR (loc->insn->flags) == INSN_ALLEGREX &&
+          location_gpr_used (loc) == 0) {
 
-      if (loc->insn->flags & INSN_READ_GPR_T) {
-        if (RT (loc->opc) != 0) normal = TRUE;
-      }
-
-      if (INSN_PROCESSOR (loc->insn->flags) != INSN_ALLEGREX) {
-        normal = TRUE;
-      }
-
-      if (!normal) {
         switch (loc->insn->insn) {
         case I_BEQ:
         case I_BEQL:
@@ -118,7 +79,7 @@ int decode_instructions (struct code *c)
         case I_BGEZL:
         case I_BLEZ:
         case I_BLEZL:
-          loc->branchtype = BRANCH_ALWAYS;
+          loc->branchalways = TRUE;
           break;
         case I_BGTZ:
         case I_BGTZL:
@@ -128,11 +89,11 @@ int decode_instructions (struct code *c)
         case I_BLTZL:
         case I_BNE:
         case I_BNEL:
-          report (__FILE__ ": branch never taken at 0x%08X\n", loc->address);
-          loc->branchtype = BRANCH_NEVER;
+          error (__FILE__ ": branch never taken at 0x%08X\n", loc->address);
+          loc->error = ERROR_ILLEGAL_BRANCH;
           break;
         default:
-          loc->branchtype = BRANCH_NORMAL;
+          loc->branchalways = FALSE;
         }
       }
 
@@ -153,4 +114,40 @@ int decode_instructions (struct code *c)
   }
 
   return 1;
+}
+
+uint32 location_gpr_used (struct location *loc)
+{
+  uint32 result = 0;
+
+  if (loc->insn->flags & INSN_READ_GPR_S) {
+    if (RS (loc->opc) != 0)
+      result |= 1 << (RS (loc->opc) - 1);
+  }
+
+  if (loc->insn->flags & INSN_READ_GPR_T) {
+    if (RT (loc->opc) != 0)
+      result |= 1 << (RT (loc->opc) - 1);
+  }
+  return result;
+}
+
+uint32 location_gpr_defined (struct location *loc)
+{
+  uint32 result = 0;
+
+  if (loc->insn->flags & INSN_LINK) {
+    result |= 1 << (31 - 1);
+  }
+
+  if (loc->insn->flags & INSN_WRITE_GPR_D) {
+    if (RD (loc->opc) != 0)
+      result |= 1 << (RD (loc->opc) - 1);
+  }
+
+  if (loc->insn->flags & INSN_WRITE_GPR_T) {
+    if (RT (loc->opc) != 0)
+      result |= 1 << (RT (loc->opc) - 1);
+  }
+  return result;
 }

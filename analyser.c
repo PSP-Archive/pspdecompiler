@@ -23,6 +23,7 @@ struct code* code_analyse (struct prx *p)
 {
   struct code *c = code_alloc ();
   c->file = p;
+
   if (!decode_instructions (c)) {
     code_free (c);
     return NULL;
