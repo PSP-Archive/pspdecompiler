@@ -7,11 +7,10 @@
 #include "lists.h"
 #include "types.h"
 
-#define REGNUM_GPR_BASE 0
-#define REGNUM_GPR_END  31
-#define REGNUM_LO       32
-#define REGNUM_HI       33
-#define NUMREGS         34
+#define ERROR_INVALID_OPCODE       1
+#define ERROR_DELAY_SLOT           2
+#define ERROR_TARGET_OUTSIDE_FILE  3
+#define ERROR_ILLEGAL_JUMP         4
 
 #define BRANCH_NORMAL   0
 #define BRANCH_ALWAYS   1
@@ -27,15 +26,23 @@ struct location {
   list references;
   int  branchtype;
   int  reachable;
-  int  haserror;
+  int  error;
+  int  switchtarget;
+
+  uint32 gpr_used;
+  uint32 gpr_defined;
 
   struct subroutine *sub;
   struct bblock *block;
+
+  struct codeswitch *cswitch;
 };
 
 struct codeswitch {
   struct prx_reloc *jumpreloc;
   struct prx_reloc *switchreloc;
+  struct location *location;
+  struct location *jumplocation;
   list references;
   int count;
 };

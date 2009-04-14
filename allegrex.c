@@ -1039,7 +1039,7 @@ void print_instruction (const struct allegrex_instruction *insn, unsigned int op
         len += sprintf (&buffer[len], "%s", cop0_regs[RD (opcode)]);
         break;
       case '1':
-        len += sprintf (&buffer[len], "$fcr%d", RD (opcode));
+        len += sprintf (&buffer[len], "$fpr%d", RD (opcode));
         break;
       case '2':
         c = insn->fmt[i++];

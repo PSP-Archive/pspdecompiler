@@ -48,6 +48,8 @@ static
 void print_subroutine (FILE *out, struct code *c, struct subroutine *sub)
 {
   struct location *loc;
+  int unreach = FALSE;
+
   fprintf (out, "/**\n * Subroutine at address 0x%08X\n", sub->location->address);
   fprintf (out, " */\n");
   if (sub->export) {
@@ -62,7 +64,40 @@ void print_subroutine (FILE *out, struct code *c, struct subroutine *sub)
   fprintf (out, "{\n");
 
   for (loc = sub->location; ; loc++) {
-    fprintf (out, "  %s\n", allegrex_disassemble (loc->opc, loc->address, FALSE));
+    element el;
+    if (loc->reachable) {
+      unreach = FALSE;
+      if (loc->references) {
+        fprintf (out, "\n;  Refs:   ");
+        el = list_head (loc->references);
+        while (el) {
+          fprintf (out, "0x%08X ", ((struct location *) element_getvalue (el))->address);
+          el = element_next (el);
+        }
+        fprintf (out, "\n");
+      }
+      fprintf (out, "  %s", allegrex_disassemble (loc->opc, loc->address, TRUE));
+      if (loc->target) {
+        fprintf (out, " target: 0x%08X", loc->target->address);
+      }
+      if (loc->cswitch) {
+        fprintf (out, " (switch locations: ");
+        el = list_head (loc->cswitch->references);
+        while (el) {
+          fprintf (out, "0x%08X ", ((struct location *) element_getvalue (el))->address);
+          el = element_next (el);
+        }
+        fprintf (out, ")");
+      }
+      fprintf (out, "\n");
+    } else {
+
+      if (!unreach) {
+        fprintf (out, "\n/*  Unreachable code */\n");
+      }
+      fprintf (out, "  %s\n", allegrex_disassemble (loc->opc, loc->address, TRUE));
+      unreach = TRUE;
+    }
     if (loc == sub->end) break;
   }
   fprintf (out, "}\n\n");

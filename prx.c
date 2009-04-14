@@ -181,7 +181,7 @@ int cmp_relocs_by_addr (const void *p1, const void *p2)
 static
 int check_apply_relocs (struct prx *p)
 {
-  struct prx_reloc *r;
+  struct prx_reloc *r, *lastxhi = NULL;
   struct elf_program *offsbase;
   struct elf_program *addrbase;
   uint32 index, addend, base, temp;
@@ -289,7 +289,6 @@ int check_apply_relocs (struct prx *p)
         if (p->relocs[index].addrbase != r->addrbase) break;
 
         p->relocs[index].target = r->target;
-        p->relocs[index].matched = TRUE;
 
         temp = (temp & ~0xFFFF) | loaddr;
         write_uint32_le ((uint8 *) &offsbase->data[p->relocs[index].offset], temp);
@@ -304,11 +303,17 @@ int check_apply_relocs (struct prx *p)
         error (__FILE__ ": xhi16 reference out of range at 0x%08X (0x%08X)", r->vaddr, r->target);
       }
       write_uint32_le ((uint8 *)&offsbase->data[r->offset], addend);
+      lastxhi = r;
       break;
 
     case R_MIPS_16:
     case R_MIPS_LO16:
       r->target = (addend & 0xFFFF) + addrbase->vaddr;
+      if (lastxhi) {
+        if ((lastxhi->target & 0xFFFF) == (r->target & 0xFFFF)) {
+          r->target = lastxhi->target;
+        }
+      }
       addend = (addend & ~0xFFFF) | (r->target & 0xFFFF);
       if (!inside_progmem (addrbase, r->target, 1)) {
         error (__FILE__ ": lo16 reference out of range at 0x%08X (0x%08X)", r->vaddr, r->target);

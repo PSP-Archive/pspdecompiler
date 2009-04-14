@@ -126,7 +126,6 @@ struct prx_reloc {
   uint32 addend;
   uint32 vaddr;
   uint32 target;
-  int matched;
 };
 
 struct prx_modinfo {
