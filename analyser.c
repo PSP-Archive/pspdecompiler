@@ -313,10 +313,6 @@ void new_subroutine (struct code *c, struct location *loc, struct prx_function *
   }
   if (imp) sub->import = imp;
   if (exp) sub->export = exp;
-  if (loc->address == 0xDD7C) {
-    report ("Merda\n");
-    report ("Merda2\n");
-  }
 
   if (sub->import && sub->export) {
     sub->haserror = TRUE;
