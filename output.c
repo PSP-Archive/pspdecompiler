@@ -45,6 +45,20 @@ void print_header (FILE *out, struct code *c, char *headerfilename)
 }
 
 static
+void print_subroutine_name (FILE *out, struct subroutine *sub)
+{
+  if (sub->export) {
+    if (sub->export->name) {
+      fprintf (out, "%s", sub->export->name);
+    } else {
+      fprintf (out, "nid_%08X", sub->export->nid);
+    }
+  } else {
+    fprintf (out, "sub_%05X", sub->location->address);
+  }
+}
+
+static
 void print_subroutine (FILE *out, struct code *c, struct subroutine *sub)
 {
   struct location *loc;
@@ -52,16 +66,9 @@ void print_subroutine (FILE *out, struct code *c, struct subroutine *sub)
 
   fprintf (out, "/**\n * Subroutine at address 0x%08X\n", sub->location->address);
   fprintf (out, " */\n");
-  if (sub->export) {
-    if (sub->export->name) {
-      fprintf (out, "void %s (void)\n", sub->export->name);
-    } else {
-      fprintf (out, "void nid_%08X (void)\n", sub->export->nid);
-    }
-  } else {
-    fprintf (out, "void sub_%05X (void)\n", sub->location->address);
-  }
-  fprintf (out, "{\n");
+  fprintf (out, "void ");
+  print_subroutine_name (out, sub);
+  fprintf (out, " (void)\n{\n");
 
   for (loc = sub->location; ; loc++) {
     element el;
@@ -76,9 +83,13 @@ void print_subroutine (FILE *out, struct code *c, struct subroutine *sub)
         }
         fprintf (out, "\n");
       }
-      fprintf (out, "  %s", allegrex_disassemble (loc->opc, loc->address, TRUE));
+      fprintf (out, "  %s ", allegrex_disassemble (loc->opc, loc->address, TRUE));
       if (loc->target) {
-        fprintf (out, " target: 0x%08X", loc->target->address);
+        if (loc->target->sub != loc->sub) {
+          fprintf (out, "(");
+          print_subroutine_name (out, loc->target->sub);
+          fprintf (out, ") ");
+        }
       }
       if (loc->cswitch) {
         fprintf (out, " (switch locations: ");
@@ -87,7 +98,7 @@ void print_subroutine (FILE *out, struct code *c, struct subroutine *sub)
           fprintf (out, "0x%08X ", ((struct location *) element_getvalue (el))->address);
           el = element_next (el);
         }
-        fprintf (out, ")");
+        fprintf (out, ") ");
       }
       fprintf (out, "\n");
     } else {

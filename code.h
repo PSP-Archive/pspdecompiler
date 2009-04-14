@@ -79,6 +79,8 @@ struct code {
 struct code *code_alloc (void);
 void code_free (struct code *c);
 
-
+int decode_instructions (struct code *c);
+void extract_switches (struct code *c);
+void extract_subroutines (struct code *c);
 
 #endif /* __CODE_H */

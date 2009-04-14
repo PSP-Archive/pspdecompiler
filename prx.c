@@ -310,7 +310,9 @@ int check_apply_relocs (struct prx *p)
     case R_MIPS_LO16:
       r->target = (addend & 0xFFFF) + addrbase->vaddr;
       if (lastxhi) {
-        if ((lastxhi->target & 0xFFFF) == (r->target & 0xFFFF)) {
+        if ((lastxhi->target & 0xFFFF) == (r->target & 0xFFFF) &&
+            lastxhi->addrbase == r->addrbase &&
+            lastxhi->offsbase == r->offsbase) {
           r->target = lastxhi->target;
         }
       }
