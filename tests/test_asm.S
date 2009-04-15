@@ -12,6 +12,7 @@ testcall_inner:
         .global testcall
         .ent    testcall
 testcall:
+        jal     testcall_inner
         andi    $t0, $a0, 1
         lui     $v0, %hi(testcall_callback)
         bnez    $t0, 1f

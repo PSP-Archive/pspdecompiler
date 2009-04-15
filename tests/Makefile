@@ -2,7 +2,7 @@ TARGET = test
 OBJS = test.o test_asm.o
 
 INCDIR = 
-CFLAGS = -O0 -G0 -Wall -fno-builtin-printf -fno-builtin-log
+CFLAGS = -O2 -G0 -Wall -fno-builtin-printf -fno-builtin-log
 CXXFLAGS = $(CFLAGS) -fno-exceptions -fno-rtti
 ASFLAGS = $(CFLAGS)
 LDFLAGS = -mno-crt0 -nostartfiles

@@ -31,11 +31,12 @@ int switchtest (int c)
 }
 
 int (*callback) (int a) = innerfunc;
+int global_b = 2;
 
 int func (int b)
 {
   if (b & 1)
-    return callback (b + 2);
+    return callback (b + global_b);
   return callback (b - 1);
 }
 
@@ -43,6 +44,7 @@ int complexifs (int a, int b, int c, int d, int e, int f)
 {
   if ((a = ((b < c) ? (d + 1) : e)) == f) {
     f = a * a;
+    global_b = a;
     return f - 1;
   } else {
     a = complexifs (a, b, c - 1, d, e, f + 1);

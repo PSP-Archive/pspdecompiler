@@ -46,6 +46,7 @@ struct subroutine {
   struct location *location;
   struct location *end;
   int    haserror;
+  int    dfscount;
   list   blocks;
 };
 
@@ -54,6 +55,7 @@ struct basicblock {
   struct location *end;
   struct location *jumploc;
   list   outrefs, inrefs;
+  int    dfsnum;
 };
 
 struct code {
@@ -83,5 +85,6 @@ void extract_switches (struct code *c);
 void extract_subroutines (struct code *c);
 
 int extract_cfg (struct code *c, struct subroutine *sub);
+void cfg_dfs (struct subroutine *sub);
 
 #endif /* __CODE_H */
