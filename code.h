@@ -43,8 +43,12 @@ struct codeswitch {
 struct subroutine {
   struct prx_function *export;
   struct prx_function *import;
-  struct location *location;
+
+  struct location *begin;
   struct location *end;
+
+  struct basicblock *endblock;
+
   int    haserror;
   int    dfscount;
   list   blocks;
@@ -54,6 +58,10 @@ struct basicblock {
   struct location *begin;
   struct location *end;
   struct location *jumploc;
+
+  struct basicblock *dominator;
+  list   frontier;
+
   list   outrefs, inrefs;
   int    dfsnum;
 };
@@ -66,7 +74,6 @@ struct code {
   struct location *end;
 
   list subroutines;
-  list switches;
 
   listpool  lstpool;
   fixedpool switchpool;
@@ -85,6 +92,7 @@ void extract_switches (struct code *c);
 void extract_subroutines (struct code *c);
 
 int extract_cfg (struct code *c, struct subroutine *sub);
-void cfg_dfs (struct subroutine *sub);
+int cfg_dfs (struct subroutine *sub);
+void cfg_dominance (struct subroutine *sub);
 
 #endif /* __CODE_H */

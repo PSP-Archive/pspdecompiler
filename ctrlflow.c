@@ -12,7 +12,7 @@ void extract_blocks (struct code *c, struct subroutine *sub)
   struct basicblock *block;
 
   sub->blocks = list_alloc (c->lstpool);
-  begin = sub->location;
+  begin = sub->begin;
 
   while (1) {
     end = begin;
@@ -21,6 +21,7 @@ void extract_blocks (struct code *c, struct subroutine *sub)
 
     block->inrefs = list_alloc (c->lstpool);
     block->outrefs = list_alloc (c->lstpool);
+    block->frontier = list_alloc (c->lstpool);
     list_inserttail (sub->blocks, block);
     if (!begin) break;
 
@@ -53,23 +54,25 @@ void extract_blocks (struct code *c, struct subroutine *sub)
 static
 void link_blocks (struct subroutine *sub)
 {
-  struct basicblock *block, *prev, *tail;
+  struct basicblock *block, *prev, *endblock;
   struct location *loc;
   element el, ref;
 
-  tail = list_tailvalue (sub->blocks);
+  endblock = list_tailvalue (sub->blocks);
+  sub->endblock = endblock;
+
   el = list_head (sub->blocks);
   block = element_getvalue (el);
 
   while (1) {
     int linknext = FALSE;
-    int linktail = FALSE;
+    int linkend = FALSE;
     el = element_next (el);
     if (!el) break;
 
     prev = block;
     block = element_getvalue (el);
-    if (block == tail) {
+    if (block == endblock) {
 
     } else {
       if (block->begin->references) {
@@ -89,21 +92,21 @@ void link_blocks (struct subroutine *sub)
         linknext = TRUE;
       } else {
         if (!loc->target) {
-          if (loc->target->cswitch) {
-            if (loc->target->cswitch->location != loc->target)
-              linktail = TRUE;
-          } else linktail = TRUE;
+          if (loc->cswitch) {
+            if (loc->cswitch->jumplocation != loc)
+              linkend = TRUE;
+          } else linkend = TRUE;
         } else {
           if ((loc->insn->flags & INSN_BRANCH) && !loc->branchalways)
             linknext = TRUE;
-          if (loc->target->sub != loc->sub) linktail = TRUE;
+          if (loc->target->sub != loc->sub) linkend = TRUE;
         }
       }
     } else linknext = TRUE;
 
-    if (linktail) {
-      list_inserthead (prev->outrefs, tail);
-      list_inserthead (tail->inrefs, prev);
+    if (linkend) {
+      list_inserthead (prev->outrefs, endblock);
+      list_inserthead (endblock->inrefs, prev);
     }
 
     if (linknext) {
@@ -117,7 +120,7 @@ static
 void print_cfg (struct subroutine *sub)
 {
   element el, ref;
-  report ("digraph sub_%05X {\n", sub->location->address);
+  report ("digraph sub_%05X {\n", sub->begin->address);
   el = list_head (sub->blocks);
   while (el) {
     struct basicblock *block = element_getvalue (el);
@@ -129,6 +132,21 @@ void print_cfg (struct subroutine *sub)
       report ("End");
     }
     report ("\"];\n");
+
+    if (block->dominator) {
+      report ("    %3d -> %3d [color=red];\n", block->dfsnum, block->dominator->dfsnum);
+    }
+
+    if (list_size (block->frontier) != 0) {
+      report ("    %3d -> { ", block->dfsnum);
+      ref = list_head (block->frontier);
+      while (ref) {
+        struct basicblock *refblock = element_getvalue (ref);
+        report ("%3d ", refblock->dfsnum);
+        ref = element_next (ref);
+      }
+      report (" } [color=green];\n");
+    }
 
     if (list_size (block->outrefs) != 0) {
       report ("    %3d -> { ", block->dfsnum);
@@ -149,7 +167,9 @@ int extract_cfg (struct code *c, struct subroutine *sub)
 {
   extract_blocks (c, sub);
   link_blocks (sub);
-  cfg_dfs (sub);
+  if (!cfg_dfs (sub)) return 0;
+
+  cfg_dominance (sub);
   print_cfg (sub);
-  return 0;
+  return 1;
 }

@@ -54,7 +54,7 @@ void print_subroutine_name (FILE *out, struct subroutine *sub)
       fprintf (out, "nid_%08X", sub->export->nid);
     }
   } else {
-    fprintf (out, "sub_%05X", sub->location->address);
+    fprintf (out, "sub_%05X", sub->begin->address);
   }
 }
 
@@ -64,13 +64,13 @@ void print_subroutine (FILE *out, struct code *c, struct subroutine *sub)
   struct location *loc;
   int unreach = FALSE;
 
-  fprintf (out, "/**\n * Subroutine at address 0x%08X\n", sub->location->address);
+  fprintf (out, "/**\n * Subroutine at address 0x%08X\n", sub->begin->address);
   fprintf (out, " */\n");
   fprintf (out, "void ");
   print_subroutine_name (out, sub);
   fprintf (out, " (void)\n{\n");
 
-  for (loc = sub->location; ; loc++) {
+  for (loc = sub->begin; ; loc++) {
     element el;
     if (loc->reachable) {
       unreach = FALSE;
@@ -92,13 +92,15 @@ void print_subroutine (FILE *out, struct code *c, struct subroutine *sub)
         }
       }
       if (loc->cswitch) {
-        fprintf (out, " (switch locations: ");
-        el = list_head (loc->cswitch->references);
-        while (el) {
-          fprintf (out, "0x%08X ", ((struct location *) element_getvalue (el))->address);
-          el = element_next (el);
+        if (loc->cswitch->jumplocation == loc) {
+          fprintf (out, " (switch locations: ");
+          el = list_head (loc->cswitch->references);
+          while (el) {
+            fprintf (out, "0x%08X ", ((struct location *) element_getvalue (el))->address);
+            el = element_next (el);
+          }
+          fprintf (out, ") ");
         }
-        fprintf (out, ") ");
       }
       fprintf (out, "\n");
     } else {

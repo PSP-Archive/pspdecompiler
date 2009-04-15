@@ -69,8 +69,6 @@ void extract_switches (struct code *c)
   uint32 base, end, count = 0;
   uint32 i, j, tgt;
 
-  c->switches = list_alloc (c->lstpool);
-
   for (i = 0; i < c->file->relocnum; i++) {
     struct prx_reloc *rel = &c->file->relocsbyaddr[i];
     count = 0;
@@ -128,9 +126,7 @@ void extract_switches (struct code *c)
           list_inserttail (cs->references, &c->base[tgt]);
         }
 
-        if (check_switch (c, cs)) {
-          list_inserttail (c->switches, cs);
-        } else {
+        if (!check_switch (c, cs)) {
           fixedpool_free (c->switchpool, cs);
         }
       }

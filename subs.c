@@ -24,18 +24,6 @@ void mark_reachable (struct code *c, struct location *loc)
       if (loc->target)
         mark_reachable (c, loc->target);
 
-      if (loc->cswitch) {
-        if (loc->cswitch->jumplocation == loc) {
-          element el;
-          el = list_head (loc->cswitch->references);
-          while (el) {
-            mark_reachable (c, element_getvalue (el));
-            el = element_next (el);
-          }
-          return;
-        }
-      }
-
       if ((remaining == 0) || !(loc->insn->flags & (INSN_LINK | INSN_WRITE_GPR_D)))
         return;
 
@@ -67,7 +55,7 @@ void new_subroutine (struct code *c, struct location *loc, struct prx_function *
   if (!sub) {
     sub = fixedpool_alloc (c->subspool);
     memset (sub, 0, sizeof (struct subroutine));
-    sub->location = loc;
+    sub->begin = loc;
     loc->sub = sub;
   }
   if (imp) sub->import = imp;
@@ -241,12 +229,52 @@ void delimit_borders (struct code *c)
 
 
 static
+void check_switches (struct code *c, struct subroutine *sub)
+{
+  struct location *loc;
+  loc = sub->begin;
+  do {
+    if (!loc->cswitch) continue;
+    if (loc->cswitch->jumplocation == loc) {
+      element el;
+      int haserror = FALSE;
+
+      el = list_head (loc->cswitch->references);
+      while (el) {
+        struct location *target = element_getvalue (el);
+        if (target->sub != loc->sub) haserror = TRUE;
+        target->cswitch = NULL;
+        el = element_next (el);
+      }
+
+      if (haserror) {
+        report (__FILE__ ": invalid switch at 0x%08X\n", loc->address);
+        fixedpool_free (c->switchpool, loc->cswitch);
+        loc->cswitch = NULL;
+      } else {
+        el = list_head (loc->cswitch->references);
+        while (el) {
+          struct location *target = element_getvalue (el);
+          mark_reachable (c, target);
+          if (!target->references)
+            target->references = list_alloc (c->lstpool);
+          if (target->cswitch != loc->cswitch)
+            list_inserttail (target->references, loc);
+          target->cswitch = loc->cswitch;
+          el = element_next (el);
+        }
+      }
+    }
+  } while (loc++ != sub->end);
+}
+
+static
 void check_subroutine (struct code *c, struct subroutine *sub)
 {
   struct location *loc;
-  loc = sub->location;
+  loc = sub->begin;
 
-  if ((sub->end->address - sub->location->address) < 8) {
+  if ((sub->end->address - sub->begin->address) < 8) {
     sub->haserror = TRUE;
     return;
   }
@@ -291,13 +319,6 @@ void check_subroutine (struct code *c, struct subroutine *sub)
       }
       */
     }
-    if (loc->cswitch) {
-      if (loc != loc->cswitch->jumplocation) {
-        if (!loc->references)
-          loc->references = list_alloc (c->lstpool);
-        list_inserttail (loc->references, loc->cswitch->jumplocation);
-      }
-    }
   } while (loc++ != sub->end);
   loc--;
 
@@ -310,7 +331,7 @@ void check_subroutine (struct code *c, struct subroutine *sub)
   if ((loc->insn->flags & (INSN_BRANCH | INSN_LINK)) == INSN_BRANCH && loc->branchalways)
     return;
 
-  error (__FILE__ ": subroutine at 0x%08X has no finish", sub->location->address);
+  error (__FILE__ ": subroutine at 0x%08X has no finish", sub->begin->address);
   sub->haserror = TRUE;
 }
 
@@ -336,6 +357,7 @@ void extract_subroutines (struct code *c)
   el = list_head (c->subroutines);
   while (el) {
     struct subroutine *sub = element_getvalue (el);
+    check_switches (c, sub);
     check_subroutine (c, sub);
     if (!sub->haserror)
       if (!extract_cfg (c, sub))
