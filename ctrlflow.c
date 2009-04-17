@@ -25,7 +25,7 @@ void extract_blocks (struct code *c, struct subroutine *sub)
     list_inserttail (sub->blocks, block);
     if (!begin) break;
 
-    while (end++ != sub->end) {
+    for (; end != sub->end; end++) {
       if (end->references && (end != begin)) break;
       if (end->insn->flags & (INSN_JUMP | INSN_BRANCH)) {
         block->jumploc = end;
@@ -116,60 +116,16 @@ void link_blocks (struct subroutine *sub)
   }
 }
 
-static
-void print_cfg (struct subroutine *sub)
-{
-  element el, ref;
-  report ("digraph sub_%05X {\n", sub->begin->address);
-  el = list_head (sub->blocks);
-  while (el) {
-    struct basicblock *block = element_getvalue (el);
-
-    report ("    %3d [label=\"", block->dfsnum);
-    if (block->begin) {
-      report ("0x%05X-0x%05X", block->begin->address, block->end->address);
-    } else {
-      report ("End");
-    }
-    report ("\"];\n");
-
-    if (block->dominator) {
-      report ("    %3d -> %3d [color=red];\n", block->dfsnum, block->dominator->dfsnum);
-    }
-
-    if (list_size (block->frontier) != 0) {
-      report ("    %3d -> { ", block->dfsnum);
-      ref = list_head (block->frontier);
-      while (ref) {
-        struct basicblock *refblock = element_getvalue (ref);
-        report ("%3d ", refblock->dfsnum);
-        ref = element_next (ref);
-      }
-      report (" } [color=green];\n");
-    }
-
-    if (list_size (block->outrefs) != 0) {
-      report ("    %3d -> { ", block->dfsnum);
-      ref = list_head (block->outrefs);
-      while (ref) {
-        struct basicblock *refblock = element_getvalue (ref);
-        report ("%3d ", refblock->dfsnum);
-        ref = element_next (ref);
-      }
-      report (" };\n");
-    }
-    el = element_next (el);
-  }
-  report ("}\n");
-}
-
 int extract_cfg (struct code *c, struct subroutine *sub)
 {
   extract_blocks (c, sub);
   link_blocks (sub);
-  if (!cfg_dfs (sub)) return 0;
+  if (!cfg_dfs (sub)) {
+    error (__FILE__ ": unreachable code at subroutine 0x%08X", sub->begin->address);
+    return 0;
+  }
 
   cfg_dominance (sub);
-  print_cfg (sub);
+
   return 1;
 }

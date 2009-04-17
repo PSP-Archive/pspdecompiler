@@ -60,6 +60,7 @@ struct basicblock {
   struct location *jumploc;
 
   struct basicblock *dominator;
+  struct basicblock *parent;
   list   frontier;
 
   list   outrefs, inrefs;

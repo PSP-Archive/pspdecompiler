@@ -3,6 +3,10 @@
 .cproject
 .settings
 pspdecompiler
+graphs
 *.elf
 *.prx
-
+nids.xml
+150
+360
+500

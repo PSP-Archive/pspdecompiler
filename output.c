@@ -8,6 +8,21 @@
 #include "utils.h"
 
 static
+void get_base_name (char *filename, char *basename, size_t len)
+{
+  char *temp;
+
+  temp = strrchr (filename, '/');
+  if (temp) filename = &temp[1];
+
+  strncpy (basename, filename, len - 1);
+  basename[len - 1] = '\0';
+  temp = strchr (basename, '.');
+  if (temp) *temp = '\0';
+}
+
+
+static
 void print_header (FILE *out, struct code *c, char *headerfilename)
 {
   uint32 i, j;
@@ -117,7 +132,7 @@ void print_subroutine (FILE *out, struct code *c, struct subroutine *sub)
 }
 
 static
-void print_cfile (FILE *out, struct code *c, char *headerfilename)
+void print_source (FILE *out, struct code *c, char *headerfilename)
 {
   uint32 i, j;
   element el;
@@ -152,44 +167,125 @@ void print_cfile (FILE *out, struct code *c, char *headerfilename)
 
 }
 
-int print_code (struct code *c, char *filename)
+int print_code (struct code *c, char *prxname)
 {
-  char *temp;
+  char buffer[64];
+  char basename[32];
   FILE *cout, *hout;
-  int len;
-
-  temp = strrchr (filename, '/');
-  if (temp) filename = &temp[1];
 
 
-  len = strlen (filename);
-  if (len < 5) {
-    error (__FILE__ ": invalid file name `%s'", filename);
-    return 0;
-  }
+  get_base_name (prxname, basename, sizeof (basename));
+  sprintf (buffer, "%s.c", basename);
 
-  filename[len - 2] = '\0';
-  filename[len - 3] = 'c';
-
-  cout = fopen (filename, "w");
+  cout = fopen (buffer, "w");
   if (!cout) {
-    xerror (__FILE__ ": can't open file for writing `%s'", filename);
+    xerror (__FILE__ ": can't open file for writing `%s'", buffer);
     return 0;
   }
 
-  filename[len - 3] = 'h';
-  hout = fopen (filename, "w");
+  sprintf (buffer, "%s.h", basename);
+  hout = fopen (buffer, "w");
   if (!hout) {
-    xerror (__FILE__ ": can't open file for writing `%s'", filename);
+    xerror (__FILE__ ": can't open file for writing `%s'", buffer);
     return 0;
   }
 
 
-  print_header (hout, c, filename);
-  print_cfile (cout, c, filename);
+  print_header (hout, c, buffer);
+  print_source (cout, c, buffer);
 
   fclose (cout);
   fclose (hout);
   return 1;
 }
 
+
+
+static
+void print_subroutine_graph (FILE *out, struct code *c, struct subroutine *sub)
+{
+  element el, ref;
+  fprintf (out, "digraph sub_%05X {\n", sub->begin->address);
+  el = list_head (sub->blocks);
+  while (el) {
+    struct basicblock *block = element_getvalue (el);
+
+    fprintf (out, "    %3d [label=\"%d\\n", block->dfsnum, block->dfsnum);
+    if (block->begin) {
+      fprintf (out, "0x%05X-0x%05X", block->begin->address, block->end->address);
+    } else {
+      fprintf (out, "End");
+    }
+    fprintf (out, "\"];\n");
+
+    /*
+    if (block->dominator) {
+      fprintf (out, "    %3d -> %3d [color=red];\n", block->dfsnum, block->dominator->dfsnum);
+    }
+    */
+
+    /*
+    if (list_size (block->frontier) != 0) {
+      fprintf (out, "    %3d -> { ", block->dfsnum);
+      ref = list_head (block->frontier);
+      while (ref) {
+        struct basicblock *refblock = element_getvalue (ref);
+        fprintf (out, "%3d ", refblock->dfsnum);
+        ref = element_next (ref);
+      }
+      fprintf (out, " } [color=green];\n");
+    }
+    */
+
+    if (list_size (block->outrefs) != 0) {
+      ref = list_head (block->outrefs);
+      while (ref) {
+        struct basicblock *refblock = element_getvalue (ref);
+        fprintf (out, "    %3d -> %3d ", block->dfsnum, refblock->dfsnum);
+        if (refblock->parent == block) {
+        } else if (block->dfsnum > refblock->dfsnum) {
+          fprintf (out, "[color=red]");
+        } else {
+          fprintf (out, "[style=dashed]");
+        }
+        fprintf (out, " ;\n");
+        ref = element_next (ref);
+      }
+    }
+    el = element_next (el);
+  }
+  fprintf (out, "}\n");
+}
+
+
+int print_graph (struct code *c, char *prxname)
+{
+  char buffer[64];
+  char basename[32];
+  element el;
+  FILE *fp;
+  int ret = 1;
+
+  get_base_name (prxname, basename, sizeof (basename));
+
+  el = list_head (c->subroutines);
+  while (el) {
+    struct subroutine *sub = element_getvalue (el);
+    if (!sub->haserror && !sub->import) {
+      sprintf (buffer, "%s_%08X.dot", basename, sub->begin->address);
+      fp = fopen (buffer, "w");
+      if (!fp) {
+        xerror (__FILE__ ": can't open file for writing `%s'", buffer);
+        ret = 0;
+      } else {
+        print_subroutine_graph (fp, c, sub);
+        fclose (fp);
+      }
+    } else {
+      if (sub->haserror) report ("Skipping subroutine at 0x%08X\n", sub->begin->address);
+    }
+    el = element_next (el);
+  }
+
+  return ret;
+}

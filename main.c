@@ -13,6 +13,7 @@ int main (int argc, char **argv)
   char *nidsfilename = NULL;
 
   int i, j, verbose = 0;
+  int printgraph = FALSE;
 
   struct nidstable *nids = NULL;
   struct prx *p = NULL;
@@ -24,6 +25,7 @@ int main (int argc, char **argv)
       for (j = 0; s[j]; j++) {
         switch (s[j]) {
         case 'v': verbose++; break;
+        case 'g': printgraph = TRUE; break;
         case 'n':
           if (i == (argc - 1))
             fatal (__FILE__ ": missing nids file");
@@ -59,7 +61,13 @@ int main (int argc, char **argv)
   if (!c)
     fatal (__FILE__ ": can't analyse code `%s'", prxfilename);
 
-  if (verbose > 0) print_code (c, prxfilename);
+  if (verbose > 0) {
+    if (printgraph)
+      print_graph (c, prxfilename);
+    else
+      print_code (c, prxfilename);
+  }
+
   code_free (c);
 
   prx_free (p);

@@ -274,7 +274,8 @@ void check_subroutine (struct code *c, struct subroutine *sub)
   struct location *loc;
   loc = sub->begin;
 
-  if ((sub->end->address - sub->begin->address) < 8) {
+  if ((sub->end->address - sub->begin->address) < 4) {
+    error (__FILE__ ": subroutine is too short: 0x%08X", sub->begin->address);
     sub->haserror = TRUE;
     return;
   }
@@ -299,6 +300,8 @@ void check_subroutine (struct code *c, struct subroutine *sub)
       case ERROR_DELAY_SLOT_TARGET:
         error (__FILE__ ": delay slot can't be a target of a branch/jump (0x%08X)", loc->address);
         break;
+      default:
+        error (__FILE__ ": problematic subroutine at 0x%08X", sub->begin->address);
       }
 
       sub->haserror = TRUE;
@@ -357,11 +360,13 @@ void extract_subroutines (struct code *c)
   el = list_head (c->subroutines);
   while (el) {
     struct subroutine *sub = element_getvalue (el);
-    check_switches (c, sub);
-    check_subroutine (c, sub);
-    if (!sub->haserror)
-      if (!extract_cfg (c, sub))
-        sub->haserror = TRUE;
+    if (!sub->import) {
+      check_switches (c, sub);
+      check_subroutine (c, sub);
+      if (!sub->haserror)
+        if (!extract_cfg (c, sub))
+          sub->haserror = TRUE;
+    }
     el = element_next (el);
   }
 }

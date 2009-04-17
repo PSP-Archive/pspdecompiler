@@ -13,8 +13,10 @@ void step (struct subroutine *sub, struct basicblock *block)
   el = list_head (block->outrefs);
   while (el) {
     next = element_getvalue (el);
-    if (!next->dfsnum)
+    if (!next->dfsnum) {
+      next->parent = block;
       step (sub, next);
+    }
     el = element_next (el);
   }
 
@@ -37,10 +39,10 @@ static
 struct basicblock *intersect (struct basicblock *b1, struct basicblock *b2)
 {
   while (b1 != b2) {
-    while (b1->dfsnum < b2->dfsnum) {
+    while (b1->dfsnum > b2->dfsnum) {
       b1 = b1->dominator;
     }
-    while (b2->dfsnum < b1->dfsnum) {
+    while (b2->dfsnum > b1->dfsnum) {
       b2 = b2->dominator;
     }
   }
@@ -67,20 +69,19 @@ void dominance (struct subroutine *sub)
       element ref;
 
       block = element_getvalue (el);
-
       ref = list_head (block->inrefs);
-      while (ref && !dom) {
+      while (ref) {
         struct basicblock *bref;
         bref = element_getvalue (ref);
 
-        if (!(bref->dominator))
-          continue;
-
-        if (!dom) {
-          dom = bref;
-          continue;
+        if (bref->dominator) {
+          if (!dom) {
+            dom = bref;
+          } else {
+            dom = intersect (dom, bref);
+          }
         }
-        dom = intersect (dom, bref);
+
         ref = element_next (ref);
       }
 
