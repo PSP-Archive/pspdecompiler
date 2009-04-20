@@ -36,8 +36,9 @@ struct codeswitch {
   struct prx_reloc *switchreloc;
   struct location *location;
   struct location *jumplocation;
-  list references;
-  int count;
+  list   references;
+  int    count;
+  int    checked;
 };
 
 struct subroutine {

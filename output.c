@@ -242,11 +242,13 @@ void print_subroutine_graph (FILE *out, struct code *c, struct subroutine *sub)
       while (ref) {
         struct basicblock *refblock = element_getvalue (ref);
         fprintf (out, "    %3d -> %3d ", block->dfsnum, refblock->dfsnum);
+        if (ref != list_head (block->outrefs))
+          fprintf (out, "[style=dashed]");
+
         if (refblock->parent == block) {
+          fprintf (out, "[style=bold]");
         } else if (block->dfsnum > refblock->dfsnum) {
           fprintf (out, "[color=red]");
-        } else {
-          fprintf (out, "[style=dashed]");
         }
         fprintf (out, " ;\n");
         ref = element_next (ref);

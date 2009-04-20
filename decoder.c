@@ -69,7 +69,7 @@ int decode_instructions (struct code *c)
       }
 
       if (INSN_PROCESSOR (loc->insn->flags) == INSN_ALLEGREX &&
-          location_gpr_used (loc) == 0) {
+          (location_gpr_used (loc) == 0 || ((loc->insn->flags & INSN_READ_GPR_T) && RS (loc->opc) == RT (loc->opc)))) {
 
         switch (loc->insn->insn) {
         case I_BEQ:
@@ -89,7 +89,6 @@ int decode_instructions (struct code *c)
         case I_BLTZL:
         case I_BNE:
         case I_BNEL:
-          error (__FILE__ ": branch never taken at 0x%08X\n", loc->address);
           loc->error = ERROR_ILLEGAL_BRANCH;
           break;
         default:

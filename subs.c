@@ -24,6 +24,22 @@ void mark_reachable (struct code *c, struct location *loc)
       if (loc->target)
         mark_reachable (c, loc->target);
 
+      if (loc->cswitch) {
+        if (loc->cswitch->checked) {
+          element el = list_head (loc->cswitch->references);
+          while (el) {
+            struct location *target = element_getvalue (el);
+            mark_reachable (c, target);
+            if (!target->references)
+              target->references = list_alloc (c->lstpool);
+            if (target->cswitch != loc->cswitch)
+              list_inserttail (target->references, loc);
+            target->cswitch = loc->cswitch;
+            el = element_next (el);
+          }
+        }
+      }
+
       if ((remaining == 0) || !(loc->insn->flags & (INSN_LINK | INSN_WRITE_GPR_D)))
         return;
 
@@ -252,17 +268,8 @@ void check_switches (struct code *c, struct subroutine *sub)
         fixedpool_free (c->switchpool, loc->cswitch);
         loc->cswitch = NULL;
       } else {
-        el = list_head (loc->cswitch->references);
-        while (el) {
-          struct location *target = element_getvalue (el);
-          mark_reachable (c, target);
-          if (!target->references)
-            target->references = list_alloc (c->lstpool);
-          if (target->cswitch != loc->cswitch)
-            list_inserttail (target->references, loc);
-          target->cswitch = loc->cswitch;
-          el = element_next (el);
-        }
+        if (loc->reachable)
+          mark_reachable (c, loc);
       }
     }
   } while (loc++ != sub->end);
@@ -286,27 +293,27 @@ void check_subroutine (struct code *c, struct subroutine *sub)
     if (loc->error) {
       switch (loc->error) {
       case ERROR_INVALID_OPCODE:
-        error (__FILE__ ": invalid opcode 0x%08X at 0x%08X", loc->opc, loc->address);
+        error (__FILE__ ": invalid opcode 0x%08X at 0x%08X (sub: 0x%08X)", loc->opc, loc->address, sub->begin->address);
         break;
       case ERROR_TARGET_OUTSIDE_FILE:
-        error (__FILE__ ": branch/jump outside file at 0x%08X", loc->address);
+        error (__FILE__ ": branch/jump outside file at 0x%08X (sub: 0x%08X)", loc->address, sub->begin->address);
         break;
       case ERROR_DELAY_SLOT:
-        error (__FILE__ ": delay slot error at 0x%08X", loc->address);
+        error (__FILE__ ": delay slot error at 0x%08X (sub: 0x%08X)", loc->address, sub->begin->address);
         break;
       case ERROR_ILLEGAL_BRANCH:
-        error (__FILE__ ": illegal branch at 0x%08X", loc->address);
+        error (__FILE__ ": illegal branch at 0x%08X (sub: 0x%08X)", loc->address, sub->begin->address);
         break;
       case ERROR_DELAY_SLOT_TARGET:
-        error (__FILE__ ": delay slot can't be a target of a branch/jump (0x%08X)", loc->address);
+        error (__FILE__ ": delay slot can't be a target of a branch/jump (0x%08X) (sub: 0x%08X)", loc->address, sub->begin->address);
         break;
       default:
         error (__FILE__ ": problematic subroutine at 0x%08X", sub->begin->address);
       }
-
       sub->haserror = TRUE;
-      return;
     }
+
+    if (sub->haserror) continue;
 
 
     if (loc->target) {
