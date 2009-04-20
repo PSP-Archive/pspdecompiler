@@ -1,5 +1,6 @@
 
 #include <stdlib.h>
+#include <string.h>
 #include "alloc.h"
 #include "utils.h"
 
@@ -14,10 +15,11 @@ struct _fixedpool {
   size_t size;
   size_t grownum;
   size_t bytes;
+  int setzero;
 };
 
 
-fixedpool fixedpool_create (size_t size, size_t grownum)
+fixedpool fixedpool_create (size_t size, size_t grownum, int setzero)
 {
   fixedpool p = (fixedpool) xmalloc (sizeof (struct _fixedpool));
   if (size < sizeof (struct _link)) size = sizeof (struct _link);
@@ -26,6 +28,7 @@ fixedpool fixedpool_create (size_t size, size_t grownum)
   p->allocated = NULL;
   p->nextfree = NULL;
   p->bytes = 0;
+  p->setzero = setzero;
   return p;
 }
 
@@ -100,6 +103,8 @@ void *fixedpool_alloc (fixedpool p)
   }
   l = p->nextfree;
   p->nextfree = l->next;
+  if (p->setzero)
+    memset (l, 0, p->size);
   return (void *) l;
 }
 

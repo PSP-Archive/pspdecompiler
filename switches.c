@@ -1,6 +1,4 @@
 
-#include <string.h>
-
 #include "code.h"
 #include "utils.h"
 
@@ -114,7 +112,6 @@ void extract_switches (struct code *c)
         struct codeswitch *cs;
 
         cs = fixedpool_alloc (c->switchpool);
-        memset (cs, 0, sizeof (struct codeswitch));
 
         cs->jumpreloc = aux;
         cs->switchreloc = rel;

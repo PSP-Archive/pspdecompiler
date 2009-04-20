@@ -204,17 +204,27 @@ int print_code (struct code *c, char *prxname)
 static
 void print_subroutine_graph (FILE *out, struct code *c, struct subroutine *sub)
 {
+  struct basicedge *edge;
+  struct basicblock *block;
   element el, ref;
+
   fprintf (out, "digraph sub_%05X {\n", sub->begin->address);
   el = list_head (sub->blocks);
+
   while (el) {
-    struct basicblock *block = element_getvalue (el);
+    block = element_getvalue (el);
 
     fprintf (out, "    %3d [label=\"%d\\n", block->dfsnum, block->dfsnum);
     if (block->begin) {
       fprintf (out, "0x%05X-0x%05X", block->begin->address, block->end->address);
     } else {
       fprintf (out, "End");
+    }
+    if (block->hascall) {
+      fprintf (out, "\\nCall ");
+      if (block->calltarget) {
+        fprintf (out, "0x%08X", block->calltarget->begin->address);
+      }
     }
     fprintf (out, "\"];\n");
 
@@ -240,7 +250,9 @@ void print_subroutine_graph (FILE *out, struct code *c, struct subroutine *sub)
     if (list_size (block->outrefs) != 0) {
       ref = list_head (block->outrefs);
       while (ref) {
-        struct basicblock *refblock = element_getvalue (ref);
+        struct basicblock *refblock;
+        edge = element_getvalue (ref);
+        refblock = edge->to;
         fprintf (out, "    %3d -> %3d ", block->dfsnum, refblock->dfsnum);
         if (ref != list_head (block->outrefs))
           fprintf (out, "[style=dashed]");

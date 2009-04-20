@@ -9,86 +9,75 @@
 
 testcfg_branches:
         nop
-opa:
-        bne     $a0, $0, 0f
+testcfg_branches_start:
+        bne     $a0, $0, 1f
         nop
 
-        bgez    $0, 1f        /* Always */
-        nop
-0:
-        bgez    $a0, 1f
-        nop
-
-        bgezl   $0, 2f        /* Always */
+        bgez    $a0, 2f
         nop
 
 1:
-        bgezl   $a0, 2f
+        bgtz    $a0, 3f
         nop
 
-        bgtz    $a0, 2f
-        nop
-
-        bgtzl   $a0, 2f
-        nop
-
-        blez    $0, 3f        /* Always */
-        nop
 2:
-        blez    $a0, 3f
+        blez    $a0, 4f
         nop
 
-        blezl   $0, 4f        /* Always */
-        nop
 3:
-        blezl   $a0, 4f
-        nop
-
-        bltz    $a0, 4f
-        nop
-
-        bltzl   $a0, 4f
-        nop
-
-
-        beq     $0, $0, 5f   /* Always */
+        bltz    $a0, 5f
         nop
 
 4:
-
-        beq     $a0, $at, 5f
-        nop
-
-        beq     $a0, $a0, 6f /* Always */
+        beq     $a0, $at, 6f
         nop
 
 5:
-        beql    $0, $0, 7f  /* Always */
+        bne     $a0, $at, 7f
         nop
 
 6:
-        beql    $a0, $at, 7f
-        nop
-
-        beql    $a0, $a0, 8f /* Always */
+        j       testcfg_branches_start
         nop
 
 7:
-
-        bne     $a0, $at, 8f
-        nop
-
-        bnel    $a0, $at, 8f
-        nop
-
-        j       0b
-        nop
-8:
-
         jr      $ra
         nop
 
         .end    testcfg_branches
+
+
+        .global testcfg_branches_likely
+        .ent    testcfg_branches_likely
+
+testcfg_branches_likely:
+        beql    $a0, $a1, 1f
+        nop
+
+        bgezl   $a1, 1f
+        nop
+
+        bgtzl   $a2, 1f
+        nop
+
+        blezl   $a3, 1f
+        nop
+
+        bltzl   $a0, 1f
+        nop
+
+        bnel    $a0, $a2, 1f
+        nop
+
+        nop
+1:
+
+        jr      $ra
+        nop
+
+        .end    testcfg_branches_likely
+
+
 
         .global testcfg_branches_never
         .ent    testcfg_branches_never
@@ -172,44 +161,57 @@ testcfg_branches_always:
 
         .end    testcfg_branches_always
 
-        .global asmfunc
-        .ent    asmfunc
+        .global testcfg_jumptobegin
+        .ent    testcfg_jumptobegin
 
-asmfunc:
-        jal     asmfunc_inner
-        andi    $a0, $a0, 1
-
-        slti    $t0, $a1, 7
-        sll     $a0, $a1, 2
-        blezl   $t0, asmfunc_default
-        lui     $v0, %hi(asmfunc_switch)
-        addu    $v0, $a0
-        lw      $v0, %lo(asmfunc_switch)($v0)
-        jr      $v0
+testcfg_jumptobegin:
         nop
-asmfunc_case0:
-asmfunc_case1:
-asmfunc_case6:
-asmfunc_case3:
+        beq     $a0, $a1, testcfg_jumptobegin
+        nop
+
         jr      $ra
         nop
 
-asmfunc_case4:
-asmfunc_case2:
-        j       asmfunc_case0
+        .end    testcfg_jumptobegin
+
+
+        .global testswitch
+        .ent    testswitch
+
+testswitch:
+        jal     testswitch_innercallback
+        nop
+        slti    $t0, $a1, 7
+        sll     $a0, $a1, 2
+        blezl   $t0, switch1_default
+        lui     $v0, %hi(switch1)
+        addu    $v0, $a0
+        lw      $v0, %lo(switch1)($v0)
+        jr      $v0
+        nop
+switch1_case0:
+switch1_case1:
+switch1_case6:
+switch1_case3:
+        jr      $ra
+        nop
+
+switch1_case4:
+switch1_case2:
+        j       switch1_case0
         move    $a0, $v0
 
 
-asmfunc_case5:
+switch1_case5:
         jal     testcfg_branches_always
         nop
 
-asmfunc_default:
+switch1_default:
 
         jr      $ra
         nop
 
-asmfunc_inner:
+testswitch_innercallback:
         jal     mycallback
         nop
         lui     $v0, %hi(inner_callback)
@@ -221,18 +223,18 @@ mycallback:
         jr      $ra
         nop
 
-        .end    asmfunc
+        .end    testswitch
 
 
         .section .rodata
-asmfunc_switch:
-        .word   asmfunc_case0
-        .word   asmfunc_case1
-        .word   asmfunc_case2
-        .word   asmfunc_case3
-        .word   asmfunc_case4
-        .word   asmfunc_case5
-        .word   asmfunc_case6
+switch1:
+        .word   switch1_case0
+        .word   switch1_case1
+        .word   switch1_case2
+        .word   switch1_case3
+        .word   switch1_case4
+        .word   switch1_case5
+        .word   switch1_case6
 
 inner_callback:
         .word   mycallback

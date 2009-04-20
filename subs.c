@@ -1,6 +1,4 @@
 
-#include <string.h>
-
 #include "code.h"
 #include "utils.h"
 
@@ -70,7 +68,6 @@ void new_subroutine (struct code *c, struct location *loc, struct prx_function *
 
   if (!sub) {
     sub = fixedpool_alloc (c->subspool);
-    memset (sub, 0, sizeof (struct subroutine));
     sub->begin = loc;
     loc->sub = sub;
   }
@@ -268,8 +265,11 @@ void check_switches (struct code *c, struct subroutine *sub)
         fixedpool_free (c->switchpool, loc->cswitch);
         loc->cswitch = NULL;
       } else {
-        if (loc->reachable)
+        loc->cswitch->checked = TRUE;
+        if (loc->reachable) {
+          loc->reachable = 0;
           mark_reachable (c, loc);
+        }
       }
     }
   } while (loc++ != sub->end);

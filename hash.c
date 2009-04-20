@@ -38,8 +38,8 @@ struct _hashpool {
 hashpool hashpool_create (size_t numtables, size_t numentries)
 {
   hashpool pool = (hashpool) xmalloc (sizeof (struct _hashpool));
-  pool->tablepool = fixedpool_create (sizeof (struct _hashtable), numtables);
-  pool->entrypool = fixedpool_create (sizeof (struct _entry), numentries);
+  pool->tablepool = fixedpool_create (sizeof (struct _hashtable), numtables, 0);
+  pool->entrypool = fixedpool_create (sizeof (struct _entry), numentries, 0);
   return pool;
 }
 

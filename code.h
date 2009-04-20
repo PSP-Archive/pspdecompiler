@@ -59,6 +59,7 @@ struct basicblock {
   struct location *begin;
   struct location *end;
   struct location *jumploc;
+  struct subroutine *calltarget;
 
   struct basicblock *dominator;
   struct basicblock *parent;
@@ -66,6 +67,11 @@ struct basicblock {
 
   list   outrefs, inrefs;
   int    dfsnum;
+  int    hascall;
+};
+
+struct basicedge {
+  struct basicblock *from, *to;
 };
 
 struct code {
@@ -81,6 +87,7 @@ struct code {
   fixedpool switchpool;
   fixedpool subspool;
   fixedpool blockspool;
+  fixedpool edgespool;
 };
 
 struct code* code_analyse (struct prx *p);

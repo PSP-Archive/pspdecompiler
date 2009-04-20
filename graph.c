@@ -5,6 +5,7 @@
 static
 void step (struct subroutine *sub, struct basicblock *block)
 {
+  struct basicedge *edge;
   struct basicblock *next;
   element el;
 
@@ -12,7 +13,8 @@ void step (struct subroutine *sub, struct basicblock *block)
 
   el = list_head (block->outrefs);
   while (el) {
-    next = element_getvalue (el);
+    edge = element_getvalue (el);
+    next = edge->to;
     if (!next->dfsnum) {
       next->parent = block;
       step (sub, next);
@@ -71,8 +73,11 @@ void dominance (struct subroutine *sub)
       block = element_getvalue (el);
       ref = list_head (block->inrefs);
       while (ref) {
+        struct basicedge *edge;
         struct basicblock *bref;
-        bref = element_getvalue (ref);
+
+        edge = element_getvalue (ref);
+        bref = edge->from;
 
         if (bref->dominator) {
           if (!dom) {
@@ -98,15 +103,17 @@ void dominance (struct subroutine *sub)
 void frontier (struct subroutine *sub)
 {
   struct basicblock *block, *runner;
+  struct basicedge *edge;
   element el, ref;
 
   el = list_head (sub->blocks);
   while (el) {
     block = element_getvalue (el);
     if (list_size (block->inrefs) >= 2) {
-      ref = list_head (block->inrefs);
+      ref = list_head (block->inrefs);;
       while (ref) {
-        runner = element_getvalue (ref);
+        edge = element_getvalue (ref);
+        runner = edge->to;
         while (runner != block->dominator) {
           list_inserttail (runner->frontier, block);
           runner = runner->dominator;

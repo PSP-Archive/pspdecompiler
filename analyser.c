@@ -13,9 +13,10 @@ struct code *code_alloc (void)
   memset (c, 0, sizeof (struct code));
 
   c->lstpool = listpool_create (8192, 4096);
-  c->switchpool = fixedpool_create (sizeof (struct codeswitch), 64);
-  c->subspool = fixedpool_create (sizeof (struct subroutine), 1024);
-  c->blockspool = fixedpool_create (sizeof (struct basicblock), 4096);
+  c->switchpool = fixedpool_create (sizeof (struct codeswitch), 64, 1);
+  c->subspool = fixedpool_create (sizeof (struct subroutine), 1024, 1);
+  c->blockspool = fixedpool_create (sizeof (struct basicblock), 4096, 1);
+  c->edgespool = fixedpool_create (sizeof (struct basicedge), 8192, 1);
 
   return c;
 }
@@ -53,6 +54,14 @@ void code_free (struct code *c)
   if (c->switchpool)
     fixedpool_destroy (c->switchpool, NULL, NULL);
   c->switchpool = NULL;
+
+  if (c->blockspool)
+    fixedpool_destroy (c->blockspool, NULL, NULL);
+  c->blockspool = NULL;
+
+  if (c->edgespool)
+    fixedpool_destroy (c->edgespool, NULL, NULL);
+  c->edgespool = NULL;
 
   free (c);
 }

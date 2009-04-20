@@ -1,6 +1,5 @@
 
 #include <stdlib.h>
-#include <string.h>
 
 #include "lists.h"
 #include "alloc.h"
@@ -31,8 +30,8 @@ struct _listpool {
 listpool listpool_create (size_t numelms, size_t numlsts)
 {
   listpool result = (listpool) xmalloc (sizeof (struct _listpool));
-  result->elmpool = fixedpool_create (sizeof (struct _element), numelms);
-  result->lstpool = fixedpool_create (sizeof (struct _list), numlsts);
+  result->elmpool = fixedpool_create (sizeof (struct _element), numelms, 0);
+  result->lstpool = fixedpool_create (sizeof (struct _list), numlsts, 0);
   return result;
 }
 
