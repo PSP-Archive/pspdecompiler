@@ -177,6 +177,30 @@ testcfg_branchlink:
 
         .end    testcfg_branchlink
 
+        .global testcfg_strangerefs
+        .ent    testcfg_strangerefs
+
+testcfg_strangerefs:
+        beql    $a0, $a1, 2f
+1:
+        nop
+        beq     $a0, $a1, 2f
+        nop
+        j       1b
+        nop
+
+2:
+        bltzall $a0, testcfg_jumptobegin
+3:
+        nop
+        beq     $a0, $a1, 3b
+        nop
+
+        jr      $ra
+        nop
+
+        .end    testcfg_strangerefs
+
         .global testcfg_jumptobegin
         .ent    testcfg_jumptobegin
 

@@ -121,7 +121,8 @@ void link_blocks (struct code *c, struct subroutine *sub)
         if (loc->insn->flags & (INSN_LINK | INSN_WRITE_GPR_D)) {
           edge = make_link (c, block, next);
           edge->hascall = TRUE;
-          edge->calltarget = loc->target->sub;
+          if (loc->target)
+            edge->calltarget = loc->target->sub;
         } else {
           if (loc->target) {
             if (loc->target->sub->begin == loc->target) {

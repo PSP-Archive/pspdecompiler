@@ -318,7 +318,7 @@ void check_subroutine (struct code *c, struct subroutine *sub)
       default:
         error (__FILE__ ": problematic subroutine at 0x%08X", sub->begin->address);
       }
-      sub->haserror = TRUE;
+      if (loc->error != ERROR_DELAY_SLOT_TARGET) sub->haserror = TRUE;
     }
 
     if (sub->haserror) continue;
