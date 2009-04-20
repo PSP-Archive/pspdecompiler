@@ -161,6 +161,22 @@ testcfg_branches_always:
 
         .end    testcfg_branches_always
 
+        .global testcfg_branchlink
+        .ent    testcfg_branchlink
+
+testcfg_branchlink:
+        bgezal  $a0, testcfg_jumptobegin
+        nop
+        bltzal  $a0, testcfg_jumptobegin
+        nop
+        bltzall $a0, testcfg_jumptobegin
+        nop
+
+        jr      $ra
+        nop
+
+        .end    testcfg_branchlink
+
         .global testcfg_jumptobegin
         .ent    testcfg_jumptobegin
 

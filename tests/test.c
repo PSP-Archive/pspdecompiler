@@ -15,6 +15,7 @@ int module_start (SceUInt argc, void *arg)
   testcfg_branches_likely ();
   testcfg_branches_never ();
   testcfg_branches_always ();
+  testcfg_branchlink ();
   testcfg_jumptobegin ();
   testswitch ();
 

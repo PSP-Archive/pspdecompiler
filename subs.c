@@ -8,16 +8,21 @@ void mark_reachable (struct code *c, struct location *loc)
 {
   uint32 remaining = 1 + ((c->end->address - loc->address) >> 2);
   for (; remaining--; loc++) {
-    if (loc->reachable == 1) break;
-    else if (loc->reachable == 2) {
+    if (loc->reachable == LOCATION_REACHABLE) break;
+    else if (loc->reachable == LOCATION_DELAY_SLOT) {
       loc->error = ERROR_DELAY_SLOT_TARGET;
     }
-    loc->reachable = 1;
+    loc->reachable = LOCATION_REACHABLE;
 
     if (!loc->insn) return;
 
     if (loc->insn->flags & INSN_JUMP) {
-      if (remaining > 0) loc[1].reachable = 2;
+      if (remaining > 0) {
+        if (loc[1].reachable == LOCATION_REACHABLE)
+          loc[1].error = ERROR_DELAY_SLOT_TARGET;
+        else
+          loc[1].reachable = LOCATION_DELAY_SLOT;
+      }
 
       if (loc->target)
         mark_reachable (c, loc->target);
@@ -45,7 +50,10 @@ void mark_reachable (struct code *c, struct location *loc)
       remaining--;
     } else if (loc->insn->flags & INSN_BRANCH) {
       if (remaining > 0) {
-        loc[1].reachable = 2;
+        if (loc[1].reachable == LOCATION_REACHABLE)
+          loc[1].error = ERROR_DELAY_SLOT_TARGET;
+        else
+          loc[1].reachable = LOCATION_DELAY_SLOT;
       }
 
       if (loc->target) {

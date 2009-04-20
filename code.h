@@ -13,6 +13,9 @@
 #define ERROR_DELAY_SLOT_TARGET    4
 #define ERROR_ILLEGAL_BRANCH       5
 
+#define LOCATION_REACHABLE         1
+#define LOCATION_DELAY_SLOT        2
+
 struct location {
   uint32 opc;
   uint32 address;
@@ -27,7 +30,6 @@ struct location {
 
   struct subroutine *sub;
   struct basicblock *block;
-
   struct codeswitch *cswitch;
 };
 
@@ -58,8 +60,8 @@ struct subroutine {
 struct basicblock {
   struct location *begin;
   struct location *end;
+
   struct location *jumploc;
-  struct subroutine *calltarget;
 
   struct basicblock *dominator;
   struct basicblock *parent;
@@ -67,11 +69,16 @@ struct basicblock {
 
   list   outrefs, inrefs;
   int    dfsnum;
-  int    hascall;
 };
 
 struct basicedge {
   struct basicblock *from, *to;
+
+  struct subroutine *calltarget;
+  int    hascall;
+
+  struct codeswitch *cswitch;
+  int    switchnum;
 };
 
 struct code {

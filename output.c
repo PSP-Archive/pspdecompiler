@@ -214,19 +214,17 @@ void print_subroutine_graph (FILE *out, struct code *c, struct subroutine *sub)
   while (el) {
     block = element_getvalue (el);
 
-    fprintf (out, "    %3d [label=\"%d\\n", block->dfsnum, block->dfsnum);
+    fprintf (out, "    %3d ", block->dfsnum);
     if (block->begin) {
-      fprintf (out, "0x%05X-0x%05X", block->begin->address, block->end->address);
-    } else {
-      fprintf (out, "End");
-    }
-    if (block->hascall) {
-      fprintf (out, "\\nCall ");
-      if (block->calltarget) {
-        fprintf (out, "0x%08X", block->calltarget->begin->address);
+      struct location *loc;
+      fprintf (out, "[label=\"0x%08X:\\l", block->begin->address);
+      for (loc = block->begin; ; loc++) {
+        fprintf (out, "%s\\l", allegrex_disassemble (loc->opc, loc->address, 0));
+        if (loc == block->end) break;
       }
+      fprintf (out, "\"]");
     }
-    fprintf (out, "\"];\n");
+    fprintf (out, ";\n");
 
     /*
     if (block->dominator) {
@@ -254,6 +252,13 @@ void print_subroutine_graph (FILE *out, struct code *c, struct subroutine *sub)
         edge = element_getvalue (ref);
         refblock = edge->to;
         fprintf (out, "    %3d -> %3d ", block->dfsnum, refblock->dfsnum);
+        if (edge->hascall) {
+          fprintf (out, "[label=\"Call ");
+          if (edge->calltarget) {
+            fprintf (out, "0x%08X", edge->calltarget->begin->address);
+          }
+          fprintf (out, "\"]");
+        }
         if (ref != list_head (block->outrefs))
           fprintf (out, "[style=dashed]");
 
