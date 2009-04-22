@@ -74,6 +74,12 @@ void print_subroutine_name (FILE *out, struct subroutine *sub)
 }
 
 static
+void print_block (FILE *out, struct subroutine *sub, struct basicblock *block)
+{
+
+}
+
+static
 void print_subroutine (FILE *out, struct code *c, struct subroutine *sub)
 {
   struct location *loc;
@@ -215,7 +221,8 @@ void print_subroutine_graph (FILE *out, struct code *c, struct subroutine *sub)
     block = element_getvalue (el);
 
     fprintf (out, "    %3d ", block->dfsnum);
-    if (block->begin) {
+    fprintf (out, "[label=\"%d - %d\"];\n", block->dfsnum, block->loop ? block->loop->start->dfsnum : 0);
+    /*if (block->begin) {
       struct location *loc;
       fprintf (out, "[label=\"0x%08X:\\l", block->begin->address);
       for (loc = block->begin; ; loc++) {
@@ -224,13 +231,12 @@ void print_subroutine_graph (FILE *out, struct code *c, struct subroutine *sub)
       }
       fprintf (out, "\"]");
     }
-    fprintf (out, ";\n");
+    fprintf (out, ";\n");*/
 
-    /*
-    if (block->dominator) {
-      fprintf (out, "    %3d -> %3d [color=red];\n", block->dfsnum, block->dominator->dfsnum);
+
+    if (block->revdominator && list_size (block->outrefs) > 1) {
+      fprintf (out, "    %3d -> %3d [color=green];\n", block->dfsnum, block->revdominator->dfsnum);
     }
-    */
 
     /*
     if (list_size (block->frontier) != 0) {
@@ -260,11 +266,11 @@ void print_subroutine_graph (FILE *out, struct code *c, struct subroutine *sub)
           fprintf (out, "\"]");
         }
         if (ref != list_head (block->outrefs))
-          fprintf (out, "[style=dashed]");
+          fprintf (out, "[arrowtail=dot]");
 
         if (refblock->parent == block) {
           fprintf (out, "[style=bold]");
-        } else if (block->dfsnum > refblock->dfsnum) {
+        } else if (block->dfsnum >= refblock->dfsnum) {
           fprintf (out, "[color=red]");
         }
         fprintf (out, " ;\n");

@@ -204,21 +204,27 @@ void extract_hidden_subroutines (struct code *c)
 {
   struct subroutine *cursub = NULL;
   uint32 i;
+  int changed = TRUE;
 
-  for (i = 0; i < c->numopc; i++) {
-    struct location *loc = &c->base[i];
-    if (loc->sub) cursub = loc->sub;
-    if (!loc->reachable) continue;
+  while (changed) {
+    changed = FALSE;
+    for (i = 0; i < c->numopc; i++) {
+      struct location *loc = &c->base[i];
+      if (loc->sub) cursub = loc->sub;
+      if (!loc->reachable) continue;
 
-    if (loc->target) {
-      struct location *target;
-      struct subroutine *targetsub;
+      if (loc->target) {
+        struct location *target;
+        struct subroutine *targetsub;
 
-      target = loc->target;
-      targetsub = find_sub (c, target);
-      if (!target->sub && (targetsub != cursub)) {
-        report (__FILE__ ": hidden subroutine at 0x%08X\n", target->address);
-        new_subroutine (c, target, NULL, NULL);
+        target = loc->target;
+        targetsub = find_sub (c, target);
+
+        if (!target->sub && (targetsub != cursub)) {
+          report (__FILE__ ": hidden subroutine at 0x%08X (called by 0x%08X)\n", target->address, loc->address);
+          new_subroutine (c, target, NULL, NULL);
+          changed = TRUE;
+        }
       }
     }
   }
@@ -318,7 +324,7 @@ void check_subroutine (struct code *c, struct subroutine *sub)
       default:
         error (__FILE__ ": problematic subroutine at 0x%08X", sub->begin->address);
       }
-      if (loc->error != ERROR_DELAY_SLOT_TARGET) sub->haserror = TRUE;
+      sub->haserror = TRUE;
     }
 
     if (sub->haserror) continue;
@@ -349,7 +355,7 @@ void check_subroutine (struct code *c, struct subroutine *sub)
   if ((loc->insn->flags & (INSN_BRANCH | INSN_LINK)) == INSN_BRANCH && loc->branchalways)
     return;
 
-  error (__FILE__ ": subroutine at 0x%08X has no finish", sub->begin->address);
+  error (__FILE__ ": subroutine at 0x%08X (end 0x%08X) has no finish", sub->begin->address, sub->end->address);
   sub->haserror = TRUE;
 }
 
@@ -378,9 +384,9 @@ void extract_subroutines (struct code *c)
     if (!sub->import) {
       check_switches (c, sub);
       check_subroutine (c, sub);
-      if (!sub->haserror)
-        if (!extract_cfg (c, sub))
-          sub->haserror = TRUE;
+      if (!sub->haserror) extract_cfg (c, sub);
+      if (!sub->haserror) extract_loops (c, sub);
+      if (!sub->haserror) build_ssa (c, sub);
     }
     el = element_next (el);
   }

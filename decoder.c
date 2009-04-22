@@ -96,7 +96,7 @@ int decode_instructions (struct code *c)
         }
       }
 
-    } else if ((loc->insn->flags & (INSN_JUMP | INSN_READ_GPR_S)) == INSN_JUMP) {
+    } else if (loc->insn->insn == I_J || loc->insn->insn == I_JAL) {
       uint32 target_addr = (loc->opc & 0x3FFFFFF) << 2;;
       target_addr |= ((loc->address) & 0xF0000000);
       tgt = (target_addr - address) >> 2;

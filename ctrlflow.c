@@ -10,6 +10,9 @@ void extract_blocks (struct code *c, struct subroutine *sub)
   struct basicblock *block;
 
   sub->blocks = list_alloc (c->lstpool);
+  sub->revdfsblocks = list_alloc (c->lstpool);
+  sub->dfsblocks = list_alloc (c->lstpool);
+
   begin = sub->begin;
 
   while (1) {
@@ -45,7 +48,7 @@ void extract_blocks (struct code *c, struct subroutine *sub)
 
     do {
       begin->block = block;
-    } while (begin++ != block->end);
+    } while (begin++ != next);
 
     begin = NULL;
     while (next++ != sub->end) {
@@ -65,8 +68,8 @@ struct basicedge *make_link (struct code *c, struct basicblock *from, struct bas
   edge->from = from;
   edge->to = to;
 
-  list_inserthead (from->outrefs, edge);
-  list_inserthead (to->inrefs, edge);
+  list_inserttail (from->outrefs, edge);
+  list_inserttail (to->inrefs, edge);
   return edge;
 }
 
@@ -159,16 +162,21 @@ void link_blocks (struct code *c, struct subroutine *sub)
   }
 }
 
-int extract_cfg (struct code *c, struct subroutine *sub)
+void extract_cfg (struct code *c, struct subroutine *sub)
 {
   extract_blocks (c, sub);
   link_blocks (c, sub);
   if (!cfg_dfs (sub)) {
     error (__FILE__ ": unreachable code at subroutine 0x%08X", sub->begin->address);
-    return 0;
+    sub->haserror = TRUE;
+    return;
+  }
+  if (!cfg_revdfs (sub)) {
+    error (__FILE__ ": infinite loop at subroutine 0x%08X", sub->begin->address);
+    sub->haserror = TRUE;
+    return;
   }
 
   cfg_dominance (sub);
-
-  return 1;
+  cfg_revdominance (sub);
 }
