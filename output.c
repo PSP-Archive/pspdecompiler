@@ -80,14 +80,14 @@ void print_block (FILE *out, int ident, struct basicblock *block)
   struct location *loc;
   int i;
 
-  if (!block->begin) return;
-  for (loc = block->begin; ;loc++) {
+  if (block->type != BLOCK_SIMPLE) return;
+  for (loc = block->val.simple.begin; ;loc++) {
 
     for (i = 0; i < ident; i++)
       fprintf (out, "  ");
 
     fprintf (out, "%s\n", allegrex_disassemble (loc->opc, loc->address, FALSE));
-    if (loc == block->end) return;
+    if (loc == block->val.simple.begin) return;
   }
 }
 
@@ -109,14 +109,6 @@ void print_subroutine (FILE *out, struct code *c, struct subroutine *sub)
   while (el) {
     struct basicblock *block = element_getvalue (el);
     ident = 1;
-    if (block->loop) {
-      struct loopstruct *loop = block->loop;
-      while (loop) {
-        ident++; loop = loop->parent;
-      }
-      if (block->loop->start == block)
-        fprintf (out, "Loop 0x%08X:\n", block->begin->address);
-    }
     print_block (out, ident, block);
     fprintf (out, "\n");
     el = element_next (el);
@@ -197,7 +189,6 @@ int print_code (struct code *c, char *prxname)
 static
 void print_subroutine_graph (FILE *out, struct code *c, struct subroutine *sub)
 {
-  struct basicedge *edge;
   struct basicblock *block;
   element el, ref;
 
@@ -208,13 +199,13 @@ void print_subroutine_graph (FILE *out, struct code *c, struct subroutine *sub)
     block = element_getvalue (el);
 
     fprintf (out, "    %3d ", block->dfsnum);
-    fprintf (out, "[label=\"%d - %d\\l", block->dfsnum, block->loop ? block->loop->start->dfsnum : 0);
-    if (block->begin) {
-      struct location *loc;
-      for (loc = block->begin; ; loc++) {
-        fprintf (out, "%s\\l", allegrex_disassemble (loc->opc, loc->address, 0));
-        if (loc == block->end) break;
-      }
+    fprintf (out, "[label=\"(%d) ", block->dfsnum);
+    switch (block->type) {
+    case BLOCK_START: fprintf (out, "Start");   break;
+    case BLOCK_END: fprintf (out, "End");       break;
+    case BLOCK_CALL: fprintf (out, "Call");     break;
+    case BLOCK_SWITCH: fprintf (out, "Switch"); break;
+    case BLOCK_SIMPLE: fprintf (out, "0x%08X", block->val.simple.begin->address);
     }
     fprintf (out, "\"];\n");
 
@@ -240,16 +231,8 @@ void print_subroutine_graph (FILE *out, struct code *c, struct subroutine *sub)
       ref = list_head (block->outrefs);
       while (ref) {
         struct basicblock *refblock;
-        edge = element_getvalue (ref);
-        refblock = edge->to;
+        refblock = element_getvalue (ref);
         fprintf (out, "    %3d -> %3d ", block->dfsnum, refblock->dfsnum);
-        if (edge->hascall) {
-          fprintf (out, "[label=\"Call ");
-          if (edge->calltarget) {
-            fprintf (out, "0x%08X", edge->calltarget->begin->address);
-          }
-          fprintf (out, "\"]");
-        }
         if (ref != list_head (block->outrefs))
           fprintf (out, "[arrowtail=dot]");
 

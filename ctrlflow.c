@@ -2,32 +2,45 @@
 #include "code.h"
 #include "utils.h"
 
+static
+struct basicblock *alloc_block (struct subroutine *sub)
+{
+  struct basicblock *block;
+  block = fixedpool_alloc (sub->code->blockspool);
+
+  block->inrefs = list_alloc (sub->code->lstpool);
+  block->outrefs = list_alloc (sub->code->lstpool);
+  block->frontier = list_alloc (sub->code->lstpool);
+  block->sub = sub;
+  return block;
+}
 
 static
-void extract_blocks (struct code *c, struct subroutine *sub)
+void extract_blocks (struct subroutine *sub)
 {
   struct location *begin, *next;
   struct basicblock *block;
 
-  sub->blocks = list_alloc (c->lstpool);
-  sub->revdfsblocks = list_alloc (c->lstpool);
-  sub->dfsblocks = list_alloc (c->lstpool);
+  sub->blocks = list_alloc (sub->code->lstpool);
+  sub->revdfsblocks = list_alloc (sub->code->lstpool);
+  sub->dfsblocks = list_alloc (sub->code->lstpool);
+
+  block = alloc_block (sub);
+  list_inserttail (sub->blocks, block);
+  block->type = BLOCK_START;
 
   begin = sub->begin;
 
   while (1) {
-    block = fixedpool_alloc (c->blockspool);
-
-    block->inrefs = list_alloc (c->lstpool);
-    block->outrefs = list_alloc (c->lstpool);
-    block->frontier = list_alloc (c->lstpool);
+    block = alloc_block (sub);
     list_inserttail (sub->blocks, block);
 
     if (!begin) break;
     next = begin;
 
-    block->begin = begin;
-    block->end = next;
+    block->type = BLOCK_SIMPLE;
+    block->val.simple.begin = begin;
+    block->val.simple.end = next;
 
     for (; next != sub->end; next++) {
       if (next->references && (next != begin)) {
@@ -36,14 +49,14 @@ void extract_blocks (struct code *c, struct subroutine *sub)
       }
 
       if (next->insn->flags & (INSN_JUMP | INSN_BRANCH)) {
-        block->jumploc = next;
-        block->end = next;
+        block->val.simple.jumploc = next;
+        block->val.simple.end = next;
         if (!(next->insn->flags & INSN_BRANCHLIKELY))
-          block->end++;
+          block->val.simple.end++;
         break;
       }
 
-      block->end = next;
+      block->val.simple.end = next;
     }
 
     do {
@@ -58,82 +71,101 @@ void extract_blocks (struct code *c, struct subroutine *sub)
       }
     }
   }
+  block->type = BLOCK_END;
+  sub->endblock = block;
+}
+
+
+static
+void make_link (struct basicblock *from, struct basicblock *to)
+{
+  list_inserttail (from->outrefs, to);
+  list_inserttail (to->inrefs, from);
 }
 
 static
-struct basicedge *make_link (struct code *c, struct basicblock *from, struct basicblock *to)
+element make_link_and_insert (struct basicblock *from, struct basicblock *to, element el)
 {
-  struct basicedge *edge;
-  edge = fixedpool_alloc (c->edgespool);
-  edge->from = from;
-  edge->to = to;
+  struct basicblock *block = alloc_block (from->sub);
+  element inserted = element_alloc (from->sub->code->lstpool, block);
 
-  list_inserttail (from->outrefs, edge);
-  list_inserttail (to->inrefs, edge);
-  return edge;
+  element_insertbefore (el, inserted);
+  make_link (from, block);
+  make_link (block, to);
+  return inserted;
 }
 
+
 static
-void link_blocks (struct code *c, struct subroutine *sub)
+void link_blocks (struct subroutine *sub)
 {
-  struct basicblock *block, *next, *endblock;
-  struct basicedge *edge;
+  struct basicblock *block, *next;
+  struct basicblock *target;
   struct location *loc;
-  element el;
-
-  endblock = list_tailvalue (sub->blocks);
-  sub->endblock = endblock;
+  element el, inserted;
 
   el = list_head (sub->blocks);
 
   while (el) {
     block = element_getvalue (el);
-    if (block == endblock) break;
+    if (block->type == BLOCK_END) break;
+    if (block->type == BLOCK_START) {
+      el = element_next (el);
+      make_link (block, element_getvalue (el));
+      continue;
+    }
+
     el = element_next (el);
     next = element_getvalue (el);
 
 
-    if (block->jumploc) {
-      loc = block->jumploc;
+    if (block->val.simple.jumploc) {
+      loc = block->val.simple.jumploc;
       if (loc->insn->flags & INSN_BRANCH) {
-        make_link (c, block, next);
-        if (loc->insn->flags & INSN_BRANCHLIKELY) {
-          struct basicblock *slot = fixedpool_alloc (c->blockspool);
-          element_insertbefore (el, element_alloc (c->lstpool, slot));
-          slot->inrefs = list_alloc (c->lstpool);
-          slot->outrefs = list_alloc (c->lstpool);
-          slot->frontier = list_alloc (c->lstpool);
-          slot->begin = &block->end[1];
-          slot->end = slot->begin;
+        make_link (block, next);
 
-          make_link (c, block, slot);
+        if (loc->insn->flags & INSN_BRANCHLIKELY) {
+          struct basicblock *slot = alloc_block (sub);
+          inserted = element_alloc (sub->code->lstpool, slot);
+          element_insertbefore (el, inserted);
+
+          slot->type = BLOCK_SIMPLE;
+          slot->val.simple.begin = &block->val.simple.end[1];
+          slot->val.simple.end = slot->val.simple.begin;
+          make_link (block, slot);
           block = slot;
         }
+
         if (loc->insn->flags & INSN_LINK) {
-          edge = make_link (c, block, next);
-          edge->hascall = TRUE;
-          edge->calltarget = loc->target->sub;
+          inserted = make_link_and_insert (block, next, el);
+          target = element_getvalue (inserted);
+          target->type = BLOCK_CALL;
+          target->val.call.calltarget = loc->target->sub;
         } else if (loc->target->sub->begin == loc->target) {
-          edge = make_link (c, block, endblock);
-          edge->hascall = TRUE;
-          edge->calltarget = loc->target->sub;
+          inserted = make_link_and_insert (block, sub->endblock, el);
+          target = element_getvalue (inserted);
+          target->type = BLOCK_CALL;
+          target->val.call.calltarget = loc->target->sub;
         } else {
-          make_link (c, block, loc->target->block);
+          make_link (block, loc->target->block);
         }
+
       } else {
         if (loc->insn->flags & (INSN_LINK | INSN_WRITE_GPR_D)) {
-          edge = make_link (c, block, next);
-          edge->hascall = TRUE;
+          inserted = make_link_and_insert (block, next, el);
+          target = element_getvalue (inserted);
+          target->type = BLOCK_CALL;
           if (loc->target)
-            edge->calltarget = loc->target->sub;
+            target->val.call.calltarget = loc->target->sub;
         } else {
           if (loc->target) {
             if (loc->target->sub->begin == loc->target) {
-              edge = make_link (c, block, endblock);
-              edge->hascall = TRUE;
-              edge->calltarget = loc->target->sub;
+              inserted = make_link_and_insert (block, sub->endblock, el);
+              target = element_getvalue (inserted);
+              target->type = BLOCK_CALL;
+              target->val.call.calltarget = loc->target->sub;
             } else {
-              make_link (c, block, loc->target->block);
+              make_link (block, loc->target->block);
             }
           } else {
             if (loc->cswitch) {
@@ -143,29 +175,31 @@ void link_blocks (struct code *c, struct subroutine *sub)
               if (loc->cswitch->jumplocation == loc) {
                 ref = list_head (loc->cswitch->references);
                 while (ref) {
-                  struct location *target = element_getvalue (ref);
-                  edge = make_link (c, block, target->block);
-                  edge->cswitch = loc->cswitch;
-                  edge->switchnum = count++;
+                  struct location *switchtarget = element_getvalue (ref);
+                  inserted = make_link_and_insert (block, switchtarget->block, el);
+                  target = element_getvalue (inserted);
+                  target->type = BLOCK_SWITCH;
+                  target->val.sw.switchnum = count++;
+                  target->val.sw.cswitch = loc->cswitch;
                   ref = element_next (ref);
                 }
               }
             } else
-              make_link (c, block, endblock);
+              make_link (block, sub->endblock);
           }
         }
       }
     } else {
-      make_link (c, block, next);
+      make_link (block, next);
     }
 
   }
 }
 
-void extract_cfg (struct code *c, struct subroutine *sub)
+void extract_cfg (struct subroutine *sub)
 {
-  extract_blocks (c, sub);
-  link_blocks (c, sub);
+  extract_blocks (sub);
+  link_blocks (sub);
   if (!cfg_dfs (sub)) {
     error (__FILE__ ": unreachable code at subroutine 0x%08X", sub->begin->address);
     sub->haserror = TRUE;

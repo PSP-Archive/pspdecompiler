@@ -77,6 +77,7 @@ void new_subroutine (struct code *c, struct location *loc, struct prx_function *
   if (!sub) {
     sub = fixedpool_alloc (c->subspool);
     sub->begin = loc;
+    sub->code = c;
     loc->sub = sub;
   }
   if (imp) sub->import = imp;
@@ -384,9 +385,9 @@ void extract_subroutines (struct code *c)
     if (!sub->import) {
       check_switches (c, sub);
       check_subroutine (c, sub);
-      if (!sub->haserror) extract_cfg (c, sub);
-      if (!sub->haserror) extract_loops (c, sub);
-      if (!sub->haserror) build_ssa (c, sub);
+      if (!sub->haserror) extract_cfg (sub);
+      if (!sub->haserror) extract_loops (sub);
+      if (!sub->haserror) build_ssa (sub);
     }
     el = element_next (el);
   }

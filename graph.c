@@ -5,7 +5,6 @@
 static
 void dfs_step (struct subroutine *sub, struct basicblock *block)
 {
-  struct basicedge *edge;
   struct basicblock *next;
   element el;
 
@@ -13,8 +12,7 @@ void dfs_step (struct subroutine *sub, struct basicblock *block)
 
   el = list_head (block->outrefs);
   while (el) {
-    edge = element_getvalue (el);
-    next = edge->to;
+    next = element_getvalue (el);
     if (!next->dfsnum) {
       next->parent = block;
       dfs_step (sub, next);
@@ -39,7 +37,6 @@ int cfg_dfs (struct subroutine *sub)
 static
 void revdfs_step (struct subroutine *sub, struct basicblock *block)
 {
-  struct basicedge *edge;
   struct basicblock *next;
   element el;
 
@@ -47,8 +44,7 @@ void revdfs_step (struct subroutine *sub, struct basicblock *block)
 
   el = list_head (block->inrefs);
   while (el) {
-    edge = element_getvalue (el);
-    next = edge->from;
+    next = element_getvalue (el);
     if (!next->revdfsnum) {
       next->revparent = block;
       revdfs_step (sub, next);
@@ -105,11 +101,9 @@ void dominance (struct subroutine *sub)
       block = element_getvalue (el);
       ref = list_head (block->inrefs);
       while (ref) {
-        struct basicedge *edge;
         struct basicblock *bref;
 
-        edge = element_getvalue (ref);
-        bref = edge->from;
+        bref = element_getvalue (ref);
 
         if (bref->dominator) {
           if (!dom) {
@@ -135,7 +129,6 @@ void dominance (struct subroutine *sub)
 void frontier (struct subroutine *sub)
 {
   struct basicblock *block, *runner;
-  struct basicedge *edge;
   element el, ref;
 
   el = list_head (sub->dfsblocks);
@@ -144,8 +137,7 @@ void frontier (struct subroutine *sub)
     if (list_size (block->inrefs) >= 2) {
       ref = list_head (block->inrefs);;
       while (ref) {
-        edge = element_getvalue (ref);
-        runner = edge->to;
+        runner = element_getvalue (ref);
         while (runner != block->dominator) {
           list_inserttail (runner->frontier, block);
           runner = runner->dominator;
@@ -197,11 +189,9 @@ void cfg_revdominance (struct subroutine *sub)
       block = element_getvalue (el);
       ref = list_head (block->outrefs);
       while (ref) {
-        struct basicedge *edge;
         struct basicblock *bref;
 
-        edge = element_getvalue (ref);
-        bref = edge->to;
+        bref = element_getvalue (ref);
 
         if (bref->revdominator) {
           if (!revdom) {
@@ -233,12 +223,12 @@ void mark_forward (struct loopstruct *loop, struct basicblock *block)
   block->mark1 = loop->start->dfsnum;
   el = list_head (block->outrefs);
   while (el) {
-    struct basicedge *edge;
-    edge = element_getvalue (el);
-    if (edge->to->dfsnum <= loop->maxdfsnum &&
-        edge->to->dfsnum > block->dfsnum &&
-        edge->to->mark1 != loop->start->dfsnum) {
-      mark_forward (loop, edge->to);
+    struct basicblock *to;
+    to = element_getvalue (el);
+    if (to->dfsnum <= loop->maxdfsnum &&
+        to->dfsnum > block->dfsnum &&
+        to->mark1 != loop->start->dfsnum) {
+      mark_forward (loop, to);
     }
     el = element_next (el);
   }
@@ -259,12 +249,12 @@ void mark_backward (struct subroutine *sub, struct loopstruct *loop, struct basi
 
   el = list_head (block->inrefs);
   while (el) {
-    struct basicedge *edge;
-    edge = element_getvalue (el);
-    if (edge->from->mark1 == loop->start->dfsnum &&
-        edge->from->dfsnum < block->dfsnum &&
-        edge->from->mark2 == 0) {
-      mark_backward (sub, loop, edge->from);
+    struct basicblock *from;
+    from = element_getvalue (el);
+    if (from->mark1 == loop->start->dfsnum &&
+        from->dfsnum < block->dfsnum &&
+        from->mark2 == 0) {
+      mark_backward (sub, loop, from);
     }
     el = element_next (el);
   }
@@ -274,23 +264,23 @@ static
 void mark_blocks (struct subroutine *sub, struct loopstruct *loop)
 {
   element el;
-  struct basicedge *edge;
+  struct basicblock *from;
 
   loop->parent = loop->start->loop;
   mark_forward (loop, loop->start);
   el = list_head (loop->edges);
   while (el) {
-    edge = element_getvalue (el);
-    mark_backward (sub, loop, edge->from);
+    from = element_getvalue (el);
+    mark_backward (sub, loop, from);
     el = element_next (el);
   }
 }
 
-void extract_loops (struct code *c, struct subroutine *sub)
+void extract_loops (struct subroutine *sub)
 {
   element el, ref;
 
-  sub->loops = list_alloc (c->lstpool);
+  sub->loops = list_alloc (sub->code->lstpool);
 
   el = list_head (sub->dfsblocks);
   while (el) {
@@ -298,17 +288,16 @@ void extract_loops (struct code *c, struct subroutine *sub)
     struct loopstruct *loop = NULL;
     ref = list_head (block->inrefs);
     while (ref) {
-      struct basicedge *edge;
-      edge = element_getvalue (ref);
-      if (edge->from->dfsnum >= block->dfsnum) {
+      struct basicblock *from;
+      from = element_getvalue (ref);
+      if (from->dfsnum >= block->dfsnum) {
         if (!loop) {
-          loop = fixedpool_alloc (c->loopspool);
-          loop->edges = list_alloc (c->lstpool);
+          loop = fixedpool_alloc (sub->code->loopspool);
+          loop->edges = list_alloc (sub->code->lstpool);
         }
-        if (loop->maxdfsnum < edge->from->dfsnum)
-          loop->maxdfsnum = edge->from->dfsnum;
-        edge->loop = loop;
-        list_inserttail (loop->edges, edge);
+        if (loop->maxdfsnum < from->dfsnum)
+          loop->maxdfsnum = from->dfsnum;
+        list_inserttail (loop->edges, from);
       }
       ref = element_next (ref);
     }
@@ -321,7 +310,7 @@ void extract_loops (struct code *c, struct subroutine *sub)
   }
 }
 
-void extract_ifs (struct code *c, struct subroutine *sub)
+void extract_ifs (struct subroutine *sub)
 {
 
 }

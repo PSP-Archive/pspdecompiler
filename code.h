@@ -40,9 +40,6 @@ struct location {
   int  reachable;
   int  error;
 
-  list   usedvars;
-  list   definedvars;
-
   struct subroutine *sub;
   struct basicblock *block;
   struct codeswitch *cswitch;
@@ -51,20 +48,22 @@ struct location {
 struct codeswitch {
   struct prx_reloc *jumpreloc;
   struct prx_reloc *switchreloc;
-  struct location *location;
-  struct location *jumplocation;
+  struct location  *location;
+  struct location  *jumplocation;
   list   references;
   int    count;
   int    checked;
 };
 
 struct subroutine {
+  struct code *code;
   struct prx_function *export;
   struct prx_function *import;
 
   struct location *begin;
   struct location *end;
 
+  struct basicblock *startblock;
   struct basicblock *endblock;
   list   blocks, dfsblocks, revdfsblocks;
 
@@ -75,55 +74,48 @@ struct subroutine {
   int    dfscount;
 };
 
-struct varlocation {
-  int    type;
-  union {
-    struct basicedge *edge;
-    struct subroutine *sub;
-    struct location *loc;
-    struct basicblock *block;
-  } value;
-};
 
-struct variable {
-  int    type;
-  int    num;
-
-  struct varlocation loc;
-  list   uses;
-  list   phiargs;
+enum basicblocktype {
+  BLOCK_START,
+  BLOCK_END,
+  BLOCK_SIMPLE,
+  BLOCK_CALL,
+  BLOCK_SWITCH
 };
 
 struct basicblock {
-  struct location *begin;
-  struct location *end;
+  enum basicblocktype type;
+  union {
+    struct {
+      struct location *begin;
+      struct location *end;
+      struct location *jumploc;
+    } simple;
+    struct {
+      struct subroutine *calltarget;
+    } call;
+    struct {
+      struct codeswitch *cswitch;
+      int    switchnum;
+    } sw;
+  } val;
 
-  struct location *jumploc;
+  struct subroutine *sub;
 
+  int    dfsnum;
   struct basicblock *dominator;
   struct basicblock *parent;
   list   frontier;
 
+  int    revdfsnum;
   struct basicblock *revdominator;
   struct basicblock *revparent;
+  list   revfrontier;
 
-  list   outrefs, inrefs;
-  int    dfsnum, revdfsnum;
+  list   inrefs, outrefs;
 
   struct loopstruct *loop;
   int    mark1, mark2;
-};
-
-struct basicedge {
-  struct basicblock *from, *to;
-
-  struct subroutine *calltarget;
-  int    hascall;
-
-  struct codeswitch *cswitch;
-  int    switchnum;
-
-  struct loopstruct *loop;
 };
 
 struct ifstruct {
@@ -136,6 +128,14 @@ struct loopstruct {
   struct loopstruct *parent;
   int   maxdfsnum;
   list  edges;
+};
+
+struct variable {
+  int    type;
+  int    num;
+
+  list   uses;
+  list   phiargs;
 };
 
 struct code {
@@ -151,9 +151,7 @@ struct code {
   fixedpool switchpool;
   fixedpool subspool;
   fixedpool blockspool;
-  fixedpool edgespool;
   fixedpool varspool;
-  fixedpool varlocspool;
   fixedpool ifspool;
   fixedpool loopspool;
 };
@@ -169,7 +167,7 @@ uint32 location_gpr_defined (struct location *loc);
 void extract_switches (struct code *c);
 void extract_subroutines (struct code *c);
 
-void extract_cfg (struct code *c, struct subroutine *sub);
+void extract_cfg (struct subroutine *sub);
 
 int cfg_dfs (struct subroutine *sub);
 int cfg_revdfs (struct subroutine *sub);
@@ -177,10 +175,10 @@ struct basicblock *dom_intersect (struct basicblock *b1, struct basicblock *b2);
 void cfg_dominance (struct subroutine *sub);
 struct basicblock *dom_revintersect (struct basicblock *b1, struct basicblock *b2);
 void cfg_revdominance (struct subroutine *sub);
-void extract_loops (struct code *c, struct subroutine *sub);
-void extract_ifs (struct code *c, struct subroutine *sub);
+void extract_loops (struct subroutine *sub);
+void extract_ifs (struct subroutine *sub);
 
-void build_ssa (struct code *c, struct subroutine *sub);
+void build_ssa (struct subroutine *sub);
 
 
 #endif /* __CODE_H */
