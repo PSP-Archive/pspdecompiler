@@ -250,9 +250,9 @@ void mark_backward (struct subroutine *sub, struct loopstruct *loop, struct basi
   element el;
 
   block->mark2 = 1;
-  if (block->loop && block->loop != loop && block->loop != loop->parent ) {
-    error (__FILE__ ": cross loops at node %d (current loop = %d, parent loop = %d, another loop = %d) subroutine 0x%08X",
-        block->dfsnum, loop->start->dfsnum, loop->parent->start->dfsnum, block->loop->start->dfsnum, sub->begin->address);
+  if (block->loop && block->loop != loop && block->loop != loop->parent) {
+    error (__FILE__ ": cross loops at node %d subroutine 0x%08X",
+        block->dfsnum, sub->begin->address);
     sub->haserror = TRUE;
   }
   block->loop = loop;
@@ -302,11 +302,12 @@ void extract_loops (struct code *c, struct subroutine *sub)
       edge = element_getvalue (ref);
       if (edge->from->dfsnum >= block->dfsnum) {
         if (!loop) {
-          loop = fixedpool_alloc (c->looppool);
+          loop = fixedpool_alloc (c->loopspool);
           loop->edges = list_alloc (c->lstpool);
         }
         if (loop->maxdfsnum < edge->from->dfsnum)
           loop->maxdfsnum = edge->from->dfsnum;
+        edge->loop = loop;
         list_inserttail (loop->edges, edge);
       }
       ref = element_next (ref);
@@ -318,4 +319,9 @@ void extract_loops (struct code *c, struct subroutine *sub)
     }
     el = element_next (el);
   }
+}
+
+void extract_ifs (struct code *c, struct subroutine *sub)
+{
+
 }

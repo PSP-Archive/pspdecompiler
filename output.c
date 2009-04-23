@@ -73,17 +73,31 @@ void print_subroutine_name (FILE *out, struct subroutine *sub)
   }
 }
 
-static
-void print_block (FILE *out, struct subroutine *sub, struct basicblock *block)
-{
 
+static
+void print_block (FILE *out, int ident, struct basicblock *block)
+{
+  struct location *loc;
+  int i;
+
+  if (!block->begin) return;
+  for (loc = block->begin; ;loc++) {
+
+    for (i = 0; i < ident; i++)
+      fprintf (out, "  ");
+
+    fprintf (out, "%s\n", allegrex_disassemble (loc->opc, loc->address, FALSE));
+    if (loc == block->end) return;
+  }
 }
 
 static
 void print_subroutine (FILE *out, struct code *c, struct subroutine *sub)
 {
-  struct location *loc;
-  int unreach = FALSE;
+  element el;
+  int ident;
+
+  if (sub->import) return;
 
   fprintf (out, "/**\n * Subroutine at address 0x%08X\n", sub->begin->address);
   fprintf (out, " */\n");
@@ -91,48 +105,21 @@ void print_subroutine (FILE *out, struct code *c, struct subroutine *sub)
   print_subroutine_name (out, sub);
   fprintf (out, " (void)\n{\n");
 
-  for (loc = sub->begin; ; loc++) {
-    element el;
-    if (loc->reachable) {
-      unreach = FALSE;
-      if (loc->references) {
-        fprintf (out, "\n;  Refs:   ");
-        el = list_head (loc->references);
-        while (el) {
-          fprintf (out, "0x%08X ", ((struct location *) element_getvalue (el))->address);
-          el = element_next (el);
-        }
-        fprintf (out, "\n");
+  el = list_head (sub->dfsblocks);
+  while (el) {
+    struct basicblock *block = element_getvalue (el);
+    ident = 1;
+    if (block->loop) {
+      struct loopstruct *loop = block->loop;
+      while (loop) {
+        ident++; loop = loop->parent;
       }
-      fprintf (out, "  %s ", allegrex_disassemble (loc->opc, loc->address, TRUE));
-      if (loc->target) {
-        if (loc->target->sub != loc->sub) {
-          fprintf (out, "(");
-          print_subroutine_name (out, loc->target->sub);
-          fprintf (out, ") ");
-        }
-      }
-      if (loc->cswitch) {
-        if (loc->cswitch->jumplocation == loc) {
-          fprintf (out, " (switch locations: ");
-          el = list_head (loc->cswitch->references);
-          while (el) {
-            fprintf (out, "0x%08X ", ((struct location *) element_getvalue (el))->address);
-            el = element_next (el);
-          }
-          fprintf (out, ") ");
-        }
-      }
-      fprintf (out, "\n");
-    } else {
-
-      if (!unreach) {
-        fprintf (out, "\n/*  Unreachable code */\n");
-      }
-      fprintf (out, "  %s\n", allegrex_disassemble (loc->opc, loc->address, TRUE));
-      unreach = TRUE;
+      if (block->loop->start == block)
+        fprintf (out, "Loop 0x%08X:\n", block->begin->address);
     }
-    if (loc == sub->end) break;
+    print_block (out, ident, block);
+    fprintf (out, "\n");
+    el = element_next (el);
   }
   fprintf (out, "}\n\n");
 }
@@ -221,17 +208,15 @@ void print_subroutine_graph (FILE *out, struct code *c, struct subroutine *sub)
     block = element_getvalue (el);
 
     fprintf (out, "    %3d ", block->dfsnum);
-    fprintf (out, "[label=\"%d - %d\"];\n", block->dfsnum, block->loop ? block->loop->start->dfsnum : 0);
-    /*if (block->begin) {
+    fprintf (out, "[label=\"%d - %d\\l", block->dfsnum, block->loop ? block->loop->start->dfsnum : 0);
+    if (block->begin) {
       struct location *loc;
-      fprintf (out, "[label=\"0x%08X:\\l", block->begin->address);
       for (loc = block->begin; ; loc++) {
         fprintf (out, "%s\\l", allegrex_disassemble (loc->opc, loc->address, 0));
         if (loc == block->end) break;
       }
-      fprintf (out, "\"]");
     }
-    fprintf (out, ";\n");*/
+    fprintf (out, "\"];\n");
 
 
     if (block->revdominator && list_size (block->outrefs) > 1) {

@@ -20,11 +20,11 @@
 #define VARIABLE_TYPE_REGISTER     1
 #define VARIABLE_TYPE_STACK        2
 
-#define VARDEF_TYPE_LOCATION       1
-#define VARDEF_TYPE_CALL           2
-#define VARDEF_TYPE_SUBINPUT       3
-#define VARDEF_TYPE_SUBOUTPUT      4
-#define VARDEF_TYPE_PHI            5
+#define VARLOC_NORMAL         1
+#define VARLOC_CALL           2
+#define VARLOC_SUBINPUT       3
+#define VARLOC_SUBOUTPUT      4
+#define VARLOC_PHI            5
 
 
 
@@ -75,23 +75,13 @@ struct subroutine {
   int    dfscount;
 };
 
-struct vardef {
+struct varlocation {
   int    type;
   union {
     struct basicedge *edge;
     struct subroutine *sub;
     struct location *loc;
-    list   phiargs;
-  } value;
-};
-
-struct varuse {
-  int    type;
-  union {
-    struct basicedge *edge;
-    struct subroutine *sub;
-    struct location *loc;
-    struct vardef *def;
+    struct basicblock *block;
   } value;
 };
 
@@ -99,8 +89,9 @@ struct variable {
   int    type;
   int    num;
 
-  struct vardef def;
+  struct varlocation loc;
   list   uses;
+  list   phiargs;
 };
 
 struct basicblock {
@@ -131,6 +122,8 @@ struct basicedge {
 
   struct codeswitch *cswitch;
   int    switchnum;
+
+  struct loopstruct *loop;
 };
 
 struct ifstruct {
@@ -160,8 +153,9 @@ struct code {
   fixedpool blockspool;
   fixedpool edgespool;
   fixedpool varspool;
-  fixedpool ifpool;
-  fixedpool looppool;
+  fixedpool varlocspool;
+  fixedpool ifspool;
+  fixedpool loopspool;
 };
 
 
@@ -184,7 +178,7 @@ void cfg_dominance (struct subroutine *sub);
 struct basicblock *dom_revintersect (struct basicblock *b1, struct basicblock *b2);
 void cfg_revdominance (struct subroutine *sub);
 void extract_loops (struct code *c, struct subroutine *sub);
-
+void extract_ifs (struct code *c, struct subroutine *sub);
 
 void build_ssa (struct code *c, struct subroutine *sub);
 
