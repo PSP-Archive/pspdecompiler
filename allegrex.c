@@ -104,6 +104,7 @@
 #define _AL   INSN_ALIAS
 #define _RS   INSN_READ_GPR_S
 #define _RT   INSN_READ_GPR_T
+#define _RD   INSN_READ_GPR_D
 #define _Rs   INSN_READ_FPR_S
 #define _Rt   INSN_READ_FPR_T
 #define _RC   INSN_READ_COND_CODE
@@ -123,6 +124,8 @@
 #define _LD   INSN_LOAD
 #define _ST   INSN_STORE
 
+#define _SP   INSN_SPECIAL
+#define _DB   INSN_DEBUG
 #define _C0   INSN_COP0
 #define _C1   INSN_FPU
 #define _C2   INSN_VFPU
@@ -179,7 +182,7 @@ static const struct allegrex_instruction instructions[] =
   { I_BNE,       "bne",       0x14000000, 0xFC000000, "%s, %t, %O", _RS|_RT|_BR  },
   { I_BNEL,      "bnezl",     0x54000000, 0xFC1F0000, "%s, %O",     _AL|_RS|_BR|_BL  },
   { I_BNEL,      "bnel",      0x54000000, 0xFC000000, "%s, %t, %O", _RS|_RT|_BR|_BL  },
-  { I_BREAK,     "break",     0x0000000D, 0xFC00003F, "%c",                      },
+  { I_BREAK,     "break",     0x0000000D, 0xFC00003F, "%c",         _SP          },
   { I_CACHE,     "cache",     0xBC000000, 0xFC000000, "%k, %o",     _RS|_C0      },
   { I_CFC0,      "cfc0",      0x40400000, 0xFFE007FF, "%t, %p",     _WT|_C0      },
   { I_CLO,       "clo",       0x00000017, 0xFC1F07FF, "%d, %s",     _RS|_WD      },
@@ -187,13 +190,13 @@ static const struct allegrex_instruction instructions[] =
   { I_CTC0,      "ctc0",      0x40C00000, 0xFFE007FF, "%t, %p",     _RT|_C0      },
   { I_MAX,       "max",       0x0000002C, 0xFC0007FF, "%d, %s, %t", _RS|_RT|_WD  },
   { I_MIN,       "min",       0x0000002D, 0xFC0007FF, "%d, %s, %t", _RS|_RT|_WD  },
-  { I_DBREAK,    "dbreak",    0x7000003F, 0xFC00003F, "%c",                      },
+  { I_DBREAK,    "dbreak",    0x7000003F, 0xFC00003F, "%c",         _DB          },
   { I_DIV,       "div",       0x0000001A, 0xFC00FFFF, "%s, %t",     _RS|_RT|_WH|_WL },
   { I_DIVU,      "divu",      0x0000001B, 0xFC00FFFF, "%s, %t",     _RS|_RT|_WH|_WL },
-  { I_DRET,      "dret",      0x7000003E, 0xFFFFFFFF, "",           _JP          },
-  { I_ERET,      "eret",      0x42000018, 0xFFFFFFFF, "",           _C0|_JP      },
+  { I_DRET,      "dret",      0x7000003E, 0xFFFFFFFF, "",           _JP|_DB      },
+  { I_ERET,      "eret",      0x42000018, 0xFFFFFFFF, "",           _JP|_C0      },
   { I_EXT,       "ext",       0x7C000000, 0xFC00003F, "%t, %s, %a, %ne", _RS|_WT },
-  { I_INS,       "ins",       0x7C000004, 0xFC00003F, "%t, %s, %a, %ni", _RS|_WT },
+  { I_INS,       "ins",       0x7C000004, 0xFC00003F, "%t, %s, %a, %ni", _RS|_RT|_WT },
   { I_J,         "j",         0x08000000, 0xFC000000, "%j",         _JP          },
   { I_JR,        "jr",        0x00000008, 0xFC1FFFFF, "%J",         _RS|_JP      },
   { I_JALR,      "jalr",      0x0000F809, 0xFC1FFFFF, "%J",         _AL|_RS|_WD|_JP },
@@ -206,23 +209,23 @@ static const struct allegrex_instruction instructions[] =
   { I_LL,        "ll",        0xC0000000, 0xFC000000, "%t, %o",     _RS|_WT|_LD  },
   { I_LUI,       "lui",       0x3C000000, 0xFFE00000, "%t, %I",     _WT          },
   { I_LW,        "lw",        0x8C000000, 0xFC000000, "%t, %o",     _RS|_WT|_LD  },
-  { I_LWL,       "lwl",       0x88000000, 0xFC000000, "%t, %o",     _RS|_WT|_LD  },
-  { I_LWR,       "lwr",       0x98000000, 0xFC000000, "%t, %o",     _RS|_WT|_LD  },
+  { I_LWL,       "lwl",       0x88000000, 0xFC000000, "%t, %o",     _RS|_RT|_WT|_LD  },
+  { I_LWR,       "lwr",       0x98000000, 0xFC000000, "%t, %o",     _RS|_RT|_WT|_LD  },
   { I_MADD,      "madd",      0x0000001C, 0xFC00FFFF, "%s, %t",     _RS|_RT|_RL|_RH|_WL|_WH },
   { I_MADDU,     "maddu",     0x0000001D, 0xFC00FFFF, "%s, %t",     _RS|_RT|_RL|_RH|_WL|_WH },
   { I_MFC0,      "mfc0",      0x40000000, 0xFFE007FF, "%t, %0",     _WT|_C0      },
-  { I_MFDR,      "mfdr",      0x7000003D, 0xFFE007FF, "%t, %r",     _WT          },
+  { I_MFDR,      "mfdr",      0x7000003D, 0xFFE007FF, "%t, %r",     _WT|_DB      },
   { I_MFHI,      "mfhi",      0x00000010, 0xFFFF07FF, "%d",         _WD|_RH      },
-  { I_MFIC,      "mfic",      0x70000024, 0xFFE007FF, "%t, %p",     _WT          },
+  { I_MFIC,      "mfic",      0x70000024, 0xFFE007FF, "%t, %p",     _WT|_DB      },
   { I_MFLO,      "mflo",      0x00000012, 0xFFFF07FF, "%d",         _WD|_RL      },
-  { I_MOVN,      "movn",      0x0000000B, 0xFC0007FF, "%d, %s, %t", _RS|_RT|_WD  },
-  { I_MOVZ,      "movz",      0x0000000A, 0xFC0007FF, "%d, %s, %t", _RS|_RT|_WD  },
+  { I_MOVN,      "movn",      0x0000000B, 0xFC0007FF, "%d, %s, %t", _RS|_RT|_RD|_WD  },
+  { I_MOVZ,      "movz",      0x0000000A, 0xFC0007FF, "%d, %s, %t", _RS|_RT|_RD|_WD  },
   { I_MSUB,      "msub",      0x0000002e, 0xfc00ffff, "%d, %t",     _RS|_RT|_RL|_RH|_WL|_WH },
   { I_MSUBU,     "msubu",     0x0000002f, 0xfc00ffff, "%d, %t",     _RS|_RT|_RL|_RH|_WL|_WH },
   { I_MTC0,      "mtc0",      0x40800000, 0xFFE007FF, "%t, %0",     _RT|_C0      },
-  { I_MTDR,      "mtdr",      0x7080003D, 0xFFE007FF, "%t, %r",     _RT          },
-  { I_MTIC,      "mtic",      0x70000026, 0xFFE007FF, "%t, %p",     _RT          },
-  { I_HALT,      "halt",      0x70000000, 0xFFFFFFFF, "",                        },
+  { I_MTDR,      "mtdr",      0x7080003D, 0xFFE007FF, "%t, %r",     _RT|_DB      },
+  { I_MTIC,      "mtic",      0x70000026, 0xFFE007FF, "%t, %p",     _RT|_DB      },
+  { I_HALT,      "halt",      0x70000000, 0xFFFFFFFF, "",           _DB          },
   { I_MTHI,      "mthi",      0x00000011, 0xFC1FFFFF, "%s",         _RS|_WH      },
   { I_MTLO,      "mtlo",      0x00000013, 0xFC1FFFFF, "%s",         _RS|_WL      },
   { I_MULT,      "mult",      0x00000018, 0xFC00FFFF, "%s, %t",     _RS|_RT|_WL|_WH },
@@ -258,8 +261,8 @@ static const struct allegrex_instruction instructions[] =
   { I_SUB,       "sub",       0x00000022, 0xFC0007FF, "%d, %s, %t", _RS|_RT|_WD  },
   { I_SUBU,      "negu",      0x00000023, 0xFFE007FF, "%d, %t",     _AL|_RT|_WD  },
   { I_SUBU,      "subu",      0x00000023, 0xFC0007FF, "%d, %s, %t", _RS|_RT|_WD  },
-  { I_SYNC,      "sync",      0x0000000F, 0xFFFFFFFF, "",                        },
-  { I_SYSCALL,   "syscall",   0x0000000C, 0xFC00003F, "%c",                      },
+  { I_SYNC,      "sync",      0x0000000F, 0xFFFFFFFF, "",           _SP          },
+  { I_SYSCALL,   "syscall",   0x0000000C, 0xFC00003F, "%c",         _SP          },
   { I_XOR,       "xor",       0x00000026, 0xFC0007FF, "%d, %s, %t", _RS|_RT|_WD  },
   { I_XORI,      "xori",      0x38000000, 0xFC000000, "%t, %s, %I", _RS|_WT      },
   { I_WSBH,      "wsbh",      0x7C0000A0, 0xFFE007FF, "%d, %t",     _RT|_WD      },
@@ -594,7 +597,7 @@ static const struct allegrex_instruction instructions[] =
 #define NUM_INSTRUCTIONS (sizeof (instructions) / sizeof (struct allegrex_instruction))
 
 static char buffer[1024];
-static const char *gpr_names[] =
+const char *gpr_names[] =
 {
   "zr", "at", "v0", "v1", "a0", "a1", "a2", "a3",
   "t0", "t1", "t2", "t3", "t4", "t5", "t6", "t7",

@@ -7,26 +7,20 @@
 #include "lists.h"
 #include "types.h"
 
-#define ERROR_INVALID_OPCODE       1
-#define ERROR_DELAY_SLOT           2
-#define ERROR_TARGET_OUTSIDE_FILE  3
-#define ERROR_DELAY_SLOT_TARGET    4
-#define ERROR_ILLEGAL_BRANCH       5
+enum locationreachable {
+  LOCATION_UNREACHABLE = 0,
+  LOCATION_REACHABLE,
+  LOCATION_DELAY_SLOT
+};
 
-#define LOCATION_REACHABLE         1
-#define LOCATION_DELAY_SLOT        2
-
-#define VARIABLES_NUM             32
-#define VARIABLE_TYPE_REGISTER     1
-#define VARIABLE_TYPE_STACK        2
-
-#define VARLOC_NORMAL         1
-#define VARLOC_CALL           2
-#define VARLOC_SUBINPUT       3
-#define VARLOC_SUBOUTPUT      4
-#define VARLOC_PHI            5
-
-
+enum locationerror {
+  ERROR_NONE = 0,
+  ERROR_INVALID_OPCODE,
+  ERROR_DELAY_SLOT,
+  ERROR_TARGET_OUTSIDE_FILE,
+  ERROR_DELAY_SLOT_TARGET,
+  ERROR_ILLEGAL_BRANCH
+};
 
 struct location {
   uint32 opc;
@@ -37,8 +31,8 @@ struct location {
 
   list references;
   int  branchalways;
-  int  reachable;
-  int  error;
+  enum locationreachable reachable;
+  enum locationerror  error;
 
   struct subroutine *sub;
   struct basicblock *block;
@@ -75,6 +69,14 @@ struct subroutine {
 };
 
 
+struct basicblocknode {
+  int dfsnum;
+  struct basicblock *dominator;
+  struct basicblock *parent;
+  list children;
+  list frontier;
+};
+
 enum basicblocktype {
   BLOCK_START,
   BLOCK_END,
@@ -100,17 +102,11 @@ struct basicblock {
     } sw;
   } val;
 
+  list   operations;
   struct subroutine *sub;
 
-  int    dfsnum;
-  struct basicblock *dominator;
-  struct basicblock *parent;
-  list   frontier;
-
-  int    revdfsnum;
-  struct basicblock *revdominator;
-  struct basicblock *revparent;
-  list   revfrontier;
+  struct basicblocknode node;
+  struct basicblocknode revnode;
 
   list   inrefs, outrefs;
 
@@ -130,12 +126,52 @@ struct loopstruct {
   list  edges;
 };
 
+enum variabletype {
+  VARIABLE_REGISTER,
+  VARIABLE_STACK
+};
+
+#define REGISTER_LO   32
+#define REGISTER_HI   33
+
 struct variable {
-  int    type;
+  enum variabletype type;
   int    num;
 
+  struct operation *def;
   list   uses;
-  list   phiargs;
+};
+
+enum valuetype {
+  VAL_CONSTANT,
+  VAL_REGISTER,
+  VAL_STACKBASE,
+  VAL_RETURNADDRESS,
+  VAL_VOID
+};
+
+struct value {
+  enum valuetype type;
+  uint32        value;
+};
+
+enum operationtype {
+  OP_CALL,
+  OP_INSTRUCTION,
+  OP_MOVE,
+  OP_ASM,
+  OP_NOP,
+  OP_PHI
+};
+
+struct operation {
+  enum operationtype type;
+  enum allegrex_insn insn;
+  struct location *begin;
+  struct location *end;
+
+  list results;
+  list operands;
 };
 
 struct code {
@@ -152,6 +188,8 @@ struct code {
   fixedpool subspool;
   fixedpool blockspool;
   fixedpool varspool;
+  fixedpool opspool;
+  fixedpool valspool;
   fixedpool ifspool;
   fixedpool loopspool;
 };
@@ -169,12 +207,11 @@ void extract_subroutines (struct code *c);
 
 void extract_cfg (struct subroutine *sub);
 
-int cfg_dfs (struct subroutine *sub);
-int cfg_revdfs (struct subroutine *sub);
-struct basicblock *dom_intersect (struct basicblock *b1, struct basicblock *b2);
-void cfg_dominance (struct subroutine *sub);
-struct basicblock *dom_revintersect (struct basicblock *b1, struct basicblock *b2);
-void cfg_revdominance (struct subroutine *sub);
+int cfg_dfs (struct subroutine *sub, int reverse);
+struct basicblock *dom_intersect (struct basicblock *b1, struct basicblock *b2, int reverse);
+void cfg_dominance (struct subroutine *sub, int reverse);
+void cfg_frontier (struct subroutine *sub, int reverse);
+
 void extract_loops (struct subroutine *sub);
 void extract_ifs (struct subroutine *sub);
 

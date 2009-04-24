@@ -3,121 +3,119 @@
 #include "utils.h"
 
 static
-void dfs_step (struct subroutine *sub, struct basicblock *block)
+void dfs_step (struct subroutine *sub, struct basicblock *block, int reverse)
 {
   struct basicblock *next;
+  struct basicblocknode *node, *nextnode;
+  list refs, out;
   element el;
 
-  block->dfsnum = -1;
+  if (reverse) {
+    node = &block->revnode;
+    refs = block->inrefs;
+    out = sub->revdfsblocks;
+  } else {
+    node = &block->node;
+    refs = block->outrefs;
+    out = sub->dfsblocks;
+  }
+  node->dfsnum = -1;
 
-  el = list_head (block->outrefs);
+  el = list_head (refs);
   while (el) {
     next = element_getvalue (el);
-    if (!next->dfsnum) {
-      next->parent = block;
-      dfs_step (sub, next);
+    nextnode = (reverse) ? &next->revnode : &next->node;
+    if (!nextnode->dfsnum) {
+      nextnode->parent = block;
+      list_inserttail (node->children, next);
+      dfs_step (sub, next, reverse);
     }
     el = element_next (el);
   }
 
-  block->dfsnum = sub->dfscount--;
-  list_inserthead (sub->dfsblocks, block);
+  node->dfsnum = sub->dfscount--;
+  list_inserthead (out, block);
 }
 
-int cfg_dfs (struct subroutine *sub)
+int cfg_dfs (struct subroutine *sub, int reverse)
 {
   struct basicblock *start;
   sub->dfscount = list_size (sub->blocks);
-  start = list_headvalue (sub->blocks);
+  start = reverse ? sub->endblock : sub->startblock;
 
-  dfs_step (sub, start);
+  dfs_step (sub, start, reverse);
   return (sub->dfscount == 0);
 }
 
-static
-void revdfs_step (struct subroutine *sub, struct basicblock *block)
+struct basicblock *dom_intersect (struct basicblock *b1, struct basicblock *b2, int reverse)
 {
-  struct basicblock *next;
-  element el;
-
-  block->revdfsnum = -1;
-
-  el = list_head (block->inrefs);
-  while (el) {
-    next = element_getvalue (el);
-    if (!next->revdfsnum) {
-      next->revparent = block;
-      revdfs_step (sub, next);
-    }
-    el = element_next (el);
-  }
-
-  block->revdfsnum = sub->dfscount--;
-  list_inserthead (sub->revdfsblocks, block);
-}
-
-int cfg_revdfs (struct subroutine *sub)
-{
-  struct basicblock *start;
-  sub->dfscount = list_size (sub->blocks);
-  start = sub->endblock;
-
-  revdfs_step (sub, start);
-  return (sub->dfscount == 0);
-}
-
-struct basicblock *dom_intersect (struct basicblock *b1, struct basicblock *b2)
-{
+  struct basicblocknode *n1, *n2;
+  n1 = (reverse) ? &b1->revnode : &b1->node;
+  n2 = (reverse) ? &b2->revnode : &b2->node;
   while (b1 != b2) {
-    while (b1->dfsnum > b2->dfsnum) {
-      b1 = b1->dominator;
+    while (n1->dfsnum > n2->dfsnum) {
+      b1 = n1->dominator;
+      n1 = (reverse) ? &b1->revnode : &b1->node;
     }
-    while (b2->dfsnum > b1->dfsnum) {
-      b2 = b2->dominator;
+    while (n2->dfsnum > n1->dfsnum) {
+      b2 = n2->dominator;
+      n2 = (reverse) ? &b2->revnode : &b2->node;
     }
   }
   return b1;
 }
 
-static
-void dominance (struct subroutine *sub)
+void cfg_dominance (struct subroutine *sub, int reverse)
 {
   struct basicblock *start;
+  list blocks, refs;
   int changed = TRUE;
 
-  start = list_headvalue (sub->dfsblocks);
+  if (reverse) {
+    blocks = sub->revdfsblocks;
+    start = sub->endblock;
+    start->revnode.dominator = start;
 
-  start->dominator = start;
+  } else {
+    blocks = sub->dfsblocks;
+    start = sub->startblock;
+    start->node.dominator = start;
+  }
+
   while (changed) {
     element el;
 
     changed = FALSE;
-    el = list_head (sub->dfsblocks);
+    el = list_head (blocks);
     el = element_next (el);
     while (el) {
       struct basicblock *block, *dom = NULL;
+      struct basicblocknode *node;
       element ref;
 
       block = element_getvalue (el);
-      ref = list_head (block->inrefs);
+      refs = (reverse) ? block->outrefs : block->inrefs;
+      ref = list_head (refs);
       while (ref) {
-        struct basicblock *bref;
+        struct basicblock *bref, *brefdom;
 
         bref = element_getvalue (ref);
+        brefdom = (reverse) ? bref->revnode.dominator : bref->node.dominator;
 
-        if (bref->dominator) {
+        if (brefdom) {
           if (!dom) {
             dom = bref;
           } else {
-            dom = dom_intersect (dom, bref);
+            dom = dom_intersect (dom, bref, reverse);
           }
         }
 
         ref = element_next (ref);
       }
 
-      if (dom != block->dominator) {
-        block->dominator = dom;
+      node = (reverse) ? &block->revnode : &block->node;
+      if (dom != node->dominator) {
+        node->dominator = dom;
         changed = TRUE;
       }
 
@@ -126,91 +124,37 @@ void dominance (struct subroutine *sub)
   }
 }
 
-void frontier (struct subroutine *sub)
+void cfg_frontier (struct subroutine *sub, int reverse)
 {
   struct basicblock *block, *runner;
+  struct basicblocknode *blocknode, *runnernode;
   element el, ref;
+  list refs;
 
-  el = list_head (sub->dfsblocks);
+  el = (reverse) ? list_head (sub->revdfsblocks) : list_head (sub->dfsblocks);
+
   while (el) {
     block = element_getvalue (el);
-    if (list_size (block->inrefs) >= 2) {
-      ref = list_head (block->inrefs);;
+    if (reverse) {
+      refs = block->outrefs;
+      blocknode = &block->revnode;
+    } else {
+      refs = block->inrefs;
+      blocknode = &block->node;
+    }
+    if (list_size (refs) >= 2) {
+      ref = list_head (refs);
       while (ref) {
         runner = element_getvalue (ref);
-        while (runner != block->dominator) {
-          list_inserttail (runner->frontier, block);
-          runner = runner->dominator;
+        while (runner != blocknode->dominator) {
+          runnernode = (reverse) ? &runner->revnode : &runner->node;
+          list_inserttail (runnernode->frontier, block);
+          runner = runnernode->dominator;
         }
         ref = element_next (ref);
       }
     }
     el = element_next (el);
-  }
-}
-
-void cfg_dominance (struct subroutine *sub)
-{
-  dominance (sub);
-  frontier (sub);
-}
-
-struct basicblock *dom_revintersect (struct basicblock *b1, struct basicblock *b2)
-{
-  while (b1 != b2) {
-    while (b1->revdfsnum > b2->revdfsnum) {
-      b1 = b1->revdominator;
-    }
-    while (b2->revdfsnum > b1->revdfsnum) {
-      b2 = b2->revdominator;
-    }
-  }
-  return b1;
-}
-
-void cfg_revdominance (struct subroutine *sub)
-{
-  struct basicblock *start;
-  int changed = TRUE;
-
-  start = list_headvalue (sub->revdfsblocks);
-
-  start->revdominator = start;
-  while (changed) {
-    element el;
-
-    changed = FALSE;
-    el = list_head (sub->revdfsblocks);
-    el = element_next (el);
-    while (el) {
-      struct basicblock *block, *revdom = NULL;
-      element ref;
-
-      block = element_getvalue (el);
-      ref = list_head (block->outrefs);
-      while (ref) {
-        struct basicblock *bref;
-
-        bref = element_getvalue (ref);
-
-        if (bref->revdominator) {
-          if (!revdom) {
-            revdom = bref;
-          } else {
-            revdom = dom_revintersect (revdom, bref);
-          }
-        }
-
-        ref = element_next (ref);
-      }
-
-      if (revdom != block->revdominator) {
-        block->revdominator = revdom;
-        changed = TRUE;
-      }
-
-      el = element_next (el);
-    }
   }
 }
 
@@ -220,14 +164,14 @@ void mark_forward (struct loopstruct *loop, struct basicblock *block)
   element el;
 
   block->mark2 = 0;
-  block->mark1 = loop->start->dfsnum;
+  block->mark1 = loop->start->node.dfsnum;
   el = list_head (block->outrefs);
   while (el) {
     struct basicblock *to;
     to = element_getvalue (el);
-    if (to->dfsnum <= loop->maxdfsnum &&
-        to->dfsnum > block->dfsnum &&
-        to->mark1 != loop->start->dfsnum) {
+    if (to->node.dfsnum <= loop->maxdfsnum &&
+        to->node.dfsnum > block->node.dfsnum &&
+        to->mark1 != loop->start->node.dfsnum) {
       mark_forward (loop, to);
     }
     el = element_next (el);
@@ -242,7 +186,7 @@ void mark_backward (struct subroutine *sub, struct loopstruct *loop, struct basi
   block->mark2 = 1;
   if (block->loop && block->loop != loop && block->loop != loop->parent) {
     error (__FILE__ ": cross loops at node %d subroutine 0x%08X",
-        block->dfsnum, sub->begin->address);
+        block->node.dfsnum, sub->begin->address);
     sub->haserror = TRUE;
   }
   block->loop = loop;
@@ -251,8 +195,8 @@ void mark_backward (struct subroutine *sub, struct loopstruct *loop, struct basi
   while (el) {
     struct basicblock *from;
     from = element_getvalue (el);
-    if (from->mark1 == loop->start->dfsnum &&
-        from->dfsnum < block->dfsnum &&
+    if (from->mark1 == loop->start->node.dfsnum &&
+        from->node.dfsnum < block->node.dfsnum &&
         from->mark2 == 0) {
       mark_backward (sub, loop, from);
     }
@@ -290,13 +234,13 @@ void extract_loops (struct subroutine *sub)
     while (ref) {
       struct basicblock *from;
       from = element_getvalue (ref);
-      if (from->dfsnum >= block->dfsnum) {
+      if (from->node.dfsnum >= block->node.dfsnum) {
         if (!loop) {
           loop = fixedpool_alloc (sub->code->loopspool);
           loop->edges = list_alloc (sub->code->lstpool);
         }
-        if (loop->maxdfsnum < from->dfsnum)
-          loop->maxdfsnum = from->dfsnum;
+        if (loop->maxdfsnum < from->node.dfsnum)
+          loop->maxdfsnum = from->node.dfsnum;
         list_inserttail (loop->edges, from);
       }
       ref = element_next (ref);

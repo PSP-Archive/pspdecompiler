@@ -51,6 +51,8 @@ int decode_instructions (struct code *c)
       continue;
     }
 
+    if (INSN_TYPE (loc->insn->flags) != INSN_ALLEGREX) continue;
+
     if (loc->insn->flags & (INSN_BRANCH | INSN_JUMP)) {
       if (slot) c->base[i - 1].error = ERROR_DELAY_SLOT;
       slot = TRUE;
@@ -68,9 +70,8 @@ int decode_instructions (struct code *c)
         loc->error = ERROR_TARGET_OUTSIDE_FILE;
       }
 
-      if (INSN_PROCESSOR (loc->insn->flags) == INSN_ALLEGREX &&
-          (location_gpr_used (loc) == 0 || ((loc->insn->flags & INSN_READ_GPR_T) && RS (loc->opc) == RT (loc->opc)))) {
-
+      if (location_gpr_used (loc) == 0 ||
+          ((loc->insn->flags & INSN_READ_GPR_T) && RS (loc->opc) == RT (loc->opc))) {
         switch (loc->insn->insn) {
         case I_BEQ:
         case I_BEQL:

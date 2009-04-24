@@ -10,7 +10,10 @@ struct basicblock *alloc_block (struct subroutine *sub)
 
   block->inrefs = list_alloc (sub->code->lstpool);
   block->outrefs = list_alloc (sub->code->lstpool);
-  block->frontier = list_alloc (sub->code->lstpool);
+  block->node.children = list_alloc (sub->code->lstpool);
+  block->revnode.children = list_alloc (sub->code->lstpool);
+  block->node.frontier = list_alloc (sub->code->lstpool);
+  block->revnode.frontier = list_alloc (sub->code->lstpool);
   block->sub = sub;
   return block;
 }
@@ -28,6 +31,7 @@ void extract_blocks (struct subroutine *sub)
   block = alloc_block (sub);
   list_inserttail (sub->blocks, block);
   block->type = BLOCK_START;
+  sub->startblock = block;
 
   begin = sub->begin;
 
@@ -200,17 +204,20 @@ void extract_cfg (struct subroutine *sub)
 {
   extract_blocks (sub);
   link_blocks (sub);
-  if (!cfg_dfs (sub)) {
+  if (!cfg_dfs (sub, 0)) {
     error (__FILE__ ": unreachable code at subroutine 0x%08X", sub->begin->address);
     sub->haserror = TRUE;
     return;
   }
-  if (!cfg_revdfs (sub)) {
+  if (!cfg_dfs (sub, 1)) {
     error (__FILE__ ": infinite loop at subroutine 0x%08X", sub->begin->address);
     sub->haserror = TRUE;
     return;
   }
 
-  cfg_dominance (sub);
-  cfg_revdominance (sub);
+  cfg_dominance (sub, 0);
+  cfg_frontier (sub, 0);
+
+  cfg_dominance (sub, 1);
+  cfg_frontier (sub, 1);
 }

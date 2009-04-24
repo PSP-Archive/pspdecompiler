@@ -3,31 +3,34 @@
 
 #define INSN_READ_GPR_S      0x00000001
 #define INSN_READ_GPR_T      0x00000002
-#define INSN_READ_FPR_S      0x00000004
-#define INSN_READ_FPR_T      0x00000008
-#define INSN_READ_COND_CODE  0x00000010
-#define INSN_READ_HI         0x00000020
-#define INSN_READ_LO         0x00000040
-#define INSN_WRITE_GPR_D     0x00000080
-#define INSN_WRITE_GPR_T     0x00000100
-#define INSN_WRITE_FPR_D     0x00000200
-#define INSN_WRITE_FPR_T     0x00000400
-#define INSN_WRITE_COND_CODE 0x00000800
-#define INSN_WRITE_HI        0x00001000
-#define INSN_WRITE_LO        0x00002000
-#define INSN_JUMP            0x00004000
-#define INSN_BRANCH          0x00008000
-#define INSN_BRANCHLIKELY    0x00010000
-#define INSN_LINK            0x00020000
-#define INSN_LOAD            0x00040000
-#define INSN_STORE           0x00080000
+#define INSN_READ_GPR_D      0x00000004
+#define INSN_READ_FPR_S      0x00000008
+#define INSN_READ_FPR_T      0x00000010
+#define INSN_READ_COND_CODE  0x00000020
+#define INSN_READ_HI         0x00000040
+#define INSN_READ_LO         0x00000080
+#define INSN_WRITE_GPR_D     0x00000100
+#define INSN_WRITE_GPR_T     0x00000200
+#define INSN_WRITE_FPR_D     0x00000400
+#define INSN_WRITE_FPR_T     0x00000800
+#define INSN_WRITE_COND_CODE 0x00001000
+#define INSN_WRITE_HI        0x00002000
+#define INSN_WRITE_LO        0x00004000
+#define INSN_JUMP            0x00008000
+#define INSN_BRANCH          0x00010000
+#define INSN_BRANCHLIKELY    0x00020000
+#define INSN_LINK            0x00040000
+#define INSN_LOAD            0x00080000
+#define INSN_STORE           0x00100000
 
 #define INSN_ALLEGREX        0x00000000
-#define INSN_COP0            0x00100000
-#define INSN_FPU             0x00200000
-#define INSN_VFPU            0x00300000
+#define INSN_SPECIAL         0x01000000
+#define INSN_DEBUG           0x02000000
+#define INSN_COP0            0x03000000
+#define INSN_FPU             0x04000000
+#define INSN_VFPU            0x05000000
 
-#define INSN_PROCESSOR(flags)  ((flags) & 0x00300000)
+#define INSN_TYPE(flags)  ((flags) & 0x0F000000)
 
 #define INSN_ALIAS           0x80000000
 
@@ -456,6 +459,8 @@ struct allegrex_instruction
   const char *fmt;
   unsigned int flags;
 };
+
+extern const char *gpr_names[];
 
 char *allegrex_disassemble (unsigned int opcode, unsigned int PC, int prtall);
 const struct allegrex_instruction *allegrex_decode (unsigned int opcode, int allowalias);

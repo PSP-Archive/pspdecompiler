@@ -212,7 +212,7 @@ void extract_hidden_subroutines (struct code *c)
     for (i = 0; i < c->numopc; i++) {
       struct location *loc = &c->base[i];
       if (loc->sub) cursub = loc->sub;
-      if (!loc->reachable) continue;
+      if (loc->reachable == LOCATION_UNREACHABLE) continue;
 
       if (loc->target) {
         struct location *target;
@@ -281,8 +281,8 @@ void check_switches (struct code *c, struct subroutine *sub)
         loc->cswitch = NULL;
       } else {
         loc->cswitch->checked = TRUE;
-        if (loc->reachable) {
-          loc->reachable = 0;
+        if (loc->reachable == LOCATION_REACHABLE) {
+          loc->reachable = LOCATION_UNREACHABLE;
           mark_reachable (c, loc);
         }
       }
@@ -303,9 +303,9 @@ void check_subroutine (struct code *c, struct subroutine *sub)
   }
 
   do {
-    if (!loc->reachable) continue;
+    if (loc->reachable == LOCATION_UNREACHABLE) continue;
 
-    if (loc->error) {
+    if (loc->error != ERROR_NONE) {
       switch (loc->error) {
       case ERROR_INVALID_OPCODE:
         error (__FILE__ ": invalid opcode 0x%08X at 0x%08X (sub: 0x%08X)", loc->opc, loc->address, sub->begin->address);
@@ -322,8 +322,8 @@ void check_subroutine (struct code *c, struct subroutine *sub)
       case ERROR_DELAY_SLOT_TARGET:
         error (__FILE__ ": delay slot can't be a target of a branch/jump (0x%08X) (sub: 0x%08X)", loc->address, sub->begin->address);
         break;
-      default:
-        error (__FILE__ ": problematic subroutine at 0x%08X", sub->begin->address);
+      case ERROR_NONE:
+        break;
       }
       sub->haserror = TRUE;
     }
@@ -347,7 +347,7 @@ void check_subroutine (struct code *c, struct subroutine *sub)
   } while (loc++ != sub->end);
   loc--;
 
-  if (!loc->reachable) return;
+  if (loc->reachable == LOCATION_UNREACHABLE) return;
   loc--;
 
   if ((loc->insn->flags & (INSN_JUMP | INSN_LINK | INSN_WRITE_GPR_D)) == INSN_JUMP)

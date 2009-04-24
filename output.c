@@ -73,21 +73,79 @@ void print_subroutine_name (FILE *out, struct subroutine *sub)
   }
 }
 
+static
+void print_value (FILE *out, struct value *val)
+{
+  switch (val->type) {
+  case VAL_CONSTANT: fprintf (out, "0x%08X", val->value); break;
+  case VAL_REGISTER: fprintf (out, "%s", gpr_names[val->value]); break;
+  default:
+    fprintf (out, "UNK");
+  }
+}
+
+static
+void ident_line (FILE *out, int size)
+{
+  int i;
+  for (i = 0; i < size; i++)
+    fprintf (out, "  ");
+}
 
 static
 void print_block (FILE *out, int ident, struct basicblock *block)
 {
+  element el, vel;
   struct location *loc;
-  int i;
 
   if (block->type != BLOCK_SIMPLE) return;
-  for (loc = block->val.simple.begin; ;loc++) {
+  el = list_head (block->operations);
+  while (el) {
+    struct operation *op = element_getvalue (el);
 
-    for (i = 0; i < ident; i++)
-      fprintf (out, "  ");
+    if (op->type == OP_ASM) {
+      ident_line (out, ident);
+      fprintf (out, "__asm__ (\n");
+      for (loc = op->begin; ; loc++) {
+        ident_line (out, ident);
+        fprintf (out, "  \"%s\"\n", allegrex_disassemble (loc->opc, loc->address, FALSE));
+        if (loc == op->end) break;
+      }
+      ident_line (out, ident);
+      fprintf (out, "  : ");
+      vel = list_head (op->results);
+      while (vel) {
+        struct value *val = element_getvalue (vel);
+        if (vel != list_head (op->results))
+          fprintf (out, ", ");
+        fprintf (out, "\"=r\"(");
+        print_value (out, val);
+        fprintf (out, ")");
+        vel = element_next (vel);
+      }
+      fprintf (out, "\n");
+      ident_line (out, ident);
+      fprintf (out, "  : ");
+      vel = list_head (op->results);
+      while (vel) {
+        struct value *val = element_getvalue (vel);
+        if (vel != list_head (op->results))
+          fprintf (out, ", ");
+        fprintf (out, "\"r\"(");
+        print_value (out, val);
+        fprintf (out, ")");
+        vel = element_next (vel);
+      }
+      fprintf (out, "\n");
+      ident_line (out, ident);
+      fprintf (out, ");\n");
+    } else if (op->type == OP_INSTRUCTION) {
+      fprintf (out, "ops\n");
+    } else {
+      report ("Merda %d\n", op->type);
+    }
 
-    fprintf (out, "%s\n", allegrex_disassemble (loc->opc, loc->address, FALSE));
-    if (loc == block->val.simple.begin) return;
+    el = element_next (el);
   }
 }
 
@@ -105,13 +163,21 @@ void print_subroutine (FILE *out, struct code *c, struct subroutine *sub)
   print_subroutine_name (out, sub);
   fprintf (out, " (void)\n{\n");
 
-  el = list_head (sub->dfsblocks);
-  while (el) {
-    struct basicblock *block = element_getvalue (el);
-    ident = 1;
-    print_block (out, ident, block);
-    fprintf (out, "\n");
-    el = element_next (el);
+  if (sub->haserror) {
+    struct location *loc;
+    for (loc = sub->begin; ; loc++) {
+      fprintf (out, "%s\n", allegrex_disassemble (loc->opc, loc->address, TRUE));
+      if (loc == sub->end) break;
+    }
+  } else {
+    el = list_head (sub->dfsblocks);
+    while (el) {
+      struct basicblock *block = element_getvalue (el);
+      ident = 1;
+      print_block (out, ident, block);
+      fprintf (out, "\n");
+      el = element_next (el);
+    }
   }
   fprintf (out, "}\n\n");
 }
@@ -198,8 +264,8 @@ void print_subroutine_graph (FILE *out, struct code *c, struct subroutine *sub)
   while (el) {
     block = element_getvalue (el);
 
-    fprintf (out, "    %3d ", block->dfsnum);
-    fprintf (out, "[label=\"(%d) ", block->dfsnum);
+    fprintf (out, "    %3d ", block->node.dfsnum);
+    fprintf (out, "[label=\"(%d) ", block->node.dfsnum);
     switch (block->type) {
     case BLOCK_START: fprintf (out, "Start");   break;
     case BLOCK_END: fprintf (out, "End");       break;
@@ -210,8 +276,8 @@ void print_subroutine_graph (FILE *out, struct code *c, struct subroutine *sub)
     fprintf (out, "\"];\n");
 
 
-    if (block->revdominator && list_size (block->outrefs) > 1) {
-      fprintf (out, "    %3d -> %3d [color=green];\n", block->dfsnum, block->revdominator->dfsnum);
+    if (block->revnode.dominator && list_size (block->outrefs) > 1) {
+      fprintf (out, "    %3d -> %3d [color=green];\n", block->node.dfsnum, block->revnode.dominator->node.dfsnum);
     }
 
     /*
@@ -232,13 +298,13 @@ void print_subroutine_graph (FILE *out, struct code *c, struct subroutine *sub)
       while (ref) {
         struct basicblock *refblock;
         refblock = element_getvalue (ref);
-        fprintf (out, "    %3d -> %3d ", block->dfsnum, refblock->dfsnum);
+        fprintf (out, "    %3d -> %3d ", block->node.dfsnum, refblock->node.dfsnum);
         if (ref != list_head (block->outrefs))
           fprintf (out, "[arrowtail=dot]");
 
-        if (refblock->parent == block) {
+        if (refblock->node.parent == block) {
           fprintf (out, "[style=bold]");
-        } else if (block->dfsnum >= refblock->dfsnum) {
+        } else if (block->node.dfsnum >= refblock->node.dfsnum) {
           fprintf (out, "[color=red]");
         }
         fprintf (out, " ;\n");
