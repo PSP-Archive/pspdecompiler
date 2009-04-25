@@ -126,36 +126,34 @@ struct loopstruct {
   list  edges;
 };
 
-enum variabletype {
-  VARIABLE_REGISTER,
-  VARIABLE_STACK
-};
-
+#define REGISTER_LINK 31
 #define REGISTER_LO   32
 #define REGISTER_HI   33
+#define NUM_REGISTERS 34
+
+enum valuetype {
+  VAL_CONSTANT,
+  VAL_REGISTER,
+  VAL_VARIABLE
+};
+
+struct value {
+  enum valuetype type;
+  uint32 value;
+  struct variable *variable;
+};
 
 struct variable {
-  enum variabletype type;
-  int    num;
+  struct value name;
+  int count;
 
   struct operation *def;
   list   uses;
 };
 
-enum valuetype {
-  VAL_CONSTANT,
-  VAL_REGISTER,
-  VAL_STACKBASE,
-  VAL_RETURNADDRESS,
-  VAL_VOID
-};
-
-struct value {
-  enum valuetype type;
-  uint32        value;
-};
-
 enum operationtype {
+  OP_START,
+  OP_END,
   OP_CALL,
   OP_INSTRUCTION,
   OP_MOVE,

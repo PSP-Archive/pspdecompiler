@@ -78,7 +78,15 @@ void print_value (FILE *out, struct value *val)
 {
   switch (val->type) {
   case VAL_CONSTANT: fprintf (out, "0x%08X", val->value); break;
-  case VAL_REGISTER: fprintf (out, "%s", gpr_names[val->value]); break;
+  case VAL_VARIABLE:
+    print_value (out, &val->variable->name);
+    fprintf (out, "_%d", val->variable->count);
+    break;
+  case VAL_REGISTER:
+    if (val->value == REGISTER_HI)      fprintf (out, "hi");
+    else if (val->value == REGISTER_LO) fprintf (out, "lo");
+    else fprintf (out, "%s", gpr_names[val->value]);
+    break;
   default:
     fprintf (out, "UNK");
   }
@@ -93,10 +101,221 @@ void ident_line (FILE *out, int size)
 }
 
 static
+void print_asm (FILE *out, int ident, struct operation *op)
+{
+  struct location *loc;
+  element el;
+
+  ident_line (out, ident);
+  fprintf (out, "__asm__ (\n");
+  for (loc = op->begin; ; loc++) {
+    ident_line (out, ident);
+    fprintf (out, "  \"%s\"\n", allegrex_disassemble (loc->opc, loc->address, FALSE));
+    if (loc == op->end) break;
+  }
+  ident_line (out, ident);
+  fprintf (out, "  : ");
+
+  el = list_head (op->results);
+  while (el) {
+    struct value *val = element_getvalue (el);
+    if (el != list_head (op->results))
+      fprintf (out, ", ");
+    fprintf (out, "\"=r\"(");
+    print_value (out, val);
+    fprintf (out, ")");
+    el = element_next (el);
+  }
+  fprintf (out, "\n");
+
+  ident_line (out, ident);
+  fprintf (out, "  : ");
+  el = list_head (op->results);
+  while (el) {
+    struct value *val = element_getvalue (el);
+    if (el != list_head (op->results))
+      fprintf (out, ", ");
+    fprintf (out, "\"r\"(");
+    print_value (out, val);
+    fprintf (out, ")");
+    el = element_next (el);
+  }
+
+  fprintf (out, "\n");
+  ident_line (out, ident);
+  fprintf (out, ");\n");
+}
+
+static
+void print_binaryop (FILE *out, struct operation *op, const char *opsymbol)
+{
+  print_value (out, list_headvalue (op->results));
+  fprintf (out, " = ");
+  print_value (out, list_headvalue (op->operands));
+  fprintf (out, " %s ", opsymbol);
+  print_value (out, list_tailvalue (op->operands));
+}
+
+static
+void print_compound (FILE *out, struct operation *op, const char *opsymbol)
+{
+  element el;
+
+  if (list_size (op->results) != 0) {
+    print_value (out, list_headvalue (op->results));
+    fprintf (out, " = ");
+  }
+  fprintf (out, "%s (", opsymbol);
+  el = list_head (op->operands);
+  while (el) {
+    if (el != list_head (op->operands))
+      fprintf (out, ", ");
+    print_value (out, element_getvalue (el));
+    el = element_next (el);
+  }
+  fprintf (out, ")");
+}
+
+static
+void print_ext (FILE *out, struct operation *op)
+{
+  struct value *val1, *val2, *val3;
+  element el;
+  uint32 mask;
+
+  el = list_head (op->operands);
+  val1 = element_getvalue (el); el = element_next (el);
+  val2 = element_getvalue (el); el = element_next (el);
+  val3 = element_getvalue (el);
+
+  mask = 0xFFFFFFFF >> (32 - val3->value);
+  print_value (out, list_headvalue (op->results));
+  fprintf (out, " = (");
+  print_value (out, val1);
+  fprintf (out, " >> %d)", val2->value);
+  fprintf (out, " & 0x%08X", mask);
+}
+
+static
+void print_ins (FILE *out, struct operation *op)
+{
+  struct value *val1, *val3, *val4;
+  element el;
+  uint32 mask;
+
+  el = list_head (op->operands);
+  val1 = element_getvalue (el); el = element_next (el); el = element_next (el);
+  val3 = element_getvalue (el); el = element_next (el);
+  val4 = element_getvalue (el);
+
+  mask = 0xFFFFFFFF >> (32 - val4->value);
+  print_value (out, list_headvalue (op->results));
+
+  fprintf (out, " = (");
+  print_value (out, list_headvalue (op->results));
+  fprintf (out, " & 0x%08X) | (", ~(mask << val3->value));
+  print_value (out, val1);
+  fprintf (out, " & 0x%08X)", mask);
+}
+
+static
+void print_nor (FILE *out, struct operation *op)
+{
+  struct value *val1, *val2;
+  int simple = 0;
+
+  val1 = list_headvalue (op->operands);
+  val2 = list_headvalue (op->operands);
+
+  if (val1->value == 0 || val2->value == 0) {
+    simple = 1;
+    if (val1->value == 0) val1 = val2;
+  }
+
+  print_value (out, list_headvalue (op->results));
+  if (!simple) {
+    fprintf (out, " = !(");
+    print_value (out, val1);
+    fprintf (out, " | ");
+    print_value (out, val2);
+    fprintf (out, ")");
+  } else {
+    fprintf (out, " = !");
+    print_value (out, val1);
+  }
+}
+static
+void print_movnz (FILE *out, struct operation *op, int ismovn)
+{
+  struct value *val1, *val2;
+  struct value *result;
+
+  val1 = list_headvalue (op->operands);
+  val2 = element_getvalue (element_next (list_head (op->operands)));
+  result = list_headvalue (op->results);
+
+  print_value (out, result);
+  if (ismovn)
+    fprintf (out, " = (");
+  else
+    fprintf (out, " = !(");
+  print_value (out, val2);
+  fprintf (out, ") ? ");
+  print_value (out, val1);
+  fprintf (out, " : ");
+  print_value (out, result);
+}
+
+
+static
+void print_instruction (FILE *out, int ident, struct operation *op)
+{
+  ident_line (out, ident);
+  switch (op->insn) {
+  case I_ADD:  print_binaryop (out, op, "+");   break;
+  case I_ADDU: print_binaryop (out, op, "+");   break;
+  case I_SUB:  print_binaryop (out, op, "-");   break;
+  case I_SUBU: print_binaryop (out, op, "-");   break;
+  case I_XOR:  print_binaryop (out, op, "^");   break;
+  case I_AND:  print_binaryop (out, op, "&");   break;
+  case I_OR:   print_binaryop (out, op, "|");   break;
+  case I_SRAV: print_binaryop (out, op, ">>");  break;
+  case I_SRLV: print_binaryop (out, op, ">>");  break;
+  case I_SLLV: print_binaryop (out, op, "<<");  break;
+  case I_INS:  print_ins (out, op);             break;
+  case I_EXT:  print_ext (out, op);             break;
+  case I_MIN:  print_compound (out, op, "MIN"); break;
+  case I_MAX:  print_compound (out, op, "MAX"); break;
+  case I_BITREV: print_compound (out, op, "BITREV"); break;
+  case I_CLZ:  print_compound (out, op, "CLZ"); break;
+  case I_CLO:  print_compound (out, op, "CLO"); break;
+  case I_NOR:  print_nor (out, op);             break;
+  case I_MOVN: print_movnz (out, op, TRUE);     break;
+  case I_MOVZ: print_movnz (out, op, FALSE);    break;
+  case I_LW:   print_compound (out, op, "LW");   break;
+  case I_LB:   print_compound (out, op, "LB");   break;
+  case I_LBU:  print_compound (out, op, "LBU");  break;
+  case I_LH:   print_compound (out, op, "LH");   break;
+  case I_LHU:  print_compound (out, op, "LHU");  break;
+  case I_LL:   print_compound (out, op, "LL");   break;
+  case I_LWL:  print_compound (out, op, "LWL");  break;
+  case I_LWR:  print_compound (out, op, "LWR");  break;
+  case I_SW:   print_compound (out, op, "SW");   break;
+  case I_SH:   print_compound (out, op, "SH");   break;
+  case I_SB:   print_compound (out, op, "SB");   break;
+  case I_SC:   print_compound (out, op, "SC");   break;
+  case I_SWL:  print_compound (out, op, "SWL");  break;
+  case I_SWR:  print_compound (out, op, "SWR");  break;
+  default:
+    break;
+  }
+  fprintf (out, ";\n");
+}
+
+static
 void print_block (FILE *out, int ident, struct basicblock *block)
 {
-  element el, vel;
-  struct location *loc;
+  element el;
 
   if (block->type != BLOCK_SIMPLE) return;
   el = list_head (block->operations);
@@ -104,45 +323,22 @@ void print_block (FILE *out, int ident, struct basicblock *block)
     struct operation *op = element_getvalue (el);
 
     if (op->type == OP_ASM) {
-      ident_line (out, ident);
-      fprintf (out, "__asm__ (\n");
-      for (loc = op->begin; ; loc++) {
-        ident_line (out, ident);
-        fprintf (out, "  \"%s\"\n", allegrex_disassemble (loc->opc, loc->address, FALSE));
-        if (loc == op->end) break;
-      }
-      ident_line (out, ident);
-      fprintf (out, "  : ");
-      vel = list_head (op->results);
-      while (vel) {
-        struct value *val = element_getvalue (vel);
-        if (vel != list_head (op->results))
-          fprintf (out, ", ");
-        fprintf (out, "\"=r\"(");
-        print_value (out, val);
-        fprintf (out, ")");
-        vel = element_next (vel);
-      }
-      fprintf (out, "\n");
-      ident_line (out, ident);
-      fprintf (out, "  : ");
-      vel = list_head (op->results);
-      while (vel) {
-        struct value *val = element_getvalue (vel);
-        if (vel != list_head (op->results))
-          fprintf (out, ", ");
-        fprintf (out, "\"r\"(");
-        print_value (out, val);
-        fprintf (out, ")");
-        vel = element_next (vel);
-      }
-      fprintf (out, "\n");
-      ident_line (out, ident);
-      fprintf (out, ");\n");
+      print_asm (out, ident, op);
     } else if (op->type == OP_INSTRUCTION) {
-      fprintf (out, "ops\n");
-    } else {
-      report ("Merda %d\n", op->type);
+      print_instruction (out, ident, op);
+    } else if (op->type == OP_MOVE) {
+      ident_line (out, ident);
+      print_value (out, list_headvalue (op->results));
+      fprintf (out, " = ");
+      print_value (out, list_headvalue (op->operands));
+      fprintf (out, ";\n");
+    } else if (op->type == OP_NOP) {
+      ident_line (out, ident);
+      fprintf (out, "nop ();\n");
+    } else if (op->type == OP_PHI) {
+      ident_line (out, ident);
+      print_compound (out, op, "PHI");
+      fprintf (out, ";\n");
     }
 
     el = element_next (el);
@@ -272,6 +468,31 @@ void print_subroutine_graph (FILE *out, struct code *c, struct subroutine *sub)
     case BLOCK_CALL: fprintf (out, "Call");     break;
     case BLOCK_SWITCH: fprintf (out, "Switch"); break;
     case BLOCK_SIMPLE: fprintf (out, "0x%08X", block->val.simple.begin->address);
+    }
+    ref = list_head (block->operations);
+    while (ref) {
+      element lel;
+      struct operation *op = element_getvalue (ref);
+      fprintf (out, "\\l<");
+      lel = list_head (op->results);
+      while (lel) {
+        print_value (out, element_getvalue (lel));
+        fprintf (out, " ");
+        lel = element_next (lel);
+      }
+      fprintf (out, "> = ");
+      if (op->type == OP_PHI) {
+        fprintf (out, "PHI");
+      }
+      fprintf (out, "<");
+      lel = list_head (op->operands);
+      while (lel) {
+        print_value (out, element_getvalue (lel));
+        fprintf (out, " ");
+        lel = element_next (lel);
+      }
+      fprintf (out, ">");
+      ref = element_next (ref);
     }
     fprintf (out, "\"];\n");
 
