@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <string.h>
 
 #include "code.h"
 #include "prx.h"
@@ -7,6 +8,29 @@
 #include "hash.h"
 #include "utils.h"
 
+static
+void print_help (char *prgname)
+{
+  report (
+    "Usage:\n"
+    "  %s [-g] [-n nidsfile] [-v] prxfile\n"
+    "Where:\n"
+    "  -g    output graph\n"
+    "  -t    print deep-first search number\n"
+    "  -r    print the reverse deep-first search number\n"
+    "  -d    print the dominator\n"
+    "  -x    print the reverse dominator\n"
+    "  -f    print the frontier\n"
+    "  -z    print the reverse frontier\n"
+    "  -p    print phi functions\n"
+    "  -q    print code into nodes\n"
+    "  -c    output code\n"
+    "  -v    increase verbosity\n"
+    "  -n    specify nids xml file\n",
+    prgname
+  );
+}
+
 int main (int argc, char **argv)
 {
   char *prxfilename = NULL;
@@ -14,18 +38,32 @@ int main (int argc, char **argv)
 
   int i, j, verbose = 0;
   int printgraph = FALSE;
+  int graphoptions = 0;
+  int printcode = FALSE;
 
   struct nidstable *nids = NULL;
   struct prx *p = NULL;
   struct code *c;
 
-  for (i = 0; i < argc; i++) {
-    if (argv[i][0] == '-') {
+  for (i = 1; i < argc; i++) {
+    if (strcmp ("--help", argv[i]) == 0) {
+      print_help (argv[0]);
+      return 0;
+    } else if (argv[i][0] == '-') {
       char *s = argv[i];
       for (j = 0; s[j]; j++) {
         switch (s[j]) {
         case 'v': verbose++; break;
         case 'g': printgraph = TRUE; break;
+        case 'c': printcode = TRUE; break;
+        case 't': graphoptions |= OUT_PRINT_DFS; break;
+        case 'r': graphoptions |= OUT_PRINT_RDFS; break;
+        case 'd': graphoptions |= OUT_PRINT_DOMINATOR; break;
+        case 'x': graphoptions |= OUT_PRINT_RDOMINATOR; break;
+        case 'f': graphoptions |= OUT_PRINT_FRONTIER; break;
+        case 'z': graphoptions |= OUT_PRINT_RFRONTIER; break;
+        case 'p': graphoptions |= OUT_PRINT_PHIS; break;
+        case 'q': graphoptions |= OUT_PRINT_CODE; break;
         case 'n':
           if (i == (argc - 1))
             fatal (__FILE__ ": missing nids file");
@@ -39,8 +77,10 @@ int main (int argc, char **argv)
     }
   }
 
-  if (!prxfilename)
-    fatal (__FILE__ ": missing prx file name");
+  if (!prxfilename) {
+    print_help (argv[0]);
+    return 0;
+  }
 
   if (nidsfilename)
     nids = nids_load (nidsfilename);
@@ -55,18 +95,18 @@ int main (int argc, char **argv)
   if (verbose > 2 && nids)
     nids_print (nids);
 
-  if (verbose > 1) prx_print (p, (verbose > 2));
+  if (verbose > 0) prx_print (p, (verbose > 1));
 
   c = code_analyse (p);
   if (!c)
     fatal (__FILE__ ": can't analyse code `%s'", prxfilename);
 
-  if (verbose > 0) {
-    if (printgraph)
-      print_graph (c, prxfilename);
-    else
-      print_code (c, prxfilename);
-  }
+
+  if (printgraph)
+    print_graph (c, prxfilename, graphoptions);
+
+  if (printcode)
+    print_code (c, prxfilename);
 
   code_free (c);
 

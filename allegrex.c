@@ -964,7 +964,7 @@ void print_instruction (const struct allegrex_instruction *insn, unsigned int op
   unsigned int data = opcode;
 
   if (prtall) {
-    len += sprintf (buffer, "    0x%08X: 0x%08X '", PC, opcode);
+    len += sprintf (buffer, "0x%08X: 0x%08X '", PC, opcode);
     for (i = 0; i < 4; i++) {
       char c = (char) (data & 0xFF);
       if (isprint (c)) { len += sprintf (&buffer[len], "%c", c); }

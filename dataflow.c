@@ -468,7 +468,7 @@ void extract_operations (struct subroutine *sub, list *wheredefined)
 
 
 static
-void ssa_step1 (struct subroutine *sub, list *wheredefined)
+void ssa_place_phis (struct subroutine *sub, list *wheredefined)
 {
   struct basicblock *block, *bref;
   element el, ref;
@@ -521,7 +521,7 @@ void ssa_step1 (struct subroutine *sub, list *wheredefined)
 static
 void ssa_search (struct basicblock *block, list *vars, int *count)
 {
-  element el, vel;
+  element el;
   int i, pushcount[NUM_REGISTERS];
 
   for (i = 1; i < NUM_REGISTERS; i++)
@@ -532,26 +532,27 @@ void ssa_search (struct basicblock *block, list *vars, int *count)
     struct operation *op;
     struct variable *var;
     struct value *val;
+    element opel, rel;
 
     op = element_getvalue (el);
 
     if (op->type != OP_PHI) {
-      vel = list_head (op->operands);
-      while (vel) {
-        val = element_getvalue (vel);
+      opel = list_head (op->operands);
+      while (opel) {
+        val = element_getvalue (opel);
         if (val->type == VAL_REGISTER) {
           var = list_headvalue (vars[val->value]);
           val->type = VAL_VARIABLE;
           val->variable = var;
           list_inserttail (var->uses, op);
         }
-        vel = element_next (vel);
+        opel = element_next (opel);
       }
     }
 
-    vel = list_head (op->results);
-    while (vel) {
-      val = element_getvalue (vel);
+    rel = list_head (op->results);
+    while (rel) {
+      val = element_getvalue (rel);
       if (val->type == VAL_REGISTER) {
         val->type = VAL_VARIABLE;
         val->variable = var = alloc_variable (block);
@@ -563,7 +564,7 @@ void ssa_search (struct basicblock *block, list *vars, int *count)
         list_inserttail (block->sub->variables, var);
         pushcount[val->value]++;
       }
-      vel = element_next (vel);
+      rel = element_next (rel);
     }
 
     el = element_next (el);
@@ -579,20 +580,20 @@ void ssa_search (struct basicblock *block, list *vars, int *count)
   el = list_head (block->outrefs);
   while (el) {
     struct basicblock *ref = element_getvalue (el);
-    element phiel, bel, lel;
+    element phiel, refs, opel;
     int j;
 
     ref->mark1++;
     i = j = 0;
-    bel = list_head (ref->inrefs);
-    while (bel) {
-      if (element_getvalue (bel) == block) {
+    refs = list_head (ref->inrefs);
+    while (refs) {
+      if (element_getvalue (refs) == block) {
         if (++j == ref->mark1) {
           break;
         }
       }
       i++;
-      bel = element_next (bel);
+      refs = element_next (refs);
     }
 
     phiel = list_head (ref->operations);
@@ -603,11 +604,11 @@ void ssa_search (struct basicblock *block, list *vars, int *count)
       op = element_getvalue (phiel);
       if (op->type != OP_PHI) break;
 
-      lel = list_head (op->operands);
+      opel = list_head (op->operands);
       for (j = 0; j < i; j++) {
-        lel = element_next (lel);
+        opel = element_next (opel);
       }
-      val = element_getvalue (lel);
+      val = element_getvalue (opel);
       val->type = VAL_VARIABLE;
       val->variable = list_headvalue (vars[val->value]);
       phiel = element_next (phiel);
@@ -631,7 +632,7 @@ void ssa_search (struct basicblock *block, list *vars, int *count)
 }
 
 static
-void ssa_step2 (struct subroutine *sub, list *regs)
+void ssa_create_vars (struct subroutine *sub, list *vars)
 {
   struct operation *op;
   int i, count[NUM_REGISTERS];
@@ -653,7 +654,8 @@ void ssa_step2 (struct subroutine *sub, list *regs)
   }
 
   list_inserttail (sub->endblock->operations, op);
-  ssa_search (sub->startblock, regs, count);
+
+  ssa_search (sub->startblock, vars, count);
 }
 
 void build_ssa (struct subroutine *sub)
@@ -668,8 +670,8 @@ void build_ssa (struct subroutine *sub)
   sub->variables = list_alloc (sub->code->lstpool);
 
   extract_operations (sub, reglist);
-  ssa_step1 (sub, reglist);
-  ssa_step2 (sub, reglist);
+  ssa_place_phis (sub, reglist);
+  ssa_create_vars (sub, reglist);
 
   for (i = 0; i < NUM_REGISTERS; i++) {
     list_free (reglist[i]);

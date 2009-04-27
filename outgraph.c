@@ -5,70 +5,117 @@
 #include "utils.h"
 
 static
-void print_subroutine_graph (FILE *out, struct code *c, struct subroutine *sub)
+void print_subroutine_graph (FILE *out, struct code *c, struct subroutine *sub, int options)
 {
   struct basicblock *block;
   element el, ref;
 
-  fprintf (out, "digraph sub_%05X {\n", sub->begin->address);
+  fprintf (out, "digraph ");
+  print_subroutine_name (out, sub);
+  fprintf (out, " {\n    rankdir=LR;\n");
+
   el = list_head (sub->blocks);
 
   while (el) {
     block = element_getvalue (el);
 
     fprintf (out, "    %3d ", block->node.dfsnum);
-    fprintf (out, "[label=\"(%d) ", block->node.dfsnum);
+    fprintf (out, "[label=\"");
+    if (options & OUT_PRINT_DFS)  fprintf (out, "(%d) ", block->node.dfsnum);
+    if (options & OUT_PRINT_RDFS) fprintf (out, "(%d) ", block->revnode.dfsnum);
+
     switch (block->type) {
-    case BLOCK_START: fprintf (out, "Start");   break;
-    case BLOCK_END: fprintf (out, "End");       break;
-    case BLOCK_CALL: fprintf (out, "Call");     break;
+    case BLOCK_START:  fprintf (out, "Start");   break;
+    case BLOCK_END:    fprintf (out, "End");       break;
+    case BLOCK_CALL:   fprintf (out, "Call");     break;
     case BLOCK_SWITCH: fprintf (out, "Switch"); break;
-    case BLOCK_SIMPLE: fprintf (out, "0x%08X", block->val.simple.begin->address);
+    case BLOCK_SIMPLE: fprintf (out, "0x%08X-0x%08X",
+        block->val.simple.begin->address, block->val.simple.end->address);
     }
-    ref = list_head (block->operations);
-    while (ref) {
-      element lel;
-      struct operation *op = element_getvalue (ref);
-      fprintf (out, "\\l<");
-      lel = list_head (op->results);
-      while (lel) {
-        print_value (out, element_getvalue (lel));
-        fprintf (out, " ");
-        lel = element_next (lel);
+    fprintf (out, "\\l");
+
+    if (options & OUT_PRINT_PHIS) {
+      element opsel, argel;
+      opsel = list_head (block->operations);
+      while (opsel) {
+        struct operation *op = element_getvalue (opsel);
+        int count1 = 0, count2 = 0;
+
+        if (op->type != OP_START && op->type != OP_END) {
+          argel = list_head (op->results);
+          while (argel) {
+            struct value *val = element_getvalue (argel);
+            if (val->type != VAL_CONSTANT) {
+              if (count1++ == 0) fprintf (out, "<");
+              print_value (out, val);
+              fprintf (out, " ");
+            }
+            argel = element_next (argel);
+          }
+          if (count1 > 0) fprintf (out, "> = ");
+
+          if (op->type == OP_PHI) {
+            fprintf (out, "PHI");
+          }
+          argel = list_head (op->operands);
+          while (argel) {
+            struct value *val = element_getvalue (argel);
+            if (val->type != VAL_CONSTANT) {
+              if (count2++ == 0) fprintf (out, "<");
+              print_value (out, val);
+              fprintf (out, " ");
+            }
+            argel = element_next (argel);
+          }
+          if (count2 > 0) fprintf (out, ">");
+          if (count1 || count2) fprintf (out, "\\l");
+        }
+        opsel = element_next (opsel);
       }
-      fprintf (out, "> = ");
-      if (op->type == OP_PHI) {
-        fprintf (out, "PHI");
+    }
+    if (block->type == BLOCK_SIMPLE && (options & OUT_PRINT_CODE)) {
+      struct location *loc;
+      for (loc = block->val.simple.begin; ; loc++) {
+        fprintf (out, "%s\\l", allegrex_disassemble (loc->opc, loc->address, FALSE));
+        if (loc == block->val.simple.end) break;
       }
-      fprintf (out, "<");
-      lel = list_head (op->operands);
-      while (lel) {
-        print_value (out, element_getvalue (lel));
-        fprintf (out, " ");
-        lel = element_next (lel);
-      }
-      fprintf (out, ">");
-      ref = element_next (ref);
     }
     fprintf (out, "\"];\n");
 
 
-    if (block->revnode.dominator && list_size (block->outrefs) > 1) {
-      fprintf (out, "    %3d -> %3d [color=green];\n", block->node.dfsnum, block->revnode.dominator->node.dfsnum);
+    if (options & OUT_PRINT_DOMINATOR) {
+      if (block->node.dominator && list_size (block->inrefs) > 1) {
+        fprintf (out, "    %3d -> %3d [color=green];\n", block->node.dfsnum, block->node.dominator->node.dfsnum);
+      }
     }
 
-    /*
-    if (list_size (block->frontier) != 0) {
-      fprintf (out, "    %3d -> { ", block->dfsnum);
-      ref = list_head (block->frontier);
+    if (options & OUT_PRINT_RDOMINATOR) {
+      if (block->revnode.dominator && list_size (block->outrefs) > 1) {
+        fprintf (out, "    %3d -> %3d [color=yellow];\n", block->node.dfsnum, block->revnode.dominator->node.dfsnum);
+      }
+    }
+
+    if (list_size (block->node.frontier) != 0 && (options & OUT_PRINT_FRONTIER)) {
+      fprintf (out, "    %3d -> { ", block->node.dfsnum);
+      ref = list_head (block->node.frontier);
       while (ref) {
         struct basicblock *refblock = element_getvalue (ref);
-        fprintf (out, "%3d ", refblock->dfsnum);
+        fprintf (out, "%3d ", refblock->node.dfsnum);
         ref = element_next (ref);
       }
-      fprintf (out, " } [color=green];\n");
+      fprintf (out, " } [color=orange];\n");
     }
-    */
+
+    if (list_size (block->revnode.frontier) != 0 && (options & OUT_PRINT_RFRONTIER)) {
+      fprintf (out, "    %3d -> { ", block->node.dfsnum);
+      ref = list_head (block->revnode.frontier);
+      while (ref) {
+        struct basicblock *refblock = element_getvalue (ref);
+        fprintf (out, "%3d ", refblock->node.dfsnum);
+        ref = element_next (ref);
+      }
+      fprintf (out, " } [color=blue];\n");
+    }
 
     if (list_size (block->outrefs) != 0) {
       ref = list_head (block->outrefs);
@@ -94,7 +141,7 @@ void print_subroutine_graph (FILE *out, struct code *c, struct subroutine *sub)
 }
 
 
-int print_graph (struct code *c, char *prxname)
+int print_graph (struct code *c, char *prxname, int options)
 {
   char buffer[64];
   char basename[32];
@@ -114,7 +161,7 @@ int print_graph (struct code *c, char *prxname)
         xerror (__FILE__ ": can't open file for writing `%s'", buffer);
         ret = 0;
       } else {
-        print_subroutine_graph (fp, c, sub);
+        print_subroutine_graph (fp, c, sub, options);
         fclose (fp);
       }
     } else {

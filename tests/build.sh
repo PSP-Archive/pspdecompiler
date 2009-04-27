@@ -6,6 +6,5 @@ make
 cd tests
 
 rm graphs/*
-../pspdecompiler -v -g test.prx
+../pspdecompiler -v -t -r -d -f -p -q -g test.prx
 ../makedots.sh
-

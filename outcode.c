@@ -70,7 +70,7 @@ void print_binaryop (FILE *out, struct operation *op, const char *opsymbol)
 }
 
 static
-void print_compound (FILE *out, struct operation *op, const char *opsymbol)
+void print_complexop (FILE *out, struct operation *op, const char *opsymbol)
 {
   element el;
 
@@ -197,28 +197,28 @@ void print_instruction (FILE *out, int ident, struct operation *op)
   case I_SLLV: print_binaryop (out, op, "<<");  break;
   case I_INS:  print_ins (out, op);             break;
   case I_EXT:  print_ext (out, op);             break;
-  case I_MIN:  print_compound (out, op, "MIN"); break;
-  case I_MAX:  print_compound (out, op, "MAX"); break;
-  case I_BITREV: print_compound (out, op, "BITREV"); break;
-  case I_CLZ:  print_compound (out, op, "CLZ"); break;
-  case I_CLO:  print_compound (out, op, "CLO"); break;
+  case I_MIN:  print_complexop (out, op, "MIN"); break;
+  case I_MAX:  print_complexop (out, op, "MAX"); break;
+  case I_BITREV: print_complexop (out, op, "BITREV"); break;
+  case I_CLZ:  print_complexop (out, op, "CLZ"); break;
+  case I_CLO:  print_complexop (out, op, "CLO"); break;
   case I_NOR:  print_nor (out, op);             break;
   case I_MOVN: print_movnz (out, op, TRUE);     break;
   case I_MOVZ: print_movnz (out, op, FALSE);    break;
-  case I_LW:   print_compound (out, op, "LW");   break;
-  case I_LB:   print_compound (out, op, "LB");   break;
-  case I_LBU:  print_compound (out, op, "LBU");  break;
-  case I_LH:   print_compound (out, op, "LH");   break;
-  case I_LHU:  print_compound (out, op, "LHU");  break;
-  case I_LL:   print_compound (out, op, "LL");   break;
-  case I_LWL:  print_compound (out, op, "LWL");  break;
-  case I_LWR:  print_compound (out, op, "LWR");  break;
-  case I_SW:   print_compound (out, op, "SW");   break;
-  case I_SH:   print_compound (out, op, "SH");   break;
-  case I_SB:   print_compound (out, op, "SB");   break;
-  case I_SC:   print_compound (out, op, "SC");   break;
-  case I_SWL:  print_compound (out, op, "SWL");  break;
-  case I_SWR:  print_compound (out, op, "SWR");  break;
+  case I_LW:   print_complexop (out, op, "LW");   break;
+  case I_LB:   print_complexop (out, op, "LB");   break;
+  case I_LBU:  print_complexop (out, op, "LBU");  break;
+  case I_LH:   print_complexop (out, op, "LH");   break;
+  case I_LHU:  print_complexop (out, op, "LHU");  break;
+  case I_LL:   print_complexop (out, op, "LL");   break;
+  case I_LWL:  print_complexop (out, op, "LWL");  break;
+  case I_LWR:  print_complexop (out, op, "LWR");  break;
+  case I_SW:   print_complexop (out, op, "SW");   break;
+  case I_SH:   print_complexop (out, op, "SH");   break;
+  case I_SB:   print_complexop (out, op, "SB");   break;
+  case I_SC:   print_complexop (out, op, "SC");   break;
+  case I_SWL:  print_complexop (out, op, "SWL");  break;
+  case I_SWR:  print_complexop (out, op, "SWR");  break;
   default:
     break;
   }
@@ -250,7 +250,7 @@ void print_block (FILE *out, int ident, struct basicblock *block)
       fprintf (out, "nop ();\n");
     } else if (op->type == OP_PHI) {
       ident_line (out, ident);
-      print_compound (out, op, "PHI");
+      print_complexop (out, op, "PHI");
       fprintf (out, ";\n");
     }
 
