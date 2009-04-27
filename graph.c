@@ -159,20 +159,20 @@ void cfg_frontier (struct subroutine *sub, int reverse)
 }
 
 static
-void mark_forward (struct loopstruct *loop, struct basicblock *block)
+void mark_forward (int num, int maxnum, struct basicblock *block)
 {
   element el;
 
   block->mark2 = 0;
-  block->mark1 = loop->start->node.dfsnum;
+  block->mark1 = num;
   el = list_head (block->outrefs);
   while (el) {
     struct basicblock *to;
     to = element_getvalue (el);
-    if (to->node.dfsnum <= loop->maxdfsnum &&
+    if (to->node.dfsnum <= maxnum &&
         to->node.dfsnum > block->node.dfsnum &&
-        to->mark1 != loop->start->node.dfsnum) {
-      mark_forward (loop, to);
+        to->mark1 != num) {
+      mark_forward (num, maxnum, to);
     }
     el = element_next (el);
   }
@@ -211,7 +211,7 @@ void mark_blocks (struct subroutine *sub, struct loopstruct *loop)
   struct basicblock *from;
 
   loop->parent = loop->start->loop;
-  mark_forward (loop, loop->start);
+  mark_forward (loop->start->node.dfsnum, loop->maxdfsnum, loop->start);
   el = list_head (loop->edges);
   while (el) {
     from = element_getvalue (el);

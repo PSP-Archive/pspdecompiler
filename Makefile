@@ -4,7 +4,7 @@ CC=gcc
 CFLAGS=	-g -O0 -Wall -ansi -pedantic 
 LIBS = -lexpat
 
-OBJS = allegrex.o analyser.o decoder.o switches.o subs.o ctrlflow.o dataflow.o graph.o output.o prx.o nids.o hash.o lists.o alloc.o utils.o main.o
+OBJS = allegrex.o analyser.o decoder.o switches.o subroutines.o controlflow.o dataflow.o graph.o outgraph.o outcode.o output.o prx.o nids.o hash.o lists.o alloc.o utils.o main.o
 TARGET = pspdecompiler
 
 all:	$(OBJS)

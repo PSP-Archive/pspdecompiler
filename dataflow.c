@@ -466,6 +466,7 @@ void extract_operations (struct subroutine *sub, list *wheredefined)
   }
 }
 
+
 static
 void ssa_step1 (struct subroutine *sub, list *wheredefined)
 {
@@ -674,3 +675,5 @@ void build_ssa (struct subroutine *sub)
     list_free (reglist[i]);
   }
 }
+
+
