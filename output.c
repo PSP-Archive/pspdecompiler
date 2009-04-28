@@ -36,15 +36,15 @@ void print_subroutine_name (FILE *out, struct subroutine *sub)
 void print_value (FILE *out, struct value *val)
 {
   switch (val->type) {
-  case VAL_CONSTANT: fprintf (out, "0x%08X", val->value); break;
+  case VAL_CONSTANT: fprintf (out, "0x%08X", val->val.intval); break;
   case VAL_VARIABLE:
-    print_value (out, &val->variable->name);
-    fprintf (out, "_%d", val->variable->count);
+    print_value (out, &val->val.variable->name);
+    fprintf (out, "_%d", val->val.variable->varnum);
     break;
   case VAL_REGISTER:
-    if (val->value == REGISTER_HI)      fprintf (out, "hi");
-    else if (val->value == REGISTER_LO) fprintf (out, "lo");
-    else fprintf (out, "%s", gpr_names[val->value]);
+    if (val->val.intval == REGISTER_HI)      fprintf (out, "hi");
+    else if (val->val.intval == REGISTER_LO) fprintf (out, "lo");
+    else fprintf (out, "%s", gpr_names[val->val.intval]);
     break;
   default:
     fprintf (out, "UNK");

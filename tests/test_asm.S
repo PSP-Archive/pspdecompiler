@@ -266,6 +266,84 @@ mycallback:
         .end    testswitch
 
 
+	.global	forfunc
+	.ent	forfunc
+forfunc:
+	.frame	$fp,32,$31		# vars= 24, regs= 1/0, args= 0, gp= 0
+	.mask	0x40000000,-4
+	.fmask	0x00000000,0
+	.set	noreorder
+	.set	nomacro
+	
+	addiu	$sp,$sp,-32
+	sw	$fp,28($sp)
+	move	$fp,$sp
+	sw	$4,8($fp)
+	sw	$5,12($fp)
+	sw	$0,4($fp)
+	j	$L2
+	nop
+
+$L8:
+	lw	$2,4($fp)
+	andi	$3,$2,0x3
+	li	$2,1			# 0x1
+	bne	$3,$2,$L3
+	nop
+
+	sw	$0,0($fp)
+	j	$L4
+	nop
+
+$L7:
+	lw	$3,4($fp)
+	lw	$2,0($fp)
+	mult	$3,$2
+	mflo	$4
+	lw	$3,8($fp)
+	lw	$2,12($fp)
+	addu	$2,$3,$2
+	slt	$2,$4,$2
+	bne	$2,$0,$L5
+	nop
+
+	lw	$2,4($fp)
+	sw	$2,16($fp)
+	j	$L6
+	nop
+
+$L5:
+	lw	$2,0($fp)
+	addiu	$2,$2,1
+	sw	$2,0($fp)
+$L4:
+	lw	$2,0($fp)
+	lw	$3,12($fp)
+	slt	$2,$2,$3
+	bne	$2,$0,$L7
+	nop
+
+$L3:
+	lw	$2,4($fp)
+	addiu	$2,$2,1
+	sw	$2,4($fp)
+$L2:
+	lw	$2,4($fp)
+	lw	$3,8($fp)
+	slt	$2,$2,$3
+	bne	$2,$0,$L8
+	nop
+
+	lw	$2,8($fp)
+	sw	$2,16($fp)
+$L6:
+	lw	$2,16($fp)
+	move	$sp,$fp
+	lw	$fp,28($sp)
+	addiu	$sp,$sp,32
+	j	$31
+	nop
+
         .section .rodata
 switch1:
         .word   switch1_case0
@@ -279,4 +357,5 @@ switch1:
 inner_callback:
         .word   mycallback
         .word   mycallback
+
 

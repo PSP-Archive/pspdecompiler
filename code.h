@@ -100,7 +100,7 @@ struct basicblock {
       struct codeswitch *cswitch;
       int    switchnum;
     } sw;
-  } val;
+  } info;
 
   list   operations;
   struct subroutine *sub;
@@ -139,12 +139,15 @@ enum valuetype {
 
 struct value {
   enum valuetype type;
-  uint32 value;
-  struct variable *variable;
+  union {
+    uint32 intval;
+    struct variable *variable;
+  } val;
 };
 
 struct variable {
   struct value name;
+  int varnum;
   int count;
 
   struct operation *def;
@@ -167,6 +170,7 @@ struct operation {
   enum allegrex_insn insn;
   struct location *begin;
   struct location *end;
+  struct basicblock *block;
 
   list results;
   list operands;
@@ -214,6 +218,7 @@ void extract_loops (struct subroutine *sub);
 void extract_ifs (struct subroutine *sub);
 
 void build_ssa (struct subroutine *sub);
+void extract_variables (struct subroutine *sub);
 
 
 #endif /* __CODE_H */

@@ -43,8 +43,8 @@ void extract_blocks (struct subroutine *sub)
     next = begin;
 
     block->type = BLOCK_SIMPLE;
-    block->val.simple.begin = begin;
-    block->val.simple.end = next;
+    block->info.simple.begin = begin;
+    block->info.simple.end = next;
 
     for (; next != sub->end; next++) {
       if (next->references && (next != begin)) {
@@ -53,14 +53,14 @@ void extract_blocks (struct subroutine *sub)
       }
 
       if (next->insn->flags & (INSN_JUMP | INSN_BRANCH)) {
-        block->val.simple.jumploc = next;
-        block->val.simple.end = next;
+        block->info.simple.jumploc = next;
+        block->info.simple.end = next;
         if (!(next->insn->flags & INSN_BRANCHLIKELY))
-          block->val.simple.end++;
+          block->info.simple.end++;
         break;
       }
 
-      block->val.simple.end = next;
+      block->info.simple.end = next;
     }
 
     do {
@@ -123,8 +123,8 @@ void link_blocks (struct subroutine *sub)
     next = element_getvalue (el);
 
 
-    if (block->val.simple.jumploc) {
-      loc = block->val.simple.jumploc;
+    if (block->info.simple.jumploc) {
+      loc = block->info.simple.jumploc;
       if (loc->insn->flags & INSN_BRANCH) {
         make_link (block, next);
 
@@ -134,8 +134,8 @@ void link_blocks (struct subroutine *sub)
           element_insertbefore (el, inserted);
 
           slot->type = BLOCK_SIMPLE;
-          slot->val.simple.begin = &block->val.simple.end[1];
-          slot->val.simple.end = slot->val.simple.begin;
+          slot->info.simple.begin = &block->info.simple.end[1];
+          slot->info.simple.end = slot->info.simple.begin;
           make_link (block, slot);
           block = slot;
         }
@@ -144,12 +144,12 @@ void link_blocks (struct subroutine *sub)
           inserted = make_link_and_insert (block, next, el);
           target = element_getvalue (inserted);
           target->type = BLOCK_CALL;
-          target->val.call.calltarget = loc->target->sub;
+          target->info.call.calltarget = loc->target->sub;
         } else if (loc->target->sub->begin == loc->target) {
           inserted = make_link_and_insert (block, sub->endblock, el);
           target = element_getvalue (inserted);
           target->type = BLOCK_CALL;
-          target->val.call.calltarget = loc->target->sub;
+          target->info.call.calltarget = loc->target->sub;
         } else {
           make_link (block, loc->target->block);
         }
@@ -160,14 +160,14 @@ void link_blocks (struct subroutine *sub)
           target = element_getvalue (inserted);
           target->type = BLOCK_CALL;
           if (loc->target)
-            target->val.call.calltarget = loc->target->sub;
+            target->info.call.calltarget = loc->target->sub;
         } else {
           if (loc->target) {
             if (loc->target->sub->begin == loc->target) {
               inserted = make_link_and_insert (block, sub->endblock, el);
               target = element_getvalue (inserted);
               target->type = BLOCK_CALL;
-              target->val.call.calltarget = loc->target->sub;
+              target->info.call.calltarget = loc->target->sub;
             } else {
               make_link (block, loc->target->block);
             }
@@ -183,8 +183,8 @@ void link_blocks (struct subroutine *sub)
                   inserted = make_link_and_insert (block, switchtarget->block, el);
                   target = element_getvalue (inserted);
                   target->type = BLOCK_SWITCH;
-                  target->val.sw.switchnum = count++;
-                  target->val.sw.cswitch = loc->cswitch;
+                  target->info.sw.switchnum = count++;
+                  target->info.sw.cswitch = loc->cswitch;
                   ref = element_next (ref);
                 }
               }

@@ -388,6 +388,7 @@ void extract_subroutines (struct code *c)
       if (!sub->haserror) extract_cfg (sub);
       if (!sub->haserror) extract_loops (sub);
       if (!sub->haserror) build_ssa (sub);
+      if (!sub->haserror) extract_variables (sub);
     }
     el = element_next (el);
   }

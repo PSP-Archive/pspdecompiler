@@ -30,7 +30,7 @@ void print_subroutine_graph (FILE *out, struct code *c, struct subroutine *sub, 
     case BLOCK_CALL:   fprintf (out, "Call");     break;
     case BLOCK_SWITCH: fprintf (out, "Switch"); break;
     case BLOCK_SIMPLE: fprintf (out, "0x%08X-0x%08X",
-        block->val.simple.begin->address, block->val.simple.end->address);
+        block->info.simple.begin->address, block->info.simple.end->address);
     }
     fprintf (out, "\\l");
 
@@ -75,9 +75,9 @@ void print_subroutine_graph (FILE *out, struct code *c, struct subroutine *sub, 
     }
     if (block->type == BLOCK_SIMPLE && (options & OUT_PRINT_CODE)) {
       struct location *loc;
-      for (loc = block->val.simple.begin; ; loc++) {
+      for (loc = block->info.simple.begin; ; loc++) {
         fprintf (out, "%s\\l", allegrex_disassemble (loc->opc, loc->address, FALSE));
-        if (loc == block->val.simple.end) break;
+        if (loc == block->info.simple.end) break;
       }
     }
     fprintf (out, "\"];\n");

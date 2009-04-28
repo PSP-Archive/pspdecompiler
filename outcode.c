@@ -101,11 +101,11 @@ void print_ext (FILE *out, struct operation *op)
   val2 = element_getvalue (el); el = element_next (el);
   val3 = element_getvalue (el);
 
-  mask = 0xFFFFFFFF >> (32 - val3->value);
+  mask = 0xFFFFFFFF >> (32 - val3->val.intval);
   print_value (out, list_headvalue (op->results));
   fprintf (out, " = (");
   print_value (out, val1);
-  fprintf (out, " >> %d)", val2->value);
+  fprintf (out, " >> %d)", val2->val.intval);
   fprintf (out, " & 0x%08X", mask);
 }
 
@@ -121,12 +121,12 @@ void print_ins (FILE *out, struct operation *op)
   val3 = element_getvalue (el); el = element_next (el);
   val4 = element_getvalue (el);
 
-  mask = 0xFFFFFFFF >> (32 - val4->value);
+  mask = 0xFFFFFFFF >> (32 - val4->val.intval);
   print_value (out, list_headvalue (op->results));
 
   fprintf (out, " = (");
   print_value (out, list_headvalue (op->results));
-  fprintf (out, " & 0x%08X) | (", ~(mask << val3->value));
+  fprintf (out, " & 0x%08X) | (", ~(mask << val3->val.intval));
   print_value (out, val1);
   fprintf (out, " & 0x%08X)", mask);
 }
@@ -140,9 +140,9 @@ void print_nor (FILE *out, struct operation *op)
   val1 = list_headvalue (op->operands);
   val2 = list_headvalue (op->operands);
 
-  if (val1->value == 0 || val2->value == 0) {
+  if (val1->val.intval == 0 || val2->val.intval == 0) {
     simple = 1;
-    if (val1->value == 0) val1 = val2;
+    if (val1->val.intval == 0) val1 = val2;
   }
 
   print_value (out, list_headvalue (op->results));

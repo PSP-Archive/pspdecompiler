@@ -9,6 +9,7 @@ extern void testcfg_branches_always (void);
 extern void testcfg_strangerefs (void);
 extern void testcfg_jumptobegin (void);
 extern void testswitch (void);
+extern int forfunc (int a, int b);
 
 int module_start (SceUInt argc, void *arg)
 {
@@ -20,6 +21,7 @@ int module_start (SceUInt argc, void *arg)
   testcfg_strangerefs ();
   testcfg_jumptobegin ();
   testswitch ();
+  forfunc (13, 2);
 
   sceKernelSleepThread ();
   return 0;
