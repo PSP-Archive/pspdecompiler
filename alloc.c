@@ -22,7 +22,10 @@ struct _fixedpool {
 fixedpool fixedpool_create (size_t size, size_t grownum, int setzero)
 {
   fixedpool p = (fixedpool) xmalloc (sizeof (struct _fixedpool));
+
   if (size < sizeof (struct _link)) size = sizeof (struct _link);
+  if (grownum < 2) grownum = 2;
+
   p->size = size;
   p->grownum = grownum;
   p->allocated = NULL;
@@ -97,7 +100,7 @@ void *fixedpool_alloc (fixedpool p)
     size_t size;
     void *ptr;
 
-    size = (p->grownum + 1) * p->size;
+    size = p->grownum * p->size;
     ptr = xmalloc (size);
     fixedpool_grow (p, ptr, size);
   }

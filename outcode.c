@@ -35,7 +35,7 @@ void print_asm (FILE *out, int ident, struct operation *op)
     if (el != list_head (op->results))
       fprintf (out, ", ");
     fprintf (out, "\"=r\"(");
-    print_value (out, val);
+    print_value (out, val, FALSE);
     fprintf (out, ")");
     el = element_next (el);
   }
@@ -49,7 +49,7 @@ void print_asm (FILE *out, int ident, struct operation *op)
     if (el != list_head (op->results))
       fprintf (out, ", ");
     fprintf (out, "\"r\"(");
-    print_value (out, val);
+    print_value (out, val, FALSE);
     fprintf (out, ")");
     el = element_next (el);
   }
@@ -59,199 +59,20 @@ void print_asm (FILE *out, int ident, struct operation *op)
   fprintf (out, ");\n");
 }
 
-static
-void print_binaryop (FILE *out, struct operation *op, const char *opsymbol)
-{
-  print_value (out, list_headvalue (op->results));
-  fprintf (out, " = ");
-  print_value (out, list_headvalue (op->operands));
-  fprintf (out, " %s ", opsymbol);
-  print_value (out, list_tailvalue (op->operands));
-}
-
-static
-void print_complexop (FILE *out, struct operation *op, const char *opsymbol)
-{
-  element el;
-
-  if (list_size (op->results) != 0) {
-    print_value (out, list_headvalue (op->results));
-    fprintf (out, " = ");
-  }
-  fprintf (out, "%s (", opsymbol);
-  el = list_head (op->operands);
-  while (el) {
-    if (el != list_head (op->operands))
-      fprintf (out, ", ");
-    print_value (out, element_getvalue (el));
-    el = element_next (el);
-  }
-  fprintf (out, ")");
-}
-
-static
-void print_ext (FILE *out, struct operation *op)
-{
-  struct value *val1, *val2, *val3;
-  element el;
-  uint32 mask;
-
-  el = list_head (op->operands);
-  val1 = element_getvalue (el); el = element_next (el);
-  val2 = element_getvalue (el); el = element_next (el);
-  val3 = element_getvalue (el);
-
-  mask = 0xFFFFFFFF >> (32 - val3->val.intval);
-  print_value (out, list_headvalue (op->results));
-  fprintf (out, " = (");
-  print_value (out, val1);
-  fprintf (out, " >> %d)", val2->val.intval);
-  fprintf (out, " & 0x%08X", mask);
-}
-
-static
-void print_ins (FILE *out, struct operation *op)
-{
-  struct value *val1, *val3, *val4;
-  element el;
-  uint32 mask;
-
-  el = list_head (op->operands);
-  val1 = element_getvalue (el); el = element_next (el); el = element_next (el);
-  val3 = element_getvalue (el); el = element_next (el);
-  val4 = element_getvalue (el);
-
-  mask = 0xFFFFFFFF >> (32 - val4->val.intval);
-  print_value (out, list_headvalue (op->results));
-
-  fprintf (out, " = (");
-  print_value (out, list_headvalue (op->results));
-  fprintf (out, " & 0x%08X) | (", ~(mask << val3->val.intval));
-  print_value (out, val1);
-  fprintf (out, " & 0x%08X)", mask);
-}
-
-static
-void print_nor (FILE *out, struct operation *op)
-{
-  struct value *val1, *val2;
-  int simple = 0;
-
-  val1 = list_headvalue (op->operands);
-  val2 = list_headvalue (op->operands);
-
-  if (val1->val.intval == 0 || val2->val.intval == 0) {
-    simple = 1;
-    if (val1->val.intval == 0) val1 = val2;
-  }
-
-  print_value (out, list_headvalue (op->results));
-  if (!simple) {
-    fprintf (out, " = !(");
-    print_value (out, val1);
-    fprintf (out, " | ");
-    print_value (out, val2);
-    fprintf (out, ")");
-  } else {
-    fprintf (out, " = !");
-    print_value (out, val1);
-  }
-}
-static
-void print_movnz (FILE *out, struct operation *op, int ismovn)
-{
-  struct value *val1, *val2;
-  struct value *result;
-
-  val1 = list_headvalue (op->operands);
-  val2 = element_getvalue (element_next (list_head (op->operands)));
-  result = list_headvalue (op->results);
-
-  print_value (out, result);
-  if (ismovn)
-    fprintf (out, " = (");
-  else
-    fprintf (out, " = !(");
-  print_value (out, val2);
-  fprintf (out, ") ? ");
-  print_value (out, val1);
-  fprintf (out, " : ");
-  print_value (out, result);
-}
-
-
-static
-void print_instruction (FILE *out, int ident, struct operation *op)
-{
-  ident_line (out, ident);
-  switch (op->insn) {
-  case I_ADD:  print_binaryop (out, op, "+");   break;
-  case I_ADDU: print_binaryop (out, op, "+");   break;
-  case I_SUB:  print_binaryop (out, op, "-");   break;
-  case I_SUBU: print_binaryop (out, op, "-");   break;
-  case I_XOR:  print_binaryop (out, op, "^");   break;
-  case I_AND:  print_binaryop (out, op, "&");   break;
-  case I_OR:   print_binaryop (out, op, "|");   break;
-  case I_SRAV: print_binaryop (out, op, ">>");  break;
-  case I_SRLV: print_binaryop (out, op, ">>");  break;
-  case I_SLLV: print_binaryop (out, op, "<<");  break;
-  case I_INS:  print_ins (out, op);             break;
-  case I_EXT:  print_ext (out, op);             break;
-  case I_MIN:  print_complexop (out, op, "MIN"); break;
-  case I_MAX:  print_complexop (out, op, "MAX"); break;
-  case I_BITREV: print_complexop (out, op, "BITREV"); break;
-  case I_CLZ:  print_complexop (out, op, "CLZ"); break;
-  case I_CLO:  print_complexop (out, op, "CLO"); break;
-  case I_NOR:  print_nor (out, op);             break;
-  case I_MOVN: print_movnz (out, op, TRUE);     break;
-  case I_MOVZ: print_movnz (out, op, FALSE);    break;
-  case I_LW:   print_complexop (out, op, "LW");   break;
-  case I_LB:   print_complexop (out, op, "LB");   break;
-  case I_LBU:  print_complexop (out, op, "LBU");  break;
-  case I_LH:   print_complexop (out, op, "LH");   break;
-  case I_LHU:  print_complexop (out, op, "LHU");  break;
-  case I_LL:   print_complexop (out, op, "LL");   break;
-  case I_LWL:  print_complexop (out, op, "LWL");  break;
-  case I_LWR:  print_complexop (out, op, "LWR");  break;
-  case I_SW:   print_complexop (out, op, "SW");   break;
-  case I_SH:   print_complexop (out, op, "SH");   break;
-  case I_SB:   print_complexop (out, op, "SB");   break;
-  case I_SC:   print_complexop (out, op, "SC");   break;
-  case I_SWL:  print_complexop (out, op, "SWL");  break;
-  case I_SWR:  print_complexop (out, op, "SWR");  break;
-  default:
-    break;
-  }
-  fprintf (out, ";\n");
-}
 
 static
 void print_block (FILE *out, int ident, struct basicblock *block)
 {
   element el;
 
-  if (block->type != BLOCK_SIMPLE) return;
   el = list_head (block->operations);
   while (el) {
     struct operation *op = element_getvalue (el);
 
-    if (op->type == OP_ASM) {
-      print_asm (out, ident, op);
-    } else if (op->type == OP_INSTRUCTION) {
-      print_instruction (out, ident, op);
-    } else if (op->type == OP_MOVE) {
+    if (op->flushed && op->type != OP_START && op->type != OP_END &&
+        op->type != OP_PHI) {
       ident_line (out, ident);
-      print_value (out, list_headvalue (op->results));
-      fprintf (out, " = ");
-      print_value (out, list_headvalue (op->operands));
-      fprintf (out, ";\n");
-    } else if (op->type == OP_NOP) {
-      ident_line (out, ident);
-      fprintf (out, "nop ();\n");
-    } else if (op->type == OP_PHI) {
-      ident_line (out, ident);
-      print_complexop (out, op, "PHI");
-      fprintf (out, ";\n");
+      print_operation (out, op, TRUE);
     }
 
     el = element_next (el);

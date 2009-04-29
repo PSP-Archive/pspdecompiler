@@ -65,14 +65,15 @@ struct subroutine {
   list   variables;
 
   int    haserror;
-  int    dfscount;
+  int    temp;
 };
 
 
 struct basicblocknode {
   int dfsnum;
-  struct basicblock *dominator;
-  struct basicblock *parent;
+  struct basicblocknode *dominator;
+  struct basicblocknode *parent;
+  element block;
   list children;
   list frontier;
 };
@@ -102,6 +103,8 @@ struct basicblock {
     } sw;
   } info;
 
+  uint32 reg_gen[2], reg_kill[2];
+  uint32 reg_live_in[2], reg_live_out[2];
   list   operations;
   struct subroutine *sub;
 
@@ -110,20 +113,23 @@ struct basicblock {
 
   list   inrefs, outrefs;
 
-  struct loopstruct *loop;
+  struct scope *sc;
   int    mark1, mark2;
 };
 
-struct ifstruct {
-  struct basicblock *begin;
-  struct basicblock *end;
+enum basicedgetype {
+  EDGE_INVALID,
+  EDGE_NORMAL,
+  EDGE_LOOP,
+  EDGE_GOTO,
+  EDGE_IFTHEN,
+  EDGE_IFELSE
 };
 
-struct loopstruct {
-  struct basicblock *start;
-  struct loopstruct *parent;
-  int   maxdfsnum;
-  list  edges;
+struct basicedge {
+  enum basicedgetype type;
+  struct basicblock *from, *to;
+  int fromnum, tonum;
 };
 
 #define REGISTER_LINK 31
@@ -145,10 +151,18 @@ struct value {
   } val;
 };
 
+
+enum variabletype {
+  VARIABLE_LOCAL,
+  VARIABLE_ARGUMENT,
+  VARIABLE_TEMP,
+  VARIABLE_INVALID
+};
+
 struct variable {
   struct value name;
+  enum variabletype type;
   int varnum;
-  int count;
 
   struct operation *def;
   list   uses;
@@ -172,9 +186,28 @@ struct operation {
   struct location *end;
   struct basicblock *block;
 
+  int  flushed;
+
   list results;
   list operands;
 };
+
+enum scopetype {
+  SCOPE_MAIN,
+  SCOPE_LOOP,
+  SCOPE_IFTHEN,
+  SCOPE_IFELSE
+};
+
+struct scope {
+  enum scopetype type;
+  struct scope *parent;
+
+  struct basicblock *start;
+  int   maxdfsnum;
+  list  edges;
+};
+
 
 struct code {
   struct prx *file;
@@ -189,11 +222,11 @@ struct code {
   fixedpool switchpool;
   fixedpool subspool;
   fixedpool blockspool;
+  fixedpool edgespool;
   fixedpool varspool;
   fixedpool opspool;
   fixedpool valspool;
-  fixedpool ifspool;
-  fixedpool loopspool;
+  fixedpool scopespool;
 };
 
 
@@ -210,12 +243,11 @@ void extract_subroutines (struct code *c);
 void extract_cfg (struct subroutine *sub);
 
 int cfg_dfs (struct subroutine *sub, int reverse);
-struct basicblock *dom_intersect (struct basicblock *b1, struct basicblock *b2, int reverse);
+struct basicblocknode *dom_intersect (struct basicblocknode *n1, struct basicblocknode *n2);
 void cfg_dominance (struct subroutine *sub, int reverse);
 void cfg_frontier (struct subroutine *sub, int reverse);
 
-void extract_loops (struct subroutine *sub);
-void extract_ifs (struct subroutine *sub);
+void extract_scopes (struct subroutine *sub);
 
 void build_ssa (struct subroutine *sub);
 void extract_variables (struct subroutine *sub);

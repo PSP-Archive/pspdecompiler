@@ -47,7 +47,7 @@ void print_subroutine_graph (FILE *out, struct code *c, struct subroutine *sub, 
             struct value *val = element_getvalue (argel);
             if (val->type != VAL_CONSTANT) {
               if (count1++ == 0) fprintf (out, "<");
-              print_value (out, val);
+              print_value (out, val, FALSE);
               fprintf (out, " ");
             }
             argel = element_next (argel);
@@ -62,7 +62,7 @@ void print_subroutine_graph (FILE *out, struct code *c, struct subroutine *sub, 
             struct value *val = element_getvalue (argel);
             if (val->type != VAL_CONSTANT) {
               if (count2++ == 0) fprintf (out, "<");
-              print_value (out, val);
+              print_value (out, val, FALSE);
               fprintf (out, " ");
             }
             argel = element_next (argel);
@@ -85,13 +85,13 @@ void print_subroutine_graph (FILE *out, struct code *c, struct subroutine *sub, 
 
     if (options & OUT_PRINT_DOMINATOR) {
       if (block->node.dominator && list_size (block->inrefs) > 1) {
-        fprintf (out, "    %3d -> %3d [color=green];\n", block->node.dfsnum, block->node.dominator->node.dfsnum);
+        fprintf (out, "    %3d -> %3d [color=green];\n", block->node.dfsnum, block->node.dominator->dfsnum);
       }
     }
 
     if (options & OUT_PRINT_RDOMINATOR) {
       if (block->revnode.dominator && list_size (block->outrefs) > 1) {
-        fprintf (out, "    %3d -> %3d [color=yellow];\n", block->node.dfsnum, block->revnode.dominator->node.dfsnum);
+        fprintf (out, "    %3d -> %3d [color=yellow];\n", block->node.dfsnum, block->revnode.dominator->dfsnum);
       }
     }
 
@@ -99,7 +99,10 @@ void print_subroutine_graph (FILE *out, struct code *c, struct subroutine *sub, 
       fprintf (out, "    %3d -> { ", block->node.dfsnum);
       ref = list_head (block->node.frontier);
       while (ref) {
-        struct basicblock *refblock = element_getvalue (ref);
+        struct basicblocknode *refnode;
+        struct basicblock *refblock;
+        refnode = element_getvalue (ref);
+        refblock = element_getvalue (refnode->block);
         fprintf (out, "%3d ", refblock->node.dfsnum);
         ref = element_next (ref);
       }
@@ -110,7 +113,10 @@ void print_subroutine_graph (FILE *out, struct code *c, struct subroutine *sub, 
       fprintf (out, "    %3d -> { ", block->node.dfsnum);
       ref = list_head (block->revnode.frontier);
       while (ref) {
-        struct basicblock *refblock = element_getvalue (ref);
+        struct basicblocknode *refnode;
+        struct basicblock *refblock;
+        refnode = element_getvalue (ref);
+        refblock = element_getvalue (refnode->block);
         fprintf (out, "%3d ", refblock->node.dfsnum);
         ref = element_next (ref);
       }
@@ -120,13 +126,15 @@ void print_subroutine_graph (FILE *out, struct code *c, struct subroutine *sub, 
     if (list_size (block->outrefs) != 0) {
       ref = list_head (block->outrefs);
       while (ref) {
+        struct basicedge *edge;
         struct basicblock *refblock;
-        refblock = element_getvalue (ref);
+        edge = element_getvalue (ref);
+        refblock = edge->to;
         fprintf (out, "    %3d -> %3d ", block->node.dfsnum, refblock->node.dfsnum);
         if (ref != list_head (block->outrefs))
           fprintf (out, "[arrowtail=dot]");
 
-        if (refblock->node.parent == block) {
+        if (element_getvalue (refblock->node.parent->block) == block) {
           fprintf (out, "[style=bold]");
         } else if (block->node.dfsnum >= refblock->node.dfsnum) {
           fprintf (out, "[color=red]");

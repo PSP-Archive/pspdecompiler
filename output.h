@@ -16,7 +16,9 @@
 
 
 void get_base_name (char *filename, char *basename, size_t len);
-void print_value (FILE *out, struct value *val);
+void print_value (FILE *out, struct value *val, int printtemps);
+void print_operation (FILE *out, struct operation *op, int printoutput);
+void print_complexop (FILE *out, struct operation *op, const char *opsymbol, int printoutput);
 void print_subroutine_name (FILE *out, struct subroutine *sub);
 
 int print_code (struct code *c, char *filename);

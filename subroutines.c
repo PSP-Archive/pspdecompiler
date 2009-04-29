@@ -386,7 +386,7 @@ void extract_subroutines (struct code *c)
       check_switches (c, sub);
       check_subroutine (c, sub);
       if (!sub->haserror) extract_cfg (sub);
-      if (!sub->haserror) extract_loops (sub);
+      if (!sub->haserror) extract_scopes (sub);
       if (!sub->haserror) build_ssa (sub);
       if (!sub->haserror) extract_variables (sub);
     }

@@ -83,8 +83,15 @@ void extract_blocks (struct subroutine *sub)
 static
 void make_link (struct basicblock *from, struct basicblock *to)
 {
-  list_inserttail (from->outrefs, to);
-  list_inserttail (to->inrefs, from);
+  struct basicedge *edge = fixedpool_alloc (from->sub->code->edgespool);
+
+  edge->from = from;
+  edge->fromnum = list_size (from->outrefs);
+  edge->to = to;
+  edge->tonum = list_size (to->inrefs);
+
+  list_inserttail (from->outrefs, edge);
+  list_inserttail (to->inrefs, edge);
 }
 
 static
@@ -220,4 +227,195 @@ void extract_cfg (struct subroutine *sub)
 
   cfg_dominance (sub, 1);
   cfg_frontier (sub, 1);
+}
+
+
+static
+struct scope *scope_alloc (struct subroutine *sub)
+{
+  struct scope *sc = fixedpool_alloc (sub->code->scopespool);
+  sc->edges = list_alloc (sub->code->lstpool);
+  return sc;
+}
+
+static
+int mark_forward (struct basicblock *block, int maxdfsnum, struct scope *currscope)
+{
+  struct basicedge *edge;
+  struct scope *sc;
+  element el, ref;
+  int mark;
+
+  mark = ++block->sub->temp;
+  sc = block->sc;
+  if (currscope) block->sc = currscope;
+  block->mark1 = mark;
+  block->mark2 = 0;
+
+  el = block->node.block;
+  while (el) {
+    block = element_getvalue (el);
+    if (block->node.dfsnum > maxdfsnum) break;
+    if (block->mark1 == mark) {
+      ref = list_head (block->outrefs);
+      while (ref) {
+        edge = element_getvalue (ref);
+        if (edge->to->node.dfsnum > block->node.dfsnum &&
+            edge->to->node.dfsnum <= maxdfsnum &&
+            edge->to->sc == sc) {
+          if (currscope) edge->to->sc = currscope;
+          edge->to->mark1 = mark;
+          edge->to->mark2 = 0;
+        }
+        ref = element_next (ref);
+      }
+    }
+    el = element_next (el);
+  }
+
+  return mark;
+}
+
+static
+void mark_if (struct scope *sc)
+{
+  struct basicedge *edge;
+  int maxdfsnum;
+
+  edge = list_headvalue (sc->edges);
+  maxdfsnum = sc->start->revnode.dominator->dfsnum;
+  mark_forward (edge->to, maxdfsnum, sc);
+}
+
+static
+void mark_backward (struct scope *sc, struct basicblock *block, int mark)
+{
+  struct basicedge *edge;
+  element ref;
+
+  block->sc = sc;
+  block->mark2 = 1;
+
+  ref = list_head (block->inrefs);
+  while (ref) {
+    edge = element_getvalue (ref);
+    if (edge->from->node.dfsnum < block->node.dfsnum &&
+        edge->from->mark1 == mark &&
+        !edge->from->mark2) {
+      mark_backward (sc, edge->from, mark);
+    }
+    ref = element_next (ref);
+  }
+}
+
+static
+void mark_loop (struct scope *sc)
+{
+  struct basicedge *edge;
+  element ref;
+  int mark;
+
+  mark = mark_forward (sc->start, sc->maxdfsnum, NULL);
+  ref = list_head (sc->edges);
+  while (ref) {
+    edge = element_getvalue (ref);
+    mark_backward (sc, edge->from, mark);
+    ref = element_next (ref);
+  }
+}
+
+
+void extract_scopes (struct subroutine *sub)
+{
+  struct basicblock *block;
+  struct basicedge *edge;
+  struct scope *mainsc, *sc;
+  element el, ref;
+
+  mainsc = scope_alloc (sub);
+
+  mainsc->type = SCOPE_MAIN;
+
+  sub->temp = 0;
+  el = list_head (sub->dfsblocks);
+  while (el) {
+    block = element_getvalue (el);
+    block->sc = mainsc;
+    block->mark1 = 0;
+    el = element_next (el);
+  }
+
+  el = list_head (sub->dfsblocks);
+  while (el) {
+    block = element_getvalue (el);
+
+    sc = NULL;
+    ref = list_head (block->inrefs);
+    while (ref) {
+      edge = element_getvalue (ref);
+      if (edge->from->node.dfsnum >= block->node.dfsnum) {
+        if (edge->from->sc == block->sc) {
+          edge->type = EDGE_LOOP;
+          if (!sc) {
+            sc = scope_alloc (sub);
+            sc->type = SCOPE_LOOP;
+            sc->parent = block->sc;
+            sc->start = block;
+            sc->maxdfsnum = edge->from->node.dfsnum;
+          }
+          if (sc->maxdfsnum < edge->from->node.dfsnum)
+            sc->maxdfsnum = edge->from->node.dfsnum;
+          list_inserttail (sc->edges, edge);
+        } else {
+          edge->type = EDGE_GOTO;
+        }
+      }
+      ref = element_next (ref);
+    }
+
+    if (sc) {
+      mark_loop (sc);
+    }
+
+    sc = NULL;
+    if (list_size (block->outrefs) == 2) {
+      edge = list_headvalue (block->outrefs);
+      if (edge->to->node.dfsnum > block->node.dfsnum) {
+        if (edge->to->sc == block->sc) {
+          sc = scope_alloc (sub);
+          sc->parent = block->sc;
+          sc->start = block;
+          sc->type = SCOPE_IFELSE;
+          edge->type = SCOPE_IFELSE;
+          list_inserttail (sc->edges, edge);
+          mark_if (sc);
+        } else {
+          edge->type = EDGE_GOTO;
+        }
+      }
+
+      edge = list_tailvalue (block->outrefs);
+      if (edge->to->node.dfsnum > block->node.dfsnum) {
+        if (edge->to->sc == block->sc) {
+          sc = scope_alloc (sub);
+          sc->parent = block->sc;
+          sc->start = block;
+          sc->type = SCOPE_IFTHEN;
+          edge->type = SCOPE_IFTHEN;
+          list_inserttail (sc->edges, edge);
+          mark_if (sc);
+        } else {
+          edge->type = EDGE_GOTO;
+        }
+      }
+
+    } else if (list_size (block->outrefs) == 1) {
+      edge = list_headvalue (block->outrefs);
+      if (edge->type == EDGE_INVALID)
+        edge->type = EDGE_NORMAL;
+    }
+
+    el = element_next (el);
+  }
+
 }

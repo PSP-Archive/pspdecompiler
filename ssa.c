@@ -9,8 +9,12 @@
 #define IMM(op) ((signed short) (op & 0xFFFF))
 #define IMMU(op) ((unsigned short) (op & 0xFFFF))
 
-#define IS_REG_USED(flags, regno) ((1 << (regno)) & flags)
-#define REG_USE(flags, regno) (flags) |= 1 << (regno)
+#define IS_BIT_SET(flags, bit) ((1 << ((bit) & 31)) & ((flags)[(bit) >> 5]))
+#define BIT_SET(flags, bit) ((flags)[(bit) >> 5]) |= 1 << ((bit) & 31)
+
+#define END_REGMASK     0xFCFF000C
+#define CALLIN_REGMASK  0x00000FF0
+#define CALLOUT_REGMASK 0x0300FFFE
 
 static
 struct operation *alloc_operation (struct subroutine *sub, struct basicblock *block)
@@ -175,48 +179,35 @@ void append_value (struct subroutine *sub, list l, enum valuetype type, uint32 v
     list_inserttail (l, val);
 }
 
-#define GLOBAL_GPR_DEF() \
-  if (!IS_REG_USED (ggpr_defined, regno) && regno != 0) { \
-    list_inserttail (wheredefined[regno], block);         \
-  }                                                       \
-  REG_USE (ggpr_defined, regno)
+#define BLOCK_GPR_KILL() \
+  if (!IS_BIT_SET (block->reg_kill, regno) && regno != 0) { \
+    list_inserttail (defblocks[regno], block);              \
+    BIT_SET (block->reg_kill, regno);                       \
+  }
 
-#define GPR_DEF() \
-  if (!IS_REG_USED (gpr_defined, regno) && regno != 0) {           \
-    list_inserttail (wheredefined[regno], block);                  \
-    append_value (sub, op->results, VAL_REGISTER, regno, FALSE);   \
-  }                                                                \
-  REG_USE (gpr_defined, regno)
+#define BLOCK_GPR_GEN() \
+  if (!IS_BIT_SET (block->reg_kill, regno) && regno != 0 && \
+      !IS_BIT_SET (block->reg_gen, regno)) {                \
+    BIT_SET (block->reg_gen, regno);                        \
+  }
 
-#define GPR_USE() \
-  if (!IS_REG_USED (gpr_used, regno) && regno != 0 &&              \
-      !IS_REG_USED (gpr_defined, regno)) {                         \
-    append_value (sub, op->operands, VAL_REGISTER, regno, FALSE);  \
-  }                                                                \
-  REG_USE (gpr_used, regno)
+#define ASM_GPR_KILL() \
+  BLOCK_GPR_KILL ()                                              \
+  if (!IS_BIT_SET (asm_kill, regno) && regno != 0) {             \
+    BIT_SET (asm_kill, regno);                                   \
+    append_value (sub, op->results, VAL_REGISTER, regno, FALSE); \
+  }
 
-#define GLOBAL_HILO_DEF() \
-  if (!IS_REG_USED (ghilo_defined, regno)) {                    \
-    list_inserttail (wheredefined[REGISTER_LO + regno], block); \
-  }                                                             \
-  REG_USE (ghilo_defined, regno)
-
-#define HILO_DEF() \
-  if (!IS_REG_USED (hilo_defined, regno)) {                                    \
-    append_value (sub, op->results, VAL_REGISTER, REGISTER_LO + regno, FALSE); \
-    list_inserttail (wheredefined[REGISTER_LO + regno], block);                \
-  }                                                                            \
-  REG_USE (hilo_defined, regno)
-
-#define HILO_USE() \
-  if (!IS_REG_USED (hilo_used, regno) &&                                        \
-      !IS_REG_USED (hilo_defined, regno)) {                                     \
-    append_value (sub, op->operands, VAL_REGISTER, REGISTER_LO + regno, FALSE); \
-  }                                                                             \
-  REG_USE (hilo_used, regno)
+#define ASM_GPR_GEN() \
+  BLOCK_GPR_GEN ()                                                \
+  if (!IS_BIT_SET (asm_kill, regno) && regno != 0 &&              \
+      !IS_BIT_SET (asm_gen, regno)) {                             \
+    BIT_SET (asm_gen, regno);                                     \
+    append_value (sub, op->operands, VAL_REGISTER, regno, FALSE); \
+  }
 
 static
-void extract_operations (struct subroutine *sub, list *wheredefined)
+void extract_operations (struct subroutine *sub, list *defblocks)
 {
   struct operation *op;
   element el;
@@ -225,28 +216,32 @@ void extract_operations (struct subroutine *sub, list *wheredefined)
   while (el) {
     struct basicblock *block = element_getvalue (el);
     block->operations = list_alloc (sub->code->lstpool);
+    block->reg_gen[0] = block->reg_gen[1] = 0;
+    block->reg_kill[0] = block->reg_kill[1] = 0;
 
     if (block->type == BLOCK_SIMPLE) {
-      uint32 ggpr_defined = 0, ghilo_defined = 0;
-      uint32 gpr_used, gpr_defined;
-      uint32 hilo_used, hilo_defined;
+      uint32 asm_gen[2], asm_kill[2];
       struct location *loc;
       int lastasm = FALSE;
+
+      asm_gen[0] = asm_gen[1] = 0;
+      asm_kill[0] = asm_kill[1] = 0;
 
       for (loc = block->info.simple.begin; ; loc++) {
         if (INSN_TYPE (loc->insn->flags) == INSN_ALLEGREX) {
           enum allegrex_insn insn;
 
-          if (lastasm)
-            list_inserttail (block->operations, op);
+          if (lastasm) list_inserttail (block->operations, op);
           lastasm = FALSE;
 
           op = alloc_operation (sub, block);
           op->type = OP_INSTRUCTION;
           op->begin = op->end = loc;
 
-          if (loc->insn->flags & (INSN_LOAD | INSN_STORE))
+          if (loc->insn->flags & (INSN_LOAD | INSN_STORE)) {
             append_value (sub, op->operands, VAL_CONSTANT, IMM (loc->opc), FALSE);
+            op->flushed = TRUE;
+          }
 
           switch (loc->insn->insn) {
           case I_ADDI:
@@ -334,55 +329,62 @@ void extract_operations (struct subroutine *sub, list *wheredefined)
           op->insn = insn;
 
           if (loc->insn->flags & INSN_READ_HI) {
-            append_value (sub, op->operands, VAL_REGISTER, REGISTER_HI, TRUE);
+            int regno = REGISTER_HI;
+            BLOCK_GPR_GEN ()
+            append_value (sub, op->operands, VAL_REGISTER, regno, TRUE);
           }
 
           if (loc->insn->flags & INSN_READ_LO) {
-            append_value (sub, op->operands, VAL_REGISTER, REGISTER_LO, TRUE);
+            int regno = REGISTER_LO;
+            BLOCK_GPR_GEN ()
+            append_value (sub, op->operands, VAL_REGISTER, regno, TRUE);
           }
 
           if (loc->insn->flags & INSN_READ_GPR_D) {
             int regno = RD (loc->opc);
+            BLOCK_GPR_GEN ()
             append_value (sub, op->operands, VAL_REGISTER, regno, TRUE);
           }
 
           if (loc->insn->flags & INSN_READ_GPR_T) {
             int regno = RT (loc->opc);
+            BLOCK_GPR_GEN ()
             append_value (sub, op->operands, VAL_REGISTER, regno, TRUE);
           }
 
           if (loc->insn->flags & INSN_READ_GPR_S) {
             int regno = RS (loc->opc);
+            BLOCK_GPR_GEN ()
             append_value (sub, op->operands, VAL_REGISTER, regno, TRUE);
           }
 
           if (loc->insn->flags & INSN_WRITE_GPR_T) {
             int regno = RT (loc->opc);
-            GLOBAL_GPR_DEF ();
+            BLOCK_GPR_KILL ()
             append_value (sub, op->results, VAL_REGISTER, regno, FALSE);
           }
 
           if (loc->insn->flags & INSN_WRITE_GPR_D) {
             int regno = RD (loc->opc);
-            GLOBAL_GPR_DEF ();
+            BLOCK_GPR_KILL ()
             append_value (sub, op->results, VAL_REGISTER, regno, FALSE);
           }
 
           if (loc->insn->flags & INSN_WRITE_LO) {
-            int regno = 0;
-            GLOBAL_HILO_DEF ();
-            append_value (sub, op->results, VAL_REGISTER, REGISTER_LO, FALSE);
+            int regno = REGISTER_LO;
+            BLOCK_GPR_KILL ()
+            append_value (sub, op->results, VAL_REGISTER, regno, FALSE);
           }
 
           if (loc->insn->flags & INSN_WRITE_HI) {
-            int regno = 1;
-            GLOBAL_HILO_DEF ();
-            append_value (sub, op->results, VAL_REGISTER, REGISTER_HI, FALSE);
+            int regno = REGISTER_HI;
+            BLOCK_GPR_KILL ()
+            append_value (sub, op->results, VAL_REGISTER, regno, FALSE);
           }
 
           if (loc->insn->flags & INSN_LINK) {
             int regno = REGISTER_LINK;
-            GLOBAL_GPR_DEF ();
+            BLOCK_GPR_KILL ()
             append_value (sub, op->results, VAL_REGISTER, regno, FALSE);
           }
 
@@ -393,90 +395,154 @@ void extract_operations (struct subroutine *sub, list *wheredefined)
             op = alloc_operation (sub, block);
             op->begin = op->end = loc;
             op->type = OP_ASM;
-            hilo_used = hilo_defined = 0;
-            gpr_used = gpr_defined = 0;
+            op->flushed = TRUE;
+            asm_gen[0] = asm_gen[1] = 0;
+            asm_kill[0] = asm_kill[1] = 0;
           } else {
             op->end = loc;
           }
           lastasm = TRUE;
 
           if (loc->insn->flags & INSN_READ_LO) {
-            int regno = 0;
-            HILO_USE ();
+            int regno = REGISTER_LO;
+            ASM_GPR_GEN ()
           }
 
           if (loc->insn->flags & INSN_READ_HI) {
-            int regno = 1;
-            HILO_USE ();
+            int regno = REGISTER_HI;
+            ASM_GPR_GEN ()
           }
 
           if (loc->insn->flags & INSN_READ_GPR_D) {
             int regno = RD (loc->opc);
-            GPR_USE ();
+            ASM_GPR_GEN ()
           }
 
           if (loc->insn->flags & INSN_READ_GPR_T) {
             int regno = RT (loc->opc);
-            GPR_USE ();
+            ASM_GPR_GEN ()
           }
 
           if (loc->insn->flags & INSN_READ_GPR_S) {
             int regno = RS (loc->opc);
-            GPR_USE ();
+            ASM_GPR_GEN ()
           }
 
           if (loc->insn->flags & INSN_WRITE_GPR_T) {
             int regno = RT (loc->opc);
-            GPR_DEF ();
-            GLOBAL_GPR_DEF ();
+            ASM_GPR_KILL ()
           }
 
           if (loc->insn->flags & INSN_WRITE_GPR_D) {
             int regno = RD (loc->opc);
-            GPR_DEF ();
-            GLOBAL_GPR_DEF ();
+            ASM_GPR_KILL ()
           }
 
           if (loc->insn->flags & INSN_WRITE_LO) {
-            int regno = 0;
-            HILO_DEF ();
-            GLOBAL_HILO_DEF ();
+            int regno = REGISTER_LO;
+            ASM_GPR_KILL ()
           }
 
           if (loc->insn->flags & INSN_WRITE_HI) {
-            int regno = 1;
-            HILO_DEF ();
-            GLOBAL_HILO_DEF ();
+            int regno = REGISTER_HI;
+            ASM_GPR_KILL ()
           }
 
           if (loc->insn->flags & INSN_LINK) {
             int regno = REGISTER_LINK;
-            GPR_DEF ();
-            GLOBAL_GPR_DEF ();
+            ASM_GPR_KILL ()
           }
         }
 
         if (loc == block->info.simple.end) {
-          if (lastasm)
-            list_inserttail (block->operations, op);
+          if (lastasm) list_inserttail (block->operations, op);
           break;
         }
       }
     } else if (block->type == BLOCK_CALL) {
+      int regno;
       op = alloc_operation (sub, block);
       op->type = OP_CALL;
+      op->flushed = TRUE;
       list_inserttail (block->operations, op);
+
+      for (regno = 1; regno <= REGISTER_LINK; regno++) {
+        if ((1 << regno) & CALLIN_REGMASK) {
+          BLOCK_GPR_GEN ()
+          append_value (sub, op->operands, VAL_REGISTER, regno, FALSE);
+        }
+        if ((1 << regno) & CALLOUT_REGMASK) {
+          BLOCK_GPR_KILL ()
+          append_value (sub, op->results, VAL_REGISTER, regno, FALSE);
+        }
+      }
+
+      regno = REGISTER_LO;
+      BLOCK_GPR_KILL ()
+      append_value (sub, op->results, VAL_REGISTER, regno, FALSE);
+
+      regno = REGISTER_HI;
+      BLOCK_GPR_KILL ()
+      append_value (sub, op->results, VAL_REGISTER, regno, FALSE);
     }
 
     el = element_next (el);
   }
 }
 
+static
+void live_registers (struct subroutine *sub)
+{
+  list worklist = list_alloc (sub->code->lstpool);
+  struct basicblock *block;
+  element el;
+
+  el = list_head (sub->blocks);
+  while (el) {
+    block = element_getvalue (el);
+    block->mark1 = 0;
+    el = element_next (el);
+  }
+
+  list_inserthead (worklist, sub->endblock);
+
+  while (list_size (worklist) != 0) {
+    struct basicedge *edge;
+    struct basicblock *bref;
+
+    block = list_removehead (worklist);
+    block->mark1 = 0;
+    block->reg_live_out[0] = (block->reg_live_in[0] & ~(block->reg_kill[0])) | block->reg_gen[0];
+    block->reg_live_out[1] = (block->reg_live_in[1] & ~(block->reg_kill[1])) | block->reg_gen[1];
+    el = list_head (block->inrefs);
+    while (el) {
+      uint32 changed;
+
+      edge = element_getvalue (el);
+      bref = edge->from;
+
+      changed = block->reg_live_out[0] & (~bref->reg_live_in[0]);
+      bref->reg_live_in[0] |= block->reg_live_out[0];
+      changed |= block->reg_live_out[1] & (~bref->reg_live_in[1]);
+      bref->reg_live_in[1] |= block->reg_live_out[1];
+
+      if (changed && !bref->mark1) {
+        list_inserttail (worklist, bref);
+        bref->mark1 = 1;
+      }
+
+      el = element_next (el);
+    }
+  }
+
+  list_free (worklist);
+}
 
 static
-void ssa_place_phis (struct subroutine *sub, list *wheredefined)
+void ssa_place_phis (struct subroutine *sub, list *defblocks)
 {
   struct basicblock *block, *bref;
+  struct basicblocknode *brefnode;
   element el, ref;
   int i, j;
 
@@ -489,7 +555,7 @@ void ssa_place_phis (struct subroutine *sub, list *wheredefined)
   }
 
   for (i = 1; i < NUM_REGISTERS; i++) {
-    list worklist = wheredefined[i];
+    list worklist = defblocks[i];
     el = list_head (worklist);
     while (el) {
       block = element_getvalue (el);
@@ -501,15 +567,17 @@ void ssa_place_phis (struct subroutine *sub, list *wheredefined)
       block = list_removehead (worklist);
       ref = list_head (block->node.frontier);
       while (ref) {
-        bref = element_getvalue (ref);
-        if (bref->mark2 != i) {
+        brefnode = element_getvalue (ref);
+        bref = element_getvalue (brefnode->block);
+        if (bref->mark2 != i && IS_BIT_SET (bref->reg_live_out, i)) {
           struct operation *op;
 
           bref->mark2 = i;
           op = alloc_operation (sub, bref);
           op->type = OP_PHI;
+          op->flushed = TRUE;
           append_value (sub, op->results, VAL_REGISTER, i, FALSE);
-          for (j = 0; j < list_size (bref->inrefs); j++)
+          for (j = list_size (bref->inrefs); j > 0; j--)
             append_value (sub, op->operands, VAL_REGISTER, i, FALSE);
           list_inserthead (bref->operations, op);
 
@@ -528,10 +596,10 @@ static
 void ssa_search (struct basicblock *block, list *vars)
 {
   element el;
-  int i, pushcount[NUM_REGISTERS];
+  int i, pushed[NUM_REGISTERS];
 
   for (i = 1; i < NUM_REGISTERS; i++)
-    pushcount[i] = 0;
+    pushed[i] = FALSE;
 
   el = list_head (block->operations);
   while (el) {
@@ -565,9 +633,13 @@ void ssa_search (struct basicblock *block, list *vars)
         var->name.type = VAL_REGISTER;
         var->name.val.intval = val->val.intval;
         var->def = op;
-        list_inserthead (vars[val->val.intval], var);
         list_inserttail (block->sub->variables, var);
-        pushcount[val->val.intval]++;
+        if (!pushed[val->val.intval]) {
+          pushed[val->val.intval] = TRUE;
+          list_inserthead (vars[val->val.intval], var);
+        } else {
+          element_setvalue (list_head (vars[val->val.intval]), var);
+        }
         val->val.variable = var;
       }
       rel = element_next (rel);
@@ -578,29 +650,12 @@ void ssa_search (struct basicblock *block, list *vars)
 
   el = list_head (block->outrefs);
   while (el) {
-    struct basicblock *ref = element_getvalue (el);
-    ref->mark1 = 0;
-    el = element_next (el);
-  }
+    struct basicedge *edge;
+    struct basicblock *ref;
+    element phiel, opel;
 
-  el = list_head (block->outrefs);
-  while (el) {
-    struct basicblock *ref = element_getvalue (el);
-    element phiel, refs, opel;
-    int j;
-
-    ref->mark1++;
-    i = j = 0;
-    refs = list_head (ref->inrefs);
-    while (refs) {
-      if (element_getvalue (refs) == block) {
-        if (++j == ref->mark1) {
-          break;
-        }
-      }
-      i++;
-      refs = element_next (refs);
-    }
+    edge = element_getvalue (el);
+    ref = edge->to;
 
     phiel = list_head (ref->operations);
     while (phiel) {
@@ -611,9 +666,9 @@ void ssa_search (struct basicblock *block, list *vars)
       if (op->type != OP_PHI) break;
 
       opel = list_head (op->operands);
-      for (j = 0; j < i; j++) {
+      for (i = edge->tonum; i > 0; i--)
         opel = element_next (opel);
-      }
+
       val = element_getvalue (opel);
       val->type = VAL_VARIABLE;
       val->val.variable = list_headvalue (vars[val->val.intval]);
@@ -625,29 +680,39 @@ void ssa_search (struct basicblock *block, list *vars)
 
   el = list_head (block->node.children);
   while (el) {
-    struct basicblock *child = element_getvalue (el);
+    struct basicblocknode *childnode;
+    struct basicblock *child;
+
+    childnode = element_getvalue (el);
+    child = element_getvalue (childnode->block);
     ssa_search (child, vars);
     el = element_next (el);
   }
 
-  for (i = 1; i < NUM_REGISTERS; i++) {
-    while (pushcount[i]--) {
-      list_removehead (vars[i]);
-    }
-  }
-
+  for (i = 1; i < NUM_REGISTERS; i++)
+    if (pushed[i]) list_removehead (vars[i]);
 }
 
-static
-void ssa_create_vars (struct subroutine *sub, list *vars)
+void build_ssa (struct subroutine *sub)
 {
+  list reglist[NUM_REGISTERS];
   struct operation *op;
   int i;
+
+  reglist[0] = NULL;
+  for (i = 1; i < NUM_REGISTERS; i++) {
+    reglist[i] = list_alloc (sub->code->lstpool);
+  }
+
+  sub->variables = list_alloc (sub->code->lstpool);
+
+  extract_operations (sub, reglist);
 
   op = alloc_operation (sub, sub->startblock);
   op->type = OP_START;
 
   for (i = 1; i < NUM_REGISTERS; i++) {
+    BIT_SET (sub->startblock->reg_kill, i);
     append_value (sub, op->results, VAL_REGISTER, i, FALSE);
   }
 
@@ -655,31 +720,21 @@ void ssa_create_vars (struct subroutine *sub, list *vars)
 
   op = alloc_operation (sub, sub->endblock);
   op->type = OP_END;
-  for (i = 1; i < NUM_REGISTERS; i++) {
-    append_value (sub, op->operands, VAL_REGISTER, i, FALSE);
+
+  for (i = 1; i <= REGISTER_LINK; i++) {
+    if (END_REGMASK & (1 << i)) {
+      BIT_SET (sub->endblock->reg_gen, i);
+      append_value (sub, op->operands, VAL_REGISTER, i, FALSE);
+    }
   }
 
   list_inserttail (sub->endblock->operations, op);
 
-  ssa_search (sub->startblock, vars);
-}
-
-void build_ssa (struct subroutine *sub)
-{
-  list reglist[NUM_REGISTERS];
-  int i;
-
-  for (i = 0; i < NUM_REGISTERS; i++) {
-    reglist[i] = list_alloc (sub->code->lstpool);
-  }
-
-  sub->variables = list_alloc (sub->code->lstpool);
-
-  extract_operations (sub, reglist);
+  live_registers (sub);
   ssa_place_phis (sub, reglist);
-  ssa_create_vars (sub, reglist);
+  ssa_search (sub->startblock, reglist);
 
-  for (i = 0; i < NUM_REGISTERS; i++) {
+  for (i = 1; i < NUM_REGISTERS; i++) {
     list_free (reglist[i]);
   }
 }

@@ -16,11 +16,11 @@ struct code *code_alloc (void)
   c->switchpool = fixedpool_create (sizeof (struct codeswitch), 64, 1);
   c->subspool = fixedpool_create (sizeof (struct subroutine), 1024, 1);
   c->blockspool = fixedpool_create (sizeof (struct basicblock), 4096, 1);
+  c->edgespool = fixedpool_create (sizeof (struct basicedge), 8192, 1);
   c->varspool = fixedpool_create (sizeof (struct variable), 4096, 1);
   c->opspool = fixedpool_create (sizeof (struct operation), 8192, 1);
   c->valspool = fixedpool_create (sizeof (struct value), 8192, 1);
-  c->loopspool = fixedpool_create (sizeof (struct loopstruct), 256, 1);
-  c->ifspool = fixedpool_create (sizeof (struct ifstruct), 2048, 1);
+  c->scopespool = fixedpool_create (sizeof (struct scope), 256, 1);
 
   return c;
 }
@@ -63,6 +63,10 @@ void code_free (struct code *c)
     fixedpool_destroy (c->blockspool, NULL, NULL);
   c->blockspool = NULL;
 
+  if (c->edgespool)
+    fixedpool_destroy (c->edgespool, NULL, NULL);
+  c->edgespool = NULL;
+
   if (c->varspool)
     fixedpool_destroy (c->varspool, NULL, NULL);
   c->varspool = NULL;
@@ -75,13 +79,9 @@ void code_free (struct code *c)
     fixedpool_destroy (c->valspool, NULL, NULL);
   c->valspool = NULL;
 
-  if (c->loopspool)
-    fixedpool_destroy (c->loopspool, NULL, NULL);
-  c->loopspool = NULL;
-
-  if (c->ifspool)
-    fixedpool_destroy (c->ifspool, NULL, NULL);
-  c->ifspool = NULL;
+  if (c->scopespool)
+    fixedpool_destroy (c->scopespool, NULL, NULL);
+  c->scopespool = NULL;
 
   free (c);
 }
