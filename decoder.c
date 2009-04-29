@@ -151,3 +151,15 @@ uint32 location_gpr_defined (struct location *loc)
   }
   return result;
 }
+
+int location_branch_may_swap (struct location *branch)
+{
+  int gpr_used[2], gpr_defined[2];
+
+  gpr_used[0] = location_gpr_used (branch);
+  gpr_used[1] = location_gpr_used (&branch[1]);
+  gpr_defined[0] = location_gpr_defined (branch);
+  gpr_defined[1] = location_gpr_defined (&branch[1]);
+  return (!(gpr_used[0] & gpr_defined[1]) &&
+          !(gpr_defined[1] & gpr_used[0]));
+}

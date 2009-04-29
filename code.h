@@ -61,7 +61,7 @@ struct subroutine {
   struct basicblock *endblock;
   list   blocks, dfsblocks, revdfsblocks;
 
-  list   loops;
+  list   scopes;
   list   variables;
 
   int    haserror;
@@ -82,8 +82,7 @@ enum basicblocktype {
   BLOCK_START,
   BLOCK_END,
   BLOCK_SIMPLE,
-  BLOCK_CALL,
-  BLOCK_SWITCH
+  BLOCK_CALL
 };
 
 struct basicblock {
@@ -97,10 +96,6 @@ struct basicblock {
     struct {
       struct subroutine *calltarget;
     } call;
-    struct {
-      struct codeswitch *cswitch;
-      int    switchnum;
-    } sw;
   } info;
 
   uint32 reg_gen[2], reg_kill[2];
@@ -114,6 +109,7 @@ struct basicblock {
   list   inrefs, outrefs;
 
   struct scope *sc;
+  int    haslabel;
   int    mark1, mark2;
 };
 
@@ -121,9 +117,7 @@ enum basicedgetype {
   EDGE_INVALID,
   EDGE_NORMAL,
   EDGE_LOOP,
-  EDGE_GOTO,
-  EDGE_IFTHEN,
-  EDGE_IFELSE
+  EDGE_GOTO
 };
 
 struct basicedge {
@@ -202,10 +196,14 @@ enum scopetype {
 struct scope {
   enum scopetype type;
   struct scope *parent;
+  struct scope *breakparent;
 
   struct basicblock *start;
   int   maxdfsnum;
+  int   dfsnum, depth;
+
   list  edges;
+  list  children;
 };
 
 
@@ -236,6 +234,7 @@ void code_free (struct code *c);
 int decode_instructions (struct code *c);
 uint32 location_gpr_used (struct location *loc);
 uint32 location_gpr_defined (struct location *loc);
+int location_branch_may_swap (struct location *branch);
 
 void extract_switches (struct code *c);
 void extract_subroutines (struct code *c);
@@ -248,6 +247,7 @@ void cfg_dominance (struct subroutine *sub, int reverse);
 void cfg_frontier (struct subroutine *sub, int reverse);
 
 void extract_scopes (struct subroutine *sub);
+int scope_isancestor (struct scope *node, struct scope *ancestor);
 
 void build_ssa (struct subroutine *sub);
 void extract_variables (struct subroutine *sub);

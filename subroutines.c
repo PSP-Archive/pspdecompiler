@@ -309,23 +309,25 @@ void check_subroutine (struct code *c, struct subroutine *sub)
       switch (loc->error) {
       case ERROR_INVALID_OPCODE:
         error (__FILE__ ": invalid opcode 0x%08X at 0x%08X (sub: 0x%08X)", loc->opc, loc->address, sub->begin->address);
+        sub->haserror = TRUE;
         break;
       case ERROR_TARGET_OUTSIDE_FILE:
         error (__FILE__ ": branch/jump outside file at 0x%08X (sub: 0x%08X)", loc->address, sub->begin->address);
+        sub->haserror = TRUE;
         break;
       case ERROR_DELAY_SLOT:
         error (__FILE__ ": delay slot error at 0x%08X (sub: 0x%08X)", loc->address, sub->begin->address);
+        sub->haserror = TRUE;
         break;
       case ERROR_ILLEGAL_BRANCH:
         error (__FILE__ ": illegal branch at 0x%08X (sub: 0x%08X)", loc->address, sub->begin->address);
+        sub->haserror = TRUE;
         break;
       case ERROR_DELAY_SLOT_TARGET:
         error (__FILE__ ": delay slot can't be a target of a branch/jump (0x%08X) (sub: 0x%08X)", loc->address, sub->begin->address);
-        break;
       case ERROR_NONE:
         break;
       }
-      sub->haserror = TRUE;
     }
 
     if (sub->haserror) continue;
@@ -335,14 +337,6 @@ void check_subroutine (struct code *c, struct subroutine *sub)
       if (!loc->target->references)
         loc->target->references = list_alloc (c->lstpool);
       list_inserttail (loc->target->references, loc);
-
-      /*
-      if (loc->target->sub != loc->sub) {
-        if (!(loc->insn->flags & (INSN_LINK | INSN_WRITE_GPR_D))) {
-          report (__FILE__ ": jumped call at 0x%08X\n", loc->address);
-        }
-      }
-      */
     }
   } while (loc++ != sub->end);
   loc--;

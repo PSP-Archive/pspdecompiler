@@ -13,6 +13,7 @@ void ident_line (FILE *out, int size)
     fprintf (out, "  ");
 }
 
+/*
 static
 void print_asm (FILE *out, int ident, struct operation *op)
 {
@@ -58,33 +59,156 @@ void print_asm (FILE *out, int ident, struct operation *op)
   ident_line (out, ident);
   fprintf (out, ");\n");
 }
+*/
+
+#define RT(op) ((op >> 16) & 0x1F)
+#define RS(op) ((op >> 21) & 0x1F)
+
+static
+void print_condition (FILE *out, struct location *loc)
+{
+  fprintf (out, "if (");
+  switch (loc->insn->insn) {
+  case I_BNE:
+  case I_BNEL:
+    fprintf (out, "%s != %s", gpr_names[RS (loc->opc)], gpr_names[RT (loc->opc)]);
+    break;
+  case I_BEQ:
+  case I_BEQL:
+    fprintf (out, "%s == %s", gpr_names[RS (loc->opc)], gpr_names[RT (loc->opc)]);
+    break;
+  case I_BGEZ:
+  case I_BGEZAL:
+  case I_BGEZL:
+    fprintf (out, "%s >= 0", gpr_names[RS (loc->opc)]);
+    break;
+  case I_BGTZ:
+  case I_BGTZL:
+    fprintf (out, "%s > 0", gpr_names[RS (loc->opc)]);
+    break;
+  case I_BLEZ:
+  case I_BLEZL:
+    fprintf (out, "%s <= 0", gpr_names[RS (loc->opc)]);
+    break;
+  case I_BLTZ:
+  case I_BLTZAL:
+  case I_BLTZALL:
+  case I_BLTZL:
+    fprintf (out, "%s < 0", gpr_names[RS (loc->opc)]);
+    break;
+  default:
+    break;
+  }
+  fprintf (out, ")\n");
+}
 
 
 static
-void print_block (FILE *out, int ident, struct basicblock *block)
+void print_block (FILE *out, struct basicblock *block)
 {
-  element el;
+  if (block->haslabel) {
+    ident_line (out, block->sc->depth);
+    fprintf (out, "label%d:\n", block->node.dfsnum);
+  }
 
-  el = list_head (block->operations);
-  while (el) {
-    struct operation *op = element_getvalue (el);
-
-    if (op->flushed && op->type != OP_START && op->type != OP_END &&
-        op->type != OP_PHI) {
-      ident_line (out, ident);
-      print_operation (out, op, TRUE);
+  if (block->type == BLOCK_SIMPLE) {
+    struct location *loc;
+    for (loc = block->info.simple.begin; ;loc++) {
+      if (loc != block->info.simple.jumploc) {
+        ident_line (out, block->sc->depth + 1);
+        fprintf (out, "%s\n", allegrex_disassemble (loc->opc, loc->address, FALSE));
+      }
+      if (loc == block->info.simple.end) break;
     }
+    loc = block->info.simple.jumploc;
+    if (loc) {
+      if (loc->insn->flags & INSN_BRANCH) {
+        ident_line (out, block->sc->depth + 1);
+        print_condition (out, loc);
+      }
+    }
+  } else if (block->type == BLOCK_CALL) {
+    ident_line (out, block->sc->depth + 1);
+    if (block->info.call.calltarget) {
+      print_subroutine_name (out, block->info.call.calltarget);
+      fprintf (out, "();\n");
+    } else
+      fprintf (out, "CALL ();\n");
+  }
+}
 
-    el = element_next (el);
+static
+void print_block_recursive (FILE *out, struct basicblock *block)
+{
+  struct basicedge *edge;
+  struct scope *current;
+  element ref;
+  int count, isbranch;
+
+  print_block (out, block);
+  ref = list_tail (block->outrefs);
+  isbranch = (list_size (block->outrefs) == 2);
+
+  while (ref) {
+    edge = element_getvalue (ref);
+    if (edge->type == EDGE_GOTO) {
+      if (isbranch) ident_line (out, block->sc->depth + 2);
+      else ident_line (out, block->sc->depth + 1);
+      fprintf (out, "goto label%d;\n", edge->to->node.dfsnum);
+    } else if (edge->type == EDGE_LOOP) {
+      if (isbranch) ident_line (out, block->sc->depth + 2);
+      else ident_line (out, block->sc->depth + 1);
+      fprintf (out, "continue;\n");
+    } else {
+      if (edge->to->sc == block->sc) {
+        print_block_recursive (out, edge->to);
+      } else {
+        count = scope_isancestor (block->sc, edge->to->sc);
+        if (count >= 0) {
+          while (count--) {
+            ident_line (out, edge->to->sc->depth + count + 1);
+            fprintf (out, "}\n");
+          }
+          print_block_recursive (out, edge->to);
+        } else {
+          count = scope_isancestor (edge->to->sc, block->sc);
+          if (count >= 0) {
+            current = edge->to->sc;
+            while (current != block->sc) {
+              ident_line (out, current->depth);
+              if (current->type == SCOPE_LOOP)
+                fprintf (out, "while(1) ");
+              fprintf (out, "{\n");
+              current = current->parent;
+            }
+            print_block_recursive (out, edge->to);
+          } else {
+            fprintf (out, "Caralho de asa\n");
+          }
+        }
+      }
+    }
+    ref = element_previous (ref);
+    if (isbranch && ref) {
+      ident_line (out, block->sc->depth + 1);
+      fprintf (out, "else\n");
+    }
+  }
+
+  ref = list_tail (block->outrefs);
+
+  while (ref) {
+    edge = element_getvalue (ref);
+    if (edge->type == EDGE_GOTO) {
+
+    }
+    ref = element_previous (ref);
   }
 }
 
 static
 void print_subroutine (FILE *out, struct code *c, struct subroutine *sub)
 {
-  element el;
-  int ident;
-
   if (sub->import) return;
 
   fprintf (out, "/**\n * Subroutine at address 0x%08X\n", sub->begin->address);
@@ -100,14 +224,7 @@ void print_subroutine (FILE *out, struct code *c, struct subroutine *sub)
       if (loc == sub->end) break;
     }
   } else {
-    el = list_head (sub->dfsblocks);
-    while (el) {
-      struct basicblock *block = element_getvalue (el);
-      ident = 1;
-      print_block (out, ident, block);
-      fprintf (out, "\n");
-      el = element_next (el);
-    }
+    print_block_recursive (out, sub->startblock);
   }
   fprintf (out, "}\n\n");
 }

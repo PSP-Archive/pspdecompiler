@@ -28,7 +28,6 @@ void print_subroutine_graph (FILE *out, struct code *c, struct subroutine *sub, 
     case BLOCK_START:  fprintf (out, "Start");   break;
     case BLOCK_END:    fprintf (out, "End");       break;
     case BLOCK_CALL:   fprintf (out, "Call");     break;
-    case BLOCK_SWITCH: fprintf (out, "Switch"); break;
     case BLOCK_SIMPLE: fprintf (out, "0x%08X-0x%08X",
         block->info.simple.begin->address, block->info.simple.end->address);
     }

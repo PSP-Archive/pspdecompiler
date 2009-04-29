@@ -72,9 +72,6 @@ void extract_variables (struct subroutine *sub)
           var->varnum = 1;
         } else {
           var->def->flushed = TRUE;
-          if (count == 39) {
-            report ("Bosta 0x%08X %d\n", var->def->type, var->name.val.intval);
-          }
           mark_variable (var, VARIABLE_LOCAL,  ++count);
         }
       }

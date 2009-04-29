@@ -55,8 +55,9 @@ void extract_blocks (struct subroutine *sub)
       if (next->insn->flags & (INSN_JUMP | INSN_BRANCH)) {
         block->info.simple.jumploc = next;
         block->info.simple.end = next;
-        if (!(next->insn->flags & INSN_BRANCHLIKELY))
+        if (!(next->insn->flags & INSN_BRANCHLIKELY)) {
           block->info.simple.end++;
+        }
         break;
       }
 
@@ -179,21 +180,13 @@ void link_blocks (struct subroutine *sub)
               make_link (block, loc->target->block);
             }
           } else {
-            if (loc->cswitch) {
-              element ref;
-              int count = 0;
-
-              if (loc->cswitch->jumplocation == loc) {
-                ref = list_head (loc->cswitch->references);
-                while (ref) {
-                  struct location *switchtarget = element_getvalue (ref);
-                  inserted = make_link_and_insert (block, switchtarget->block, el);
-                  target = element_getvalue (inserted);
-                  target->type = BLOCK_SWITCH;
-                  target->info.sw.switchnum = count++;
-                  target->info.sw.cswitch = loc->cswitch;
-                  ref = element_next (ref);
-                }
+            element ref;
+            if (loc->cswitch && loc->cswitch->jumplocation == loc) {
+              ref = list_head (loc->cswitch->references);
+              while (ref) {
+                struct location *switchtarget = element_getvalue (ref);
+                make_link (block, switchtarget->block);
+                ref = element_next (ref);
               }
             } else
               make_link (block, sub->endblock);
@@ -231,10 +224,26 @@ void extract_cfg (struct subroutine *sub)
 
 
 static
-struct scope *scope_alloc (struct subroutine *sub)
+struct scope *scope_alloc (struct subroutine *sub, struct scope *parent, enum scopetype type, struct basicblock *start)
 {
   struct scope *sc = fixedpool_alloc (sub->code->scopespool);
   sc->edges = list_alloc (sub->code->lstpool);
+  sc->children = list_alloc (sub->code->lstpool);
+  sc->type = type;
+  sc->parent = parent;
+  sc->breakparent = NULL;
+
+  if (parent) {
+    if (parent->type == SCOPE_LOOP)
+      sc->breakparent = parent;
+    else
+      sc->breakparent = parent->breakparent;
+
+    list_inserttail (parent->children, sc);
+  }
+
+  sc->start = start;
+  list_inserttail (sub->scopes, sc);
   return sc;
 }
 
@@ -277,7 +286,7 @@ int mark_forward (struct basicblock *block, int maxdfsnum, struct scope *currsco
 }
 
 static
-void mark_if (struct scope *sc)
+void mark_branch (struct scope *sc)
 {
   struct basicedge *edge;
   int maxdfsnum;
@@ -288,23 +297,31 @@ void mark_if (struct scope *sc)
 }
 
 static
-void mark_backward (struct scope *sc, struct basicblock *block, int mark)
+void mark_backward (struct basicblock *block, int mark, struct scope *currscope)
 {
   struct basicedge *edge;
-  element ref;
+  element el, ref;
 
-  block->sc = sc;
+  block->sc = currscope;
   block->mark2 = 1;
 
-  ref = list_head (block->inrefs);
-  while (ref) {
-    edge = element_getvalue (ref);
-    if (edge->from->node.dfsnum < block->node.dfsnum &&
-        edge->from->mark1 == mark &&
-        !edge->from->mark2) {
-      mark_backward (sc, edge->from, mark);
+  el = block->node.block;
+  while (el) {
+    block = element_getvalue (el);
+    if (block->mark2 && block->mark1 == mark) {
+      ref = list_head (block->inrefs);
+      while (ref) {
+        edge = element_getvalue (ref);
+        if (edge->from->node.dfsnum < block->node.dfsnum &&
+            edge->from->mark1 == mark &&
+            !edge->from->mark2) {
+          edge->from->sc = currscope;
+          edge->from->mark2 = 1;
+        }
+        ref = element_next (ref);
+      }
     }
-    ref = element_next (ref);
+    el = element_previous (el);
   }
 }
 
@@ -319,11 +336,25 @@ void mark_loop (struct scope *sc)
   ref = list_head (sc->edges);
   while (ref) {
     edge = element_getvalue (ref);
-    mark_backward (sc, edge->from, mark);
+    mark_backward (edge->from, mark, sc);
     ref = element_next (ref);
   }
 }
 
+
+static
+void dfs_scopes (struct scope *sc, int depth)
+{
+  element el;
+  el = list_head (sc->children);
+  while (el) {
+    struct scope *next = element_getvalue (el);
+    dfs_scopes (next, depth + 1);
+    el = element_next (el);
+  }
+  sc->dfsnum = sc->start->sub->temp--;
+  sc->depth = depth;
+}
 
 void extract_scopes (struct subroutine *sub)
 {
@@ -332,9 +363,8 @@ void extract_scopes (struct subroutine *sub)
   struct scope *mainsc, *sc;
   element el, ref;
 
-  mainsc = scope_alloc (sub);
-
-  mainsc->type = SCOPE_MAIN;
+  sub->scopes = list_alloc (sub->code->lstpool);
+  mainsc = scope_alloc (sub, NULL, SCOPE_MAIN, sub->startblock);
 
   sub->temp = 0;
   el = list_head (sub->dfsblocks);
@@ -357,10 +387,7 @@ void extract_scopes (struct subroutine *sub)
         if (edge->from->sc == block->sc) {
           edge->type = EDGE_LOOP;
           if (!sc) {
-            sc = scope_alloc (sub);
-            sc->type = SCOPE_LOOP;
-            sc->parent = block->sc;
-            sc->start = block;
+            sc = scope_alloc (sub, block->sc, SCOPE_LOOP, block);
             sc->maxdfsnum = edge->from->node.dfsnum;
           }
           if (sc->maxdfsnum < edge->from->node.dfsnum)
@@ -368,44 +395,39 @@ void extract_scopes (struct subroutine *sub)
           list_inserttail (sc->edges, edge);
         } else {
           edge->type = EDGE_GOTO;
+          edge->to->haslabel = TRUE;
         }
       }
       ref = element_next (ref);
     }
 
-    if (sc) {
-      mark_loop (sc);
-    }
+    if (sc) mark_loop (sc);
 
     sc = NULL;
     if (list_size (block->outrefs) == 2) {
       edge = list_headvalue (block->outrefs);
       if (edge->to->node.dfsnum > block->node.dfsnum) {
         if (edge->to->sc == block->sc) {
-          sc = scope_alloc (sub);
-          sc->parent = block->sc;
-          sc->start = block;
-          sc->type = SCOPE_IFELSE;
-          edge->type = SCOPE_IFELSE;
+          sc = scope_alloc (sub, block->sc, SCOPE_IFELSE, block);
+          edge->type = EDGE_NORMAL;
           list_inserttail (sc->edges, edge);
-          mark_if (sc);
+          mark_branch (sc);
         } else {
           edge->type = EDGE_GOTO;
+          edge->to->haslabel = TRUE;
         }
       }
 
       edge = list_tailvalue (block->outrefs);
       if (edge->to->node.dfsnum > block->node.dfsnum) {
         if (edge->to->sc == block->sc) {
-          sc = scope_alloc (sub);
-          sc->parent = block->sc;
-          sc->start = block;
-          sc->type = SCOPE_IFTHEN;
-          edge->type = SCOPE_IFTHEN;
+          sc = scope_alloc (sub, block->sc, SCOPE_IFTHEN, block);
+          edge->type = EDGE_NORMAL;
           list_inserttail (sc->edges, edge);
-          mark_if (sc);
+          mark_branch (sc);
         } else {
           edge->type = EDGE_GOTO;
+          edge->to->haslabel = TRUE;
         }
       }
 
@@ -418,4 +440,19 @@ void extract_scopes (struct subroutine *sub)
     el = element_next (el);
   }
 
+  sub->temp = list_size (sub->scopes);
+  dfs_scopes (mainsc, 0);
+}
+
+
+int scope_isancestor (struct scope *node, struct scope *ancestor)
+{
+  int count = 0;
+  while (node) {
+    if (node == ancestor)
+      return count;
+    node = node->parent;
+    count++;
+  }
+  return -1;
 }
