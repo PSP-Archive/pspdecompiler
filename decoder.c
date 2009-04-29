@@ -122,13 +122,19 @@ uint32 location_gpr_used (struct location *loc)
 
   if (loc->insn->flags & INSN_READ_GPR_S) {
     if (RS (loc->opc) != 0)
-      result |= 1 << (RS (loc->opc) - 1);
+      result |= 1 << (RS (loc->opc));
   }
 
   if (loc->insn->flags & INSN_READ_GPR_T) {
     if (RT (loc->opc) != 0)
-      result |= 1 << (RT (loc->opc) - 1);
+      result |= 1 << (RT (loc->opc));
   }
+
+  if (loc->insn->flags & INSN_READ_GPR_D) {
+    if (RD (loc->opc) != 0)
+      result |= 1 << (RD (loc->opc));
+  }
+
   return result;
 }
 
@@ -137,29 +143,26 @@ uint32 location_gpr_defined (struct location *loc)
   uint32 result = 0;
 
   if (loc->insn->flags & INSN_LINK) {
-    result |= 1 << (31 - 1);
+    result |= 1 << 31;
   }
 
   if (loc->insn->flags & INSN_WRITE_GPR_D) {
     if (RD (loc->opc) != 0)
-      result |= 1 << (RD (loc->opc) - 1);
+      result |= 1 << (RD (loc->opc));
   }
 
   if (loc->insn->flags & INSN_WRITE_GPR_T) {
     if (RT (loc->opc) != 0)
-      result |= 1 << (RT (loc->opc) - 1);
+      result |= 1 << (RT (loc->opc));
   }
   return result;
 }
 
 int location_branch_may_swap (struct location *branch)
 {
-  int gpr_used[2], gpr_defined[2];
+  int gpr_used, gpr_defined;
 
-  gpr_used[0] = location_gpr_used (branch);
-  gpr_used[1] = location_gpr_used (&branch[1]);
-  gpr_defined[0] = location_gpr_defined (branch);
-  gpr_defined[1] = location_gpr_defined (&branch[1]);
-  return (!(gpr_used[0] & gpr_defined[1]) &&
-          !(gpr_defined[1] & gpr_used[0]));
+  gpr_used = location_gpr_used (branch);
+  gpr_defined = location_gpr_defined (&branch[1]);
+  return  (!(gpr_used & gpr_defined));
 }

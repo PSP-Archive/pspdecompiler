@@ -9,18 +9,13 @@ void mark_reachable (struct code *c, struct location *loc)
   uint32 remaining = 1 + ((c->end->address - loc->address) >> 2);
   for (; remaining--; loc++) {
     if (loc->reachable == LOCATION_REACHABLE) break;
-    else if (loc->reachable == LOCATION_DELAY_SLOT) {
-      loc->error = ERROR_DELAY_SLOT_TARGET;
-    }
     loc->reachable = LOCATION_REACHABLE;
 
     if (!loc->insn) return;
 
     if (loc->insn->flags & INSN_JUMP) {
       if (remaining > 0) {
-        if (loc[1].reachable == LOCATION_REACHABLE)
-          loc[1].error = ERROR_DELAY_SLOT_TARGET;
-        else
+        if (loc[1].reachable != LOCATION_REACHABLE)
           loc[1].reachable = LOCATION_DELAY_SLOT;
       }
 
@@ -50,9 +45,7 @@ void mark_reachable (struct code *c, struct location *loc)
       remaining--;
     } else if (loc->insn->flags & INSN_BRANCH) {
       if (remaining > 0) {
-        if (loc[1].reachable == LOCATION_REACHABLE)
-          loc[1].error = ERROR_DELAY_SLOT_TARGET;
-        else
+        if (loc[1].reachable != LOCATION_REACHABLE)
           loc[1].reachable = LOCATION_DELAY_SLOT;
       }
 
@@ -207,6 +200,7 @@ void extract_hidden_subroutines (struct code *c)
   uint32 i;
   int changed = TRUE;
 
+  /* TODO */
   while (changed) {
     changed = FALSE;
     for (i = 0; i < c->numopc; i++) {
@@ -323,8 +317,6 @@ void check_subroutine (struct code *c, struct subroutine *sub)
         error (__FILE__ ": illegal branch at 0x%08X (sub: 0x%08X)", loc->address, sub->begin->address);
         sub->haserror = TRUE;
         break;
-      case ERROR_DELAY_SLOT_TARGET:
-        error (__FILE__ ": delay slot can't be a target of a branch/jump (0x%08X) (sub: 0x%08X)", loc->address, sub->begin->address);
       case ERROR_NONE:
         break;
       }

@@ -78,6 +78,33 @@ testcfg_branches_likely:
         .end    testcfg_branches_likely
 
 
+        .global testcfg_branches_noswap
+        .ent    testcfg_branches_noswap
+
+testcfg_branches_noswap:
+        beq     $a0, $a1, 1f
+        move    $a1, $0
+        lui     $v0, 0
+1:
+        bltzal  $a0, testcfg_branches_noswap
+2:      move    $a1, $31
+        bgez    $a0, 2b
+        nop
+
+        bltzal  $a0, testcfg_branches_noswap
+        move    $a1, $31
+
+        bltzall $a0, testcfg_branches_noswap
+3:      nop
+        bgez    $a0, 3b
+        nop
+
+        jr      $ra
+        nop
+
+        .end    testcfg_branches_noswap
+
+
 
         .global testcfg_branches_never
         .ent    testcfg_branches_never
@@ -214,6 +241,18 @@ testcfg_jumptobegin:
 
         .end    testcfg_jumptobegin
 
+        .global testcfg_callnoswap
+        .ent    testcfg_callnoswap
+
+testcfg_callnoswap:
+        jal     testcfg_callnoswap
+        move    $a0, $31
+
+        jr      $ra
+        nop
+
+        .end    testcfg_callnoswap
+
 
         .global testswitch
         .ent    testswitch
@@ -223,7 +262,7 @@ testswitch:
         nop
         slti    $t0, $a1, 7
         sll     $a0, $a1, 2
-        blezl   $t0, switch1_default
+        blez    $t0, switch1_default
         lui     $v0, %hi(switch1)
         addu    $v0, $a0
         lw      $v0, %lo(switch1)($v0)

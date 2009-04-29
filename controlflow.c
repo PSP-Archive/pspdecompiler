@@ -23,6 +23,7 @@ void extract_blocks (struct subroutine *sub)
 {
   struct location *begin, *next;
   struct basicblock *block;
+  int prevlikely = FALSE;
 
   sub->blocks = list_alloc (sub->code->lstpool);
   sub->revdfsblocks = list_alloc (sub->code->lstpool);
@@ -44,9 +45,13 @@ void extract_blocks (struct subroutine *sub)
 
     block->type = BLOCK_SIMPLE;
     block->info.simple.begin = begin;
-    block->info.simple.end = next;
 
     for (; next != sub->end; next++) {
+      if (prevlikely) {
+        prevlikely = FALSE;
+        break;
+      }
+
       if (next->references && (next != begin)) {
         next--;
         break;
@@ -54,15 +59,16 @@ void extract_blocks (struct subroutine *sub)
 
       if (next->insn->flags & (INSN_JUMP | INSN_BRANCH)) {
         block->info.simple.jumploc = next;
-        block->info.simple.end = next;
-        if (!(next->insn->flags & INSN_BRANCHLIKELY)) {
-          block->info.simple.end++;
+        if (next->insn->flags & INSN_BRANCHLIKELY)
+          prevlikely = TRUE;
+        if (!(next->insn->flags & INSN_BRANCHLIKELY) &&
+            !next[1].references && location_branch_may_swap (next)) {
+          next++;
         }
         break;
       }
-
-      block->info.simple.end = next;
     }
+    block->info.simple.end = next;
 
     do {
       begin->block = block;
@@ -70,7 +76,14 @@ void extract_blocks (struct subroutine *sub)
 
     begin = NULL;
     while (next++ != sub->end) {
-      if (next->reachable == LOCATION_REACHABLE) {
+      if (next->reachable == LOCATION_DELAY_SLOT) {
+        if (!prevlikely) {
+          begin = next;
+          break;
+        }
+      } else if (next->reachable == LOCATION_REACHABLE) {
+        if (next != &block->info.simple.end[1])
+          prevlikely = FALSE;
         begin = next;
         break;
       }
@@ -134,9 +147,15 @@ void link_blocks (struct subroutine *sub)
     if (block->info.simple.jumploc) {
       loc = block->info.simple.jumploc;
       if (loc->insn->flags & INSN_BRANCH) {
-        make_link (block, next);
+        if (!loc->branchalways) {
+          if (loc->insn->flags & INSN_BRANCHLIKELY) {
+            make_link (block, loc[2].block);
+          } else {
+            make_link (block, next);
+          }
+        }
 
-        if (loc->insn->flags & INSN_BRANCHLIKELY) {
+        if (loc == block->info.simple.end) {
           struct basicblock *slot = alloc_block (sub);
           inserted = element_alloc (sub->code->lstpool, slot);
           element_insertbefore (el, inserted);
@@ -149,7 +168,7 @@ void link_blocks (struct subroutine *sub)
         }
 
         if (loc->insn->flags & INSN_LINK) {
-          inserted = make_link_and_insert (block, next, el);
+          inserted = make_link_and_insert (block, loc[2].block, el);
           target = element_getvalue (inserted);
           target->type = BLOCK_CALL;
           target->info.call.calltarget = loc->target->sub;
