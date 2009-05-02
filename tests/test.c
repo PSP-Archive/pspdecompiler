@@ -2,31 +2,32 @@
 
 PSP_MODULE_INFO ("test", 0x0, 1, 2);
 
-extern void testcfg_branches (void);
-extern void testcfg_branches_likely (void);
-extern void testcfg_branches_noswap (void);
-extern void testcfg_branches_never (void);
-extern void testcfg_branches_always (void);
-extern void testcfg_branchlink (void);
-extern void testcfg_strangerefs (void);
-extern void testcfg_jumptobegin (void);
-extern void testcfg_callnoswap (void);
-extern void testswitch (void);
-extern int forfunc (int a, int b);
+extern void cfg_branches (void);
+extern void cfg_branches_likely (void);
+extern void cfg_branches_noswap (void);
+extern void cfg_branches_never (void);
+extern void cfg_branches_always (void);
+extern void cfg_branchlink (void);
+extern void cfg_strangerefs (void);
+extern void cfg_jumptobegin (void);
+extern void cfg_callnoswap (void);
+extern void cfg_switch (void);
+extern void graph_double_break (void);
+
 
 int module_start (SceUInt argc, void *arg)
 {
-  testcfg_branches ();
-  testcfg_branches_likely ();
-  testcfg_branches_noswap ();
-  testcfg_branches_never ();
-  testcfg_branches_always ();
-  testcfg_branchlink ();
-  testcfg_strangerefs ();
-  testcfg_jumptobegin ();
-  testcfg_callnoswap ();
-  testswitch ();
-  forfunc (13, 2);
+  cfg_branches ();
+  cfg_branches_likely ();
+  cfg_branches_noswap ();
+  cfg_branches_never ();
+  cfg_branches_always ();
+  cfg_branchlink ();
+  cfg_strangerefs ();
+  cfg_jumptobegin ();
+  cfg_callnoswap ();
+  cfg_switch ();
+  graph_double_break ();
 
   sceKernelSleepThread ();
   return 0;

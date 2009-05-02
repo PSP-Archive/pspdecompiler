@@ -150,7 +150,7 @@ void print_subroutine_graph (FILE *out, struct code *c, struct subroutine *sub, 
 
 int print_graph (struct code *c, char *prxname, int options)
 {
-  char buffer[64];
+  char buffer[128];
   char basename[32];
   element el;
   FILE *fp;
@@ -162,7 +162,13 @@ int print_graph (struct code *c, char *prxname, int options)
   while (el) {
     struct subroutine *sub = element_getvalue (el);
     if (!sub->haserror && !sub->import) {
-      sprintf (buffer, "%s_%08X.dot", basename, sub->begin->address);
+      if (sub->export) {
+        if (sub->export->name) {
+          sprintf (buffer, "%s_%-.64s.dot", basename, sub->export->name);
+        } else
+          sprintf (buffer, "%s_nid_%08X.dot", basename, sub->export->nid);
+      } else
+        sprintf (buffer, "%s_%08X.dot", basename, sub->begin->address);
       fp = fopen (buffer, "w");
       if (!fp) {
         xerror (__FILE__ ": can't open file for writing `%s'", buffer);

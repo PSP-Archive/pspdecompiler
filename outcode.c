@@ -146,6 +146,7 @@ void print_block_recursive (FILE *out, struct basicblock *block)
   int count, isbranch;
 
   print_block (out, block);
+  block->mark1 = 1;
   ref = list_tail (block->outrefs);
   isbranch = (list_size (block->outrefs) == 2);
 
@@ -195,14 +196,16 @@ void print_block_recursive (FILE *out, struct basicblock *block)
     }
   }
 
-  ref = list_tail (block->outrefs);
-
+  ref = block->node.block;
+  current = block->sc;
   while (ref) {
-    edge = element_getvalue (ref);
-    if (edge->type == EDGE_GOTO) {
-
+    block = element_getvalue (ref);
+    if (block->sc == current &&
+        !block->mark1) {
+      print_block_recursive (out, block);
+      break;
     }
-    ref = element_previous (ref);
+    ref = element_next (ref);
   }
 }
 
@@ -224,6 +227,15 @@ void print_subroutine (FILE *out, struct code *c, struct subroutine *sub)
       if (loc == sub->end) break;
     }
   } else {
+    element el;
+
+    el = list_head (sub->dfsblocks);
+    while (el) {
+      struct basicblock *block = element_getvalue (el);
+      block->mark1 = 0;
+      el = element_next (el);
+    }
+
     print_block_recursive (out, sub->startblock);
   }
   fprintf (out, "}\n\n");

@@ -4,12 +4,12 @@
         .set    noat
 
 
-        .global testcfg_branches
-        .ent    testcfg_branches
+        .global cfg_branches
+        .ent    cfg_branches
 
-testcfg_branches:
+cfg_branches:
         nop
-testcfg_branches_start:
+cfg_branches_start:
         bne     $a0, $0, 1f
         nop
 
@@ -37,20 +37,20 @@ testcfg_branches_start:
         nop
 
 6:
-        j       testcfg_branches_start
+        j       cfg_branches_start
         nop
 
 7:
         jr      $ra
         nop
 
-        .end    testcfg_branches
+        .end    cfg_branches
 
 
-        .global testcfg_branches_likely
-        .ent    testcfg_branches_likely
+        .global cfg_branches_likely
+        .ent    cfg_branches_likely
 
-testcfg_branches_likely:
+cfg_branches_likely:
         beql    $a0, $a1, 1f
         nop
 
@@ -75,26 +75,26 @@ testcfg_branches_likely:
         jr      $ra
         nop
 
-        .end    testcfg_branches_likely
+        .end    cfg_branches_likely
 
 
-        .global testcfg_branches_noswap
-        .ent    testcfg_branches_noswap
+        .global cfg_branches_noswap
+        .ent    cfg_branches_noswap
 
-testcfg_branches_noswap:
+cfg_branches_noswap:
         beq     $a0, $a1, 1f
         move    $a1, $0
         lui     $v0, 0
 1:
-        bltzal  $a0, testcfg_branches_noswap
+        bltzal  $a0, cfg_branches_noswap
 2:      move    $a1, $31
         bgez    $a0, 2b
         nop
 
-        bltzal  $a0, testcfg_branches_noswap
+        bltzal  $a0, cfg_branches_noswap
         move    $a1, $31
 
-        bltzall $a0, testcfg_branches_noswap
+        bltzall $a0, cfg_branches_noswap
 3:      nop
         bgez    $a0, 3b
         nop
@@ -102,14 +102,14 @@ testcfg_branches_noswap:
         jr      $ra
         nop
 
-        .end    testcfg_branches_noswap
+        .end    cfg_branches_noswap
 
 
 
-        .global testcfg_branches_never
-        .ent    testcfg_branches_never
+        .global cfg_branches_never
+        .ent    cfg_branches_never
 
-testcfg_branches_never:
+cfg_branches_never:
         bgtz    $0, 1f
         nop
 
@@ -134,22 +134,22 @@ testcfg_branches_never:
         bnel    $a0, $a0, 1f
         nop
 
-        bltzal  $0, testcfg_branches_never
+        bltzal  $0, cfg_branches_never
         nop
 
-        bltzall  $0, testcfg_branches_never
+        bltzall  $0, cfg_branches_never
         nop
 
 1:
         jr      $ra
         nop
 
-        .end    testcfg_branches_never
+        .end    cfg_branches_never
 
-        .global testcfg_branches_always
-        .ent    testcfg_branches_always
+        .global cfg_branches_always
+        .ent    cfg_branches_always
 
-testcfg_branches_always:
+cfg_branches_always:
 
         bgez    $0, 7f
         nop
@@ -186,28 +186,28 @@ testcfg_branches_always:
         jr      $ra
         nop
 
-        .end    testcfg_branches_always
+        .end    cfg_branches_always
 
-        .global testcfg_branchlink
-        .ent    testcfg_branchlink
+        .global cfg_branchlink
+        .ent    cfg_branchlink
 
-testcfg_branchlink:
-        bgezal  $a0, testcfg_jumptobegin
+cfg_branchlink:
+        bgezal  $a0, cfg_jumptobegin
         nop
-        bltzal  $a0, testcfg_jumptobegin
+        bltzal  $a0, cfg_jumptobegin
         nop
-        bltzall $a0, testcfg_jumptobegin
+        bltzall $a0, cfg_jumptobegin
         nop
 
         jr      $ra
         nop
 
-        .end    testcfg_branchlink
+        .end    cfg_branchlink
 
-        .global testcfg_strangerefs
-        .ent    testcfg_strangerefs
+        .global cfg_strangerefs
+        .ent    cfg_strangerefs
 
-testcfg_strangerefs:
+cfg_strangerefs:
         beql    $a0, $a1, 2f
 1:
         nop
@@ -217,7 +217,7 @@ testcfg_strangerefs:
         nop
 
 2:
-        bltzall $a0, testcfg_jumptobegin
+        bltzall $a0, cfg_jumptobegin
 3:
         nop
         beq     $a0, $a1, 3b
@@ -226,39 +226,39 @@ testcfg_strangerefs:
         jr      $ra
         nop
 
-        .end    testcfg_strangerefs
+        .end    cfg_strangerefs
 
-        .global testcfg_jumptobegin
-        .ent    testcfg_jumptobegin
+        .global cfg_jumptobegin
+        .ent    cfg_jumptobegin
 
-testcfg_jumptobegin:
+cfg_jumptobegin:
         nop
-        beq     $a0, $a1, testcfg_jumptobegin
+        beq     $a0, $a1, cfg_jumptobegin
         nop
 
         jr      $ra
         nop
 
-        .end    testcfg_jumptobegin
+        .end    cfg_jumptobegin
 
-        .global testcfg_callnoswap
-        .ent    testcfg_callnoswap
+        .global cfg_callnoswap
+        .ent    cfg_callnoswap
 
-testcfg_callnoswap:
-        jal     testcfg_callnoswap
+cfg_callnoswap:
+        jal     cfg_callnoswap
         move    $a0, $31
 
         jr      $ra
         nop
 
-        .end    testcfg_callnoswap
+        .end    cfg_callnoswap
 
 
-        .global testswitch
-        .ent    testswitch
+        .global cfg_switch
+        .ent    cfg_switch
 
-testswitch:
-        jal     testswitch_innercallback
+cfg_switch:
+        jal     cfg_switch_innercallback
         nop
         slti    $t0, $a1, 7
         sll     $a0, $a1, 2
@@ -282,7 +282,7 @@ switch1_case2:
 
 
 switch1_case5:
-        jal     testcfg_branches_always
+        jal     cfg_branches_always
         nop
 
 switch1_default:
@@ -290,7 +290,7 @@ switch1_default:
         jr      $ra
         nop
 
-testswitch_innercallback:
+cfg_switch_innercallback:
         jal     mycallback
         nop
         lui     $v0, %hi(inner_callback)
@@ -302,25 +302,76 @@ mycallback:
         jr      $ra
         nop
 
-        .end    testswitch
+        .end    cfg_switch
 
 
-        .global	forfunc
-        .ent	forfunc
-forfunc:
-        addiu   $sp, $sp, -16
-        sw      $s0, 4($sp)
-        move    $s0, $a0
-        move    $a0, $0
+/*
+int double_break (void)
+{
+  int i, j = 400009, t = 0;
+  for (i = 0; i < 100; i++) {
+    if (j & 1) {
+      j = 3 * j + 1;
+    } else {
+      j >>= 1;
+    }
+
+    if (j == 50) {
+      j++;
+      if (i > 10) break;
+    } else {
+      t++;
+      if (i == 98) break;
+    }
+    t += 2;
+  }
+  return t;
+}
+*/
+        .global graph_double_break
+        .ent    graph_double_break
+graph_double_break:
+        move    $4,$0
+        li      $2,393216
+        ori     $3,$2,0x1a89
+        move    $5,$0
+        li      $9,3
+        li      $7,50
+        li      $8,98
+        li      $10,51
+        li      $6,100
 1:
-        addiu   $s0, $s0, -1
-        bne     $s0, $0, 1b
-        addu    $a0, $a0, $a1
+        andi    $2,$3,0x1
+        beql    $2,$0,2f
+        sra     $3,$3,1
 
-        lw      $s0, 4($sp)
-        jr      $ra
-        addiu   $sp, $sp, 16
-        .end    forfunc
+        mult    $3,$9
+        mflo    $2
+        addiu   $3,$2,1
+2:
+        bne     $3,$7,3f
+        slt     $2,$4,11
+
+        beq     $2,$0,5f
+        move    $3,$10
+
+        j       4f
+        addiu   $4,$4,1
+
+3:
+        beq     $4,$8,5f
+        addiu   $5,$5,1
+
+        addiu   $4,$4,1
+4:
+        bne     $4,$6,1b
+        addiu   $5,$5,2
+
+5:
+        j       $ra
+        move    $2,$5
+
+        .end    graph_double_break
 
         .section .rodata
 switch1:
@@ -335,3 +386,4 @@ switch1:
 inner_callback:
         .word   mycallback
         .word   mycallback
+
