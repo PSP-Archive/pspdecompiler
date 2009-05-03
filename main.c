@@ -24,7 +24,8 @@ void print_help (char *prgname)
     "  -z    print the reverse frontier\n"
     "  -p    print phi functions\n"
     "  -q    print code into nodes\n"
-    "  -s    print scopes\n"
+    "  -s    print structures\n"
+    "  -e    print edge types\n"
     "  -c    output code\n"
     "  -v    increase verbosity\n"
     "  -n    specify nids xml file\n",
@@ -65,7 +66,8 @@ int main (int argc, char **argv)
         case 'z': graphoptions |= OUT_PRINT_RFRONTIER; break;
         case 'p': graphoptions |= OUT_PRINT_PHIS; break;
         case 'q': graphoptions |= OUT_PRINT_CODE; break;
-        case 's': graphoptions |= OUT_PRINT_SCOPES; break;
+        case 's': graphoptions |= OUT_PRINT_STRUCTURES; break;
+        case 'e': graphoptions |= OUT_PRINT_EDGE_TYPES; break;
         case 'n':
           if (i == (argc - 1))
             fatal (__FILE__ ": missing nids file");

@@ -33,26 +33,12 @@ void print_subroutine_name (FILE *out, struct subroutine *sub)
   }
 }
 
-void print_value (FILE *out, struct value *val, int printtemps)
+void print_value (FILE *out, struct value *val)
 {
   switch (val->type) {
   case VAL_CONSTANT: fprintf (out, "0x%08X", val->val.intval); break;
   case VAL_VARIABLE:
-    if (val->val.variable->type == VARIABLE_TEMP) {
-      if (printtemps) {
-        fprintf (out, "(");
-        print_operation (out, val->val.variable->def, FALSE);
-        fprintf (out, ")");
-      } else fprintf (out, "temp");
-    } else if (val->val.variable->type == VARIABLE_INVALID) {
-      fprintf (out, "invalid");
-    } else {
-      if (val->val.variable->type == VARIABLE_ARGUMENT)
-        fprintf (out, "arg");
-      else
-        fprintf (out, "local");
-      fprintf (out, "%d", val->val.variable->varnum);
-    }
+    print_value (out, &val->val.variable->name);
     break;
   case VAL_REGISTER:
     if (val->val.intval == REGISTER_HI)      fprintf (out, "hi");
@@ -64,38 +50,82 @@ void print_value (FILE *out, struct value *val, int printtemps)
   }
 }
 
+
 static
-void print_binaryop (FILE *out, struct operation *op, const char *opsymbol, int printoutput)
+void print_asm (FILE *out, struct operation *op, int identsize)
 {
-  if (printoutput) {
-    print_value (out, list_headvalue (op->results), FALSE);
-    fprintf (out, " = ");
+  struct location *loc;
+  element el;
+
+  ident_line (out, identsize);
+  fprintf (out, "__asm__ (\n");
+  for (loc = op->begin; ; loc++) {
+    ident_line (out, identsize);
+    fprintf (out, "  \"%s\"\n", allegrex_disassemble (loc->opc, loc->address, FALSE));
+    if (loc == op->end) break;
   }
-  print_value (out, list_headvalue (op->operands), TRUE);
-  fprintf (out, " %s ", opsymbol);
-  print_value (out, list_tailvalue (op->operands), TRUE);
+  ident_line (out, identsize);
+  fprintf (out, "  : ");
+
+  el = list_head (op->results);
+  while (el) {
+    struct value *val = element_getvalue (el);
+    if (el != list_head (op->results))
+      fprintf (out, ", ");
+    fprintf (out, "\"=r\"(");
+    print_value (out, val);
+    fprintf (out, ")");
+    el = element_next (el);
+  }
+  fprintf (out, "\n");
+
+  ident_line (out, identsize);
+  fprintf (out, "  : ");
+  el = list_head (op->results);
+  while (el) {
+    struct value *val = element_getvalue (el);
+    if (el != list_head (op->results))
+      fprintf (out, ", ");
+    fprintf (out, "\"r\"(");
+    print_value (out, val);
+    fprintf (out, ")");
+    el = element_next (el);
+  }
+
+  fprintf (out, "\n");
+  ident_line (out, identsize);
+  fprintf (out, ");\n");
 }
 
-void print_complexop (FILE *out, struct operation *op, const char *opsymbol, int printoutput)
+static
+void print_binaryop (FILE *out, struct operation *op, const char *opsymbol)
+{
+  print_value (out, list_headvalue (op->results));
+  fprintf (out, " = ");
+  print_value (out, list_headvalue (op->operands));
+  fprintf (out, " %s ", opsymbol);
+  print_value (out, list_tailvalue (op->operands));
+}
+
+void print_complexop (FILE *out, struct operation *op, const char *opsymbol)
 {
   element el;
 
-  if (printoutput) {
-    if (list_size (op->results) != 0) {
-      if (op->type == OP_CALL) {
-        el = list_head (op->results);
-        el = element_next (el);
-        print_value (out, element_getvalue (el), FALSE);
-        fprintf (out, ", ");
-        el = element_next (el);
-        print_value (out, element_getvalue (el), FALSE);
-        fprintf (out, " = ");
-      } else {
-        print_value (out, list_headvalue (op->results), FALSE);
-        fprintf (out, " = ");
-      }
+  if (list_size (op->results) != 0) {
+    if (op->type == OP_CALL) {
+      el = list_head (op->results);
+      el = element_next (el);
+      print_value (out, element_getvalue (el));
+      fprintf (out, ", ");
+      el = element_next (el);
+      print_value (out, element_getvalue (el));
+      fprintf (out, " = ");
+    } else {
+      print_value (out, list_headvalue (op->results));
+      fprintf (out, " = ");
     }
   }
+
   fprintf (out, "%s (", opsymbol);
   el = list_head (op->operands);
   while (el) {
@@ -106,14 +136,14 @@ void print_complexop (FILE *out, struct operation *op, const char *opsymbol, int
     }
     if (el != list_head (op->operands))
       fprintf (out, ", ");
-    print_value (out, val, TRUE);
+    print_value (out, val);
     el = element_next (el);
   }
   fprintf (out, ")");
 }
 
 static
-void print_ext (FILE *out, struct operation *op, int printoutput)
+void print_ext (FILE *out, struct operation *op)
 {
   struct value *val1, *val2, *val3;
   element el;
@@ -125,18 +155,17 @@ void print_ext (FILE *out, struct operation *op, int printoutput)
   val3 = element_getvalue (el);
 
   mask = 0xFFFFFFFF >> (32 - val3->val.intval);
-  if (printoutput) {
-    print_value (out, list_headvalue (op->results), FALSE);
-    fprintf (out, " = ");
-  }
+  print_value (out, list_headvalue (op->results));
+  fprintf (out, " = ");
+
   fprintf (out, "(");
-  print_value (out, val1, TRUE);
+  print_value (out, val1);
   fprintf (out, " >> %d)", val2->val.intval);
   fprintf (out, " & 0x%08X", mask);
 }
 
 static
-void print_ins (FILE *out, struct operation *op, int printoutput)
+void print_ins (FILE *out, struct operation *op)
 {
   struct value *val1, *val2, *val3, *val4;
   element el;
@@ -149,19 +178,18 @@ void print_ins (FILE *out, struct operation *op, int printoutput)
   val4 = element_getvalue (el);
 
   mask = 0xFFFFFFFF >> (32 - val4->val.intval);
-  if (printoutput) {
-    print_value (out, list_headvalue (op->results), FALSE);
-    fprintf (out, " = ");
-  }
+  print_value (out, list_headvalue (op->results));
+  fprintf (out, " = ");
+
   fprintf (out, "(");
-  print_value (out, val2, TRUE);
+  print_value (out, val2);
   fprintf (out, " & 0x%08X) | (", ~(mask << val3->val.intval));
-  print_value (out, val1, TRUE);
+  print_value (out, val1);
   fprintf (out, " & 0x%08X)", mask);
 }
 
 static
-void print_nor (FILE *out, struct operation *op, int printoutput)
+void print_nor (FILE *out, struct operation *op)
 {
   struct value *val1, *val2;
   int simple = 0;
@@ -174,24 +202,22 @@ void print_nor (FILE *out, struct operation *op, int printoutput)
     if (val1->val.intval == 0) val1 = val2;
   }
 
-  if (printoutput) {
-    print_value (out, list_headvalue (op->results), FALSE);
-    fprintf (out, " = ");
-  }
+  print_value (out, list_headvalue (op->results));
+  fprintf (out, " = ");
 
   if (!simple) {
     fprintf (out, "!(");
-    print_value (out, val1, TRUE);
+    print_value (out, val1);
     fprintf (out, " | ");
-    print_value (out, val2, TRUE);
+    print_value (out, val2);
     fprintf (out, ")");
   } else {
     fprintf (out, "!");
-    print_value (out, val1, TRUE);
+    print_value (out, val1);
   }
 }
 static
-void print_movnz (FILE *out, struct operation *op, int ismovn, int printoutput)
+void print_movnz (FILE *out, struct operation *op, int ismovn)
 {
   struct value *val1, *val2, *val3;
   struct value *result;
@@ -203,83 +229,83 @@ void print_movnz (FILE *out, struct operation *op, int ismovn, int printoutput)
   val3 = element_getvalue (el);
   result = list_headvalue (op->results);
 
-  if (printoutput) {
-    print_value (out, result, FALSE);
-    fprintf (out, " = ");
-  }
+  print_value (out, result);
+  fprintf (out, " = ");
 
   if (ismovn)
     fprintf (out, "(");
   else
     fprintf (out, "!(");
-  print_value (out, val2, TRUE);
+  print_value (out, val2);
   fprintf (out, ") ? ");
-  print_value (out, val1, TRUE);
+  print_value (out, val1);
   fprintf (out, " : ");
-  print_value (out, val3, TRUE);
+  print_value (out, val3);
 }
 
 
-void print_operation (FILE *out, struct operation *op, int printoutput)
+void print_operation (FILE *out, struct operation *op, int identsize)
 {
   if (op->type == OP_ASM) {
-  } else if (op->type == OP_INSTRUCTION) {
+    print_asm (out, op, identsize);
+    return;
+  }
+
+  ident_line (out, identsize);
+  if (op->type == OP_INSTRUCTION) {
     switch (op->insn) {
-    case I_ADD:  print_binaryop (out, op, "+", printoutput);   break;
-    case I_ADDU: print_binaryop (out, op, "+", printoutput);   break;
-    case I_SUB:  print_binaryop (out, op, "-", printoutput);   break;
-    case I_SUBU: print_binaryop (out, op, "-", printoutput);   break;
-    case I_XOR:  print_binaryop (out, op, "^", printoutput);   break;
-    case I_AND:  print_binaryop (out, op, "&", printoutput);   break;
-    case I_OR:   print_binaryop (out, op, "|", printoutput);   break;
-    case I_SRAV: print_binaryop (out, op, ">>", printoutput);  break;
-    case I_SRLV: print_binaryop (out, op, ">>", printoutput);  break;
-    case I_SLLV: print_binaryop (out, op, "<<", printoutput);  break;
-    case I_INS:  print_ins (out, op, printoutput);             break;
-    case I_EXT:  print_ext (out, op, printoutput);             break;
-    case I_MIN:  print_complexop (out, op, "MIN", printoutput); break;
-    case I_MAX:  print_complexop (out, op, "MAX", printoutput); break;
-    case I_BITREV: print_complexop (out, op, "BITREV", printoutput); break;
-    case I_CLZ:  print_complexop (out, op, "CLZ", printoutput); break;
-    case I_CLO:  print_complexop (out, op, "CLO", printoutput); break;
-    case I_NOR:  print_nor (out, op, printoutput);             break;
-    case I_MOVN: print_movnz (out, op, TRUE, printoutput);     break;
-    case I_MOVZ: print_movnz (out, op, FALSE, printoutput);    break;
-    case I_LW:   print_complexop (out, op, "LW", printoutput);   break;
-    case I_LB:   print_complexop (out, op, "LB", printoutput);   break;
-    case I_LBU:  print_complexop (out, op, "LBU", printoutput);  break;
-    case I_LH:   print_complexop (out, op, "LH", printoutput);   break;
-    case I_LHU:  print_complexop (out, op, "LHU", printoutput);  break;
-    case I_LL:   print_complexop (out, op, "LL", printoutput);   break;
-    case I_LWL:  print_complexop (out, op, "LWL", printoutput);  break;
-    case I_LWR:  print_complexop (out, op, "LWR", printoutput);  break;
-    case I_SW:   print_complexop (out, op, "SW", printoutput);   break;
-    case I_SH:   print_complexop (out, op, "SH", printoutput);   break;
-    case I_SB:   print_complexop (out, op, "SB", printoutput);   break;
-    case I_SC:   print_complexop (out, op, "SC", printoutput);   break;
-    case I_SWL:  print_complexop (out, op, "SWL", printoutput);  break;
-    case I_SWR:  print_complexop (out, op, "SWR", printoutput);  break;
+    case I_ADD:  print_binaryop (out, op, "+");   break;
+    case I_ADDU: print_binaryop (out, op, "+");   break;
+    case I_SUB:  print_binaryop (out, op, "-");   break;
+    case I_SUBU: print_binaryop (out, op, "-");   break;
+    case I_XOR:  print_binaryop (out, op, "^");   break;
+    case I_AND:  print_binaryop (out, op, "&");   break;
+    case I_OR:   print_binaryop (out, op, "|");   break;
+    case I_SRAV: print_binaryop (out, op, ">>");  break;
+    case I_SRLV: print_binaryop (out, op, ">>");  break;
+    case I_SLLV: print_binaryop (out, op, "<<");  break;
+    case I_INS:  print_ins (out, op);             break;
+    case I_EXT:  print_ext (out, op);             break;
+    case I_MIN:  print_complexop (out, op, "MIN"); break;
+    case I_MAX:  print_complexop (out, op, "MAX"); break;
+    case I_BITREV: print_complexop (out, op, "BITREV"); break;
+    case I_CLZ:  print_complexop (out, op, "CLZ"); break;
+    case I_CLO:  print_complexop (out, op, "CLO"); break;
+    case I_NOR:  print_nor (out, op);             break;
+    case I_MOVN: print_movnz (out, op, TRUE);     break;
+    case I_MOVZ: print_movnz (out, op, FALSE);    break;
+    case I_LW:   print_complexop (out, op, "LW");   break;
+    case I_LB:   print_complexop (out, op, "LB");   break;
+    case I_LBU:  print_complexop (out, op, "LBU");  break;
+    case I_LH:   print_complexop (out, op, "LH");   break;
+    case I_LHU:  print_complexop (out, op, "LHU");  break;
+    case I_LL:   print_complexop (out, op, "LL");   break;
+    case I_LWL:  print_complexop (out, op, "LWL");  break;
+    case I_LWR:  print_complexop (out, op, "LWR");  break;
+    case I_SW:   print_complexop (out, op, "SW");   break;
+    case I_SH:   print_complexop (out, op, "SH");   break;
+    case I_SB:   print_complexop (out, op, "SB");   break;
+    case I_SC:   print_complexop (out, op, "SC");   break;
+    case I_SWL:  print_complexop (out, op, "SWL");  break;
+    case I_SWR:  print_complexop (out, op, "SWR");  break;
     default:
       break;
     }
   } else if (op->type == OP_MOVE) {
-    if (printoutput) {
-      print_value (out, list_headvalue (op->results), FALSE);
-      fprintf (out, " = ");
-    }
-    print_value (out, list_headvalue (op->operands), TRUE);
+    print_value (out, list_headvalue (op->results));
+    fprintf (out, " = ");
+    print_value (out, list_headvalue (op->operands));
   } else if (op->type == OP_NOP) {
     fprintf (out, "nop ()");
   } else if (op->type == OP_PHI) {
-    print_complexop (out, op, "PHI", printoutput);
+    print_complexop (out, op, "PHI");
   } else if (op->type == OP_CALL) {
-    print_complexop (out, op, "CALL", printoutput);
+    print_complexop (out, op, "CALL");
   } else if (op->type == OP_START) {
-    print_complexop (out, op, "START", printoutput);
+    print_complexop (out, op, "START");
   }
 
-  if (printoutput)
-    fprintf (out, ";\n");
+  fprintf (out, ";\n");
 }
 
 

@@ -55,10 +55,10 @@ int cfg_dfs (struct subroutine *sub, int reverse)
   return (sub->temp == 0);
 }
 
-int dom_isancestor (struct basicblocknode *n1, struct basicblocknode *n2)
+int dom_isancestor (struct basicblocknode *ancestor, struct basicblocknode *node)
 {
-  return (n1->domdfs.first <= n2->domdfs.first &&
-          n1->domdfs.last <= n2->domdfs.last);
+  return (ancestor->domdfs.first <= node->domdfs.first &&
+          ancestor->domdfs.last <= node->domdfs.last);
 }
 
 struct basicblocknode *dom_common (struct basicblocknode *n1, struct basicblocknode *n2)

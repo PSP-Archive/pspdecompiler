@@ -60,7 +60,6 @@ struct subroutine {
   struct basicblock *endblock;
   list   blocks, dfsblocks, revdfsblocks;
 
-  list   scopes;
   list   variables;
 
   int    haserror;
@@ -85,7 +84,7 @@ struct basicblocknode {
 };
 
 enum basicblocktype {
-  BLOCK_START,
+  BLOCK_START = 0,
   BLOCK_END,
   BLOCK_SIMPLE,
   BLOCK_CALL
@@ -114,13 +113,25 @@ struct basicblock {
 
   list   inrefs, outrefs;
 
-  struct scope *sc, *loopsc;
+  struct loopstructure *loopst;
+  struct ifstructure *ifst;
 
-  int    haslabel;
+  int    haslabel, identsize;
+
   int    mark1, mark2;
 };
 
+enum edgetype {
+  EDGE_UNKNOWN = 0,
+  EDGE_GOTO,
+  EDGE_CONTINUE,
+  EDGE_BREAK,
+  EDGE_FOLLOW,
+  EDGE_IFEXIT
+};
+
 struct basicedge {
+  enum edgetype type;
   struct basicblock *from, *to;
   int fromnum, tonum;
 };
@@ -131,7 +142,7 @@ struct basicedge {
 #define NUM_REGISTERS 34
 
 enum valuetype {
-  VAL_CONSTANT,
+  VAL_CONSTANT = 0,
   VAL_REGISTER,
   VAL_VARIABLE
 };
@@ -185,26 +196,15 @@ struct operation {
   list operands;
 };
 
-enum scopetype {
-  SCOPE_MAIN,
-  SCOPE_LOOP,
-  SCOPE_IF
+struct loopstructure {
+  struct basicblock *start;
+  struct basicblock *end;
+  list  edges;
 };
 
-struct scope {
-  enum scopetype type;
-  struct basicblock *start;
-
-  union {
-    struct {
-      struct basicblock *end;
-      list  edges;
-    } loop;
-    struct {
-      struct basicblock *end;
-      struct basicedge *edge;
-    } branch;
-  } info;
+struct ifstructure {
+  struct basicblock *end;
+  int    outermost;
 };
 
 
@@ -225,7 +225,8 @@ struct code {
   fixedpool varspool;
   fixedpool opspool;
   fixedpool valspool;
-  fixedpool scopespool;
+  fixedpool loopspool;
+  fixedpool ifspool;
 };
 
 
@@ -244,12 +245,13 @@ void extract_cfg (struct subroutine *sub);
 
 int cfg_dfs (struct subroutine *sub, int reverse);
 
-int dom_isancestor (struct basicblocknode *n1, struct basicblocknode *n2);
+int dom_isancestor (struct basicblocknode *ancestor, struct basicblocknode *node);
 struct basicblocknode *dom_common (struct basicblocknode *n1, struct basicblocknode *n2);
 void cfg_dominance (struct subroutine *sub, int reverse);
 void cfg_frontier (struct subroutine *sub, int reverse);
 
-void extract_scopes (struct subroutine *sub);
+void reset_marks (struct subroutine *sub);
+void extract_structures (struct subroutine *sub);
 
 void build_ssa (struct subroutine *sub);
 void extract_variables (struct subroutine *sub);

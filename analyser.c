@@ -20,7 +20,8 @@ struct code *code_alloc (void)
   c->varspool = fixedpool_create (sizeof (struct variable), 4096, 1);
   c->opspool = fixedpool_create (sizeof (struct operation), 8192, 1);
   c->valspool = fixedpool_create (sizeof (struct value), 8192, 1);
-  c->scopespool = fixedpool_create (sizeof (struct scope), 256, 1);
+  c->loopspool = fixedpool_create (sizeof (struct loopstructure), 256, 1);
+  c->ifspool = fixedpool_create (sizeof (struct ifstructure), 1024, 1);
 
   return c;
 }
@@ -79,9 +80,13 @@ void code_free (struct code *c)
     fixedpool_destroy (c->valspool, NULL, NULL);
   c->valspool = NULL;
 
-  if (c->scopespool)
-    fixedpool_destroy (c->scopespool, NULL, NULL);
-  c->scopespool = NULL;
+  if (c->loopspool)
+    fixedpool_destroy (c->loopspool, NULL, NULL);
+  c->loopspool = NULL;
+
+  if (c->ifspool)
+    fixedpool_destroy (c->ifspool, NULL, NULL);
+  c->ifspool = NULL;
 
   free (c);
 }

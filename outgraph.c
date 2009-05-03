@@ -5,17 +5,21 @@
 #include "utils.h"
 
 static
-void print_scope (FILE *out, struct scope *sc)
+void print_structures (FILE *out, struct basicblock *block)
 {
-  if (!sc) return;
-
-  fprintf (out, "Scope ");
-  switch (sc->type) {
-  case SCOPE_IF:   fprintf (out, "IF");   break;
-  case SCOPE_LOOP: fprintf (out, "LOOP"); break;
-  case SCOPE_MAIN: fprintf (out, "MAIN"); break;
+  if (block->loopst) {
+    fprintf (out, "LOOP start %d", block->loopst->start->node.dfsnum);
+    if (block->loopst->end)
+      fprintf (out, " end %d", block->loopst->end->node.dfsnum);
+    fprintf (out, "\\l");
   }
-  fprintf (out, " start %d\\l", sc->start->node.dfsnum);
+
+  if (block->ifst) {
+    fprintf (out, "IF");
+    if (block->ifst->end)
+      fprintf (out, " end %d", block->ifst->end->node.dfsnum);
+    fprintf (out, "\\l");
+  }
 }
 
 static
@@ -127,10 +131,8 @@ void print_subroutine_graph (FILE *out, struct code *c, struct subroutine *sub, 
     fprintf (out, "    %3d ", block->node.dfsnum);
     fprintf (out, "[label=\"");
 
-    if (options & OUT_PRINT_SCOPES) {
-      print_scope (out, block->sc);
-      print_scope (out, block->loopsc);
-    }
+    if (options & OUT_PRINT_STRUCTURES)
+      print_structures (out, block);
 
     if (options & OUT_PRINT_DFS)
       fprintf (out, "(%d) ", block->node.dfsnum);
@@ -145,6 +147,7 @@ void print_subroutine_graph (FILE *out, struct code *c, struct subroutine *sub, 
     case BLOCK_SIMPLE: fprintf (out, "0x%08X-0x%08X",
         block->info.simple.begin->address, block->info.simple.end->address);
     }
+    if (block->haslabel) fprintf (out, "(*)");
     fprintf (out, "\\l");
 
     if (options & OUT_PRINT_PHIS)
@@ -184,6 +187,18 @@ void print_subroutine_graph (FILE *out, struct code *c, struct subroutine *sub, 
           fprintf (out, "[style=bold]");
         } else if (block->node.dfsnum >= refblock->node.dfsnum) {
           fprintf (out, "[color=red]");
+        }
+        if (options & OUT_PRINT_EDGE_TYPES) {
+          fprintf (out, "[label=\"");
+          switch (edge->type) {
+          case EDGE_UNKNOWN:  fprintf (out, "UNK");      break;
+          case EDGE_CONTINUE: fprintf (out, "CONTINUE"); break;
+          case EDGE_BREAK:    fprintf (out, "BREAK");    break;
+          case EDGE_FOLLOW:   fprintf (out, "FOLLOW");   break;
+          case EDGE_GOTO:     fprintf (out, "GOTO");     break;
+          case EDGE_IFEXIT:   fprintf (out, "IFEXIT");   break;
+          }
+          fprintf (out, "\"]");
         }
         fprintf (out, " ;\n");
         ref = element_next (ref);
