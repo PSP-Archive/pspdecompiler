@@ -199,12 +199,14 @@ struct operation {
 struct loopstructure {
   struct basicblock *start;
   struct basicblock *end;
+  int    hasendgoto;
   list  edges;
 };
 
 struct ifstructure {
   struct basicblock *end;
   int    outermost;
+  int    hasendgoto;
 };
 
 

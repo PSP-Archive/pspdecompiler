@@ -59,22 +59,12 @@ void print_condition (FILE *out, struct location *loc, int reverse)
 static
 void print_block (FILE *out, struct basicblock *block)
 {
-  if (block->type == BLOCK_SIMPLE) {
-    struct location *loc;
-    for (loc = block->info.simple.begin; ;loc++) {
-      if (loc != block->info.simple.jumploc) {
-        ident_line (out, block->identsize + 1);
-        fprintf (out, "%s\n", allegrex_disassemble (loc->opc, loc->address, FALSE));
-      }
-      if (loc == block->info.simple.end) break;
-    }
-  } else if (block->type == BLOCK_CALL) {
-    ident_line (out, block->identsize + 1);
-    if (block->info.call.calltarget) {
-      print_subroutine_name (out, block->info.call.calltarget);
-      fprintf (out, "();\n");
-    } else
-      fprintf (out, "CALL ();\n");
+  element opel;
+  opel = list_head (block->operations);
+  while (opel) {
+    struct operation *op = element_getvalue (opel);
+    print_operation (out, op, block->identsize + 1);
+    opel = element_next (opel);
   }
 }
 
@@ -86,14 +76,17 @@ void print_block_recursive (FILE *out, struct basicblock *block)
   element ref;
 
   block->mark1 = 1;
+  block->sub->temp++;
 
   if (block->haslabel) {
+    fprintf (out, "\n");
     ident_line (out, block->identsize);
     fprintf (out, "label%d:\n", block->node.dfsnum);
   }
 
   if (block->loopst) {
     if (block->loopst->start == block) {
+      fprintf (out, "\n");
       ident_line (out, block->identsize);
       fprintf (out, "loop {\n");
     }
@@ -115,6 +108,7 @@ void print_block_recursive (FILE *out, struct basicblock *block)
         reversecond = TRUE;
     }
 
+    fprintf (out, "\n");
     ident_line (out, block->identsize + 1);
     print_condition (out, block->info.simple.jumploc, reversecond);
   }
@@ -160,17 +154,26 @@ void print_block_recursive (FILE *out, struct basicblock *block)
 
   if (block->ifst) {
     if (block->ifst->end && block->ifst->outermost) {
-      print_block_recursive (out, block->ifst->end);
+      if (block->ifst->hasendgoto) {
+        ident_line (out, block->identsize + 1);
+        fprintf (out, "goto label%d;\n", block->ifst->end->node.dfsnum);
+      } else {
+        print_block_recursive (out, block->ifst->end);
+      }
     }
   }
 
   if (block->loopst) {
     if (block->loopst->start == block) {
       ident_line (out, block->identsize);
-      fprintf (out, "}\n");
+      fprintf (out, "}\n\n");
       if (block->loopst->end) {
-        if (!block->loopst->end->mark1)
+        if (block->loopst->hasendgoto) {
+          ident_line (out, block->identsize + 1);
+          fprintf (out, "goto label%d;\n", block->loopst->end->node.dfsnum);
+        } else {
           print_block_recursive (out, block->loopst->end);
+        }
       }
     }
   }
@@ -194,8 +197,20 @@ void print_subroutine (FILE *out, struct code *c, struct subroutine *sub)
       if (loc == sub->end) break;
     }
   } else {
+    element el;
     reset_marks (sub);
-    print_block_recursive (out, sub->startblock);
+
+    sub->temp = 0;
+    el = list_head (sub->blocks);
+    while (sub->temp < list_size (sub->blocks)) {
+      struct basicblock *block = element_getvalue (el);
+      while (el && block->mark1) {
+        el = element_next (el);
+        block = element_getvalue (el);
+      }
+      if (!el) break;
+      print_block_recursive (out, block);
+    }
   }
   fprintf (out, "}\n\n");
 }

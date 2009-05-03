@@ -469,7 +469,7 @@ void structure_search (struct basicblock *block, int identsize, struct ifstructu
     if (block->ifst->end)
       ifend = block->ifst->end;
 
-  ref = list_head (block->outrefs);
+  block->sub->temp++;
   block->mark1 = 1;
 
   if (block->loopst) {
@@ -478,18 +478,28 @@ void structure_search (struct basicblock *block, int identsize, struct ifstructu
       if (block->loopst->end) {
         if (!block->loopst->end->mark1)
           structure_search (block->loopst->end, identsize - 1, ifst);
+        else {
+          block->loopst->end->haslabel = TRUE;
+          block->loopst->hasendgoto = TRUE;
+        }
       }
     }
   }
 
   if (block->ifst) {
     if (block->ifst->end && block->ifst->outermost) {
-      structure_search (block->ifst->end, identsize, ifst);
+      if (!block->ifst->end->mark1)
+        structure_search (block->ifst->end, identsize, ifst);
+      else {
+        block->ifst->end->haslabel = TRUE;
+        block->ifst->hasendgoto = TRUE;
+      }
     }
   }
 
   block->identsize = identsize;
 
+  ref = list_head (block->outrefs);
   while (ref) {
     edge = element_getvalue (ref);
     if (edge->type == EDGE_UNKNOWN) {
@@ -517,8 +527,9 @@ void structure_search (struct basicblock *block, int identsize, struct ifstructu
           edge->type = EDGE_FOLLOW;
           if (block->ifst) {
             structure_search (edge->to, identsize + 1, block->ifst);
-          } else
+          } else {
             structure_search (edge->to, identsize, ifst);
+          }
         }
       }
     }
@@ -538,6 +549,7 @@ void reset_marks (struct subroutine *sub)
 
 void extract_structures (struct subroutine *sub)
 {
+  element el;
   sub->temp = 0;
   reset_marks (sub);
 
@@ -549,5 +561,15 @@ void extract_structures (struct subroutine *sub)
   extract_ifs (sub);
 
   reset_marks (sub);
-  structure_search (sub->startblock, 0, NULL);
+  sub->temp = 0;
+  el = list_head (sub->blocks);
+  while (sub->temp < list_size (sub->blocks)) {
+    struct basicblock *block = element_getvalue (el);
+    while (el && block->mark1) {
+      el = element_next (el);
+      block = element_getvalue (el);
+    }
+    if (!el) break;
+    structure_search (block, 0, NULL);
+  }
 }
