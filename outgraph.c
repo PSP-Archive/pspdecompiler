@@ -5,6 +5,111 @@
 #include "utils.h"
 
 static
+void print_scope (FILE *out, struct scope *sc)
+{
+  if (!sc) return;
+
+  fprintf (out, "Scope ");
+  switch (sc->type) {
+  case SCOPE_IF:   fprintf (out, "IF");   break;
+  case SCOPE_LOOP: fprintf (out, "LOOP"); break;
+  case SCOPE_MAIN: fprintf (out, "MAIN"); break;
+  }
+  fprintf (out, " start %d\\l", sc->start->node.dfsnum);
+}
+
+static
+void print_block_code (FILE *out, struct basicblock *block)
+{
+  if (block->type == BLOCK_SIMPLE) {
+    struct location *loc;
+    for (loc = block->info.simple.begin; ; loc++) {
+      fprintf (out, "%s\\l", allegrex_disassemble (loc->opc, loc->address, FALSE));
+      if (loc == block->info.simple.end) break;
+    }
+  }
+}
+
+static
+void print_block_phis (FILE *out, struct basicblock *block)
+{
+  element opsel, argel;
+  opsel = list_head (block->operations);
+  while (opsel) {
+    struct operation *op = element_getvalue (opsel);
+    int count1 = 0, count2 = 0;
+
+    if (op->type != OP_START && op->type != OP_END) {
+      argel = list_head (op->results);
+      while (argel) {
+        struct value *val = element_getvalue (argel);
+        if (val->type != VAL_CONSTANT) {
+          if (count1++ == 0) fprintf (out, "<");
+          print_value (out, val, FALSE);
+          fprintf (out, " ");
+        }
+        argel = element_next (argel);
+      }
+      if (count1 > 0) fprintf (out, "> = ");
+
+      if (op->type == OP_PHI) {
+        fprintf (out, "PHI");
+      }
+      argel = list_head (op->operands);
+      while (argel) {
+        struct value *val = element_getvalue (argel);
+        if (val->type != VAL_CONSTANT) {
+          if (count2++ == 0) fprintf (out, "<");
+          print_value (out, val, FALSE);
+          fprintf (out, " ");
+        }
+        argel = element_next (argel);
+      }
+      if (count2 > 0) fprintf (out, ">");
+      if (count1 || count2) fprintf (out, "\\l");
+    }
+    opsel = element_next (opsel);
+  }
+}
+
+static
+void print_dominator (FILE *out, struct basicblock *block, int reverse, const char *color)
+{
+  struct basicblock *dominator;
+
+  if (reverse) {
+    if (list_size (block->outrefs) <= 1) return;
+    dominator = element_getvalue (block->revnode.dominator->block);
+  } else {
+    if (list_size (block->inrefs) <= 1) return;
+    dominator = element_getvalue (block->node.dominator->block);
+  }
+  fprintf (out, "    %3d -> %3d [color=%s];\n",
+      block->node.dfsnum, dominator->node.dfsnum, color);
+}
+
+static
+void print_frontier (FILE *out, struct basicblock *block, list frontier, const char *color)
+{
+  element ref;
+  if (list_size (frontier) == 0) return;
+
+  fprintf (out, "    %3d -> { ", block->node.dfsnum);
+  ref = list_head (frontier);
+  while (ref) {
+    struct basicblocknode *refnode;
+    struct basicblock *refblock;
+
+    refnode = element_getvalue (ref);
+    refblock = element_getvalue (refnode->block);
+
+    fprintf (out, "%3d ", refblock->node.dfsnum);
+    ref = element_next (ref);
+  }
+  fprintf (out, " } [color=%s];\n", color);
+}
+
+static
 void print_subroutine_graph (FILE *out, struct code *c, struct subroutine *sub, int options)
 {
   struct basicblock *block;
@@ -23,22 +128,15 @@ void print_subroutine_graph (FILE *out, struct code *c, struct subroutine *sub, 
     fprintf (out, "[label=\"");
 
     if (options & OUT_PRINT_SCOPES) {
-      struct scope *sc;
-      sc = block->sc;
-      while (sc) {
-        fprintf (out, "Scope ");
-        switch (sc->type) {
-        case SCOPE_IF:   fprintf (out, "IF");   break;
-        case SCOPE_LOOP: fprintf (out, "LOOP"); break;
-        case SCOPE_MAIN: fprintf (out, "MAIN"); break;
-        }
-        fprintf (out, " %d depth %d start %d\\l", sc->dfsnum, sc->depth, sc->start->node.dfsnum);
-        sc = sc->parent;
-      }
+      print_scope (out, block->sc);
+      print_scope (out, block->loopsc);
     }
 
-    if (options & OUT_PRINT_DFS)  fprintf (out, "(%d) ", block->node.dfsnum);
-    if (options & OUT_PRINT_RDFS) fprintf (out, "(%d) ", block->revnode.dfsnum);
+    if (options & OUT_PRINT_DFS)
+      fprintf (out, "(%d) ", block->node.dfsnum);
+
+    if (options & OUT_PRINT_RDFS)
+      fprintf (out, "(%d) ", block->revnode.dfsnum);
 
     switch (block->type) {
     case BLOCK_START:  fprintf (out, "Start");   break;
@@ -49,95 +147,27 @@ void print_subroutine_graph (FILE *out, struct code *c, struct subroutine *sub, 
     }
     fprintf (out, "\\l");
 
-    if (options & OUT_PRINT_PHIS) {
-      element opsel, argel;
-      opsel = list_head (block->operations);
-      while (opsel) {
-        struct operation *op = element_getvalue (opsel);
-        int count1 = 0, count2 = 0;
+    if (options & OUT_PRINT_PHIS)
+      print_block_phis (out, block);
 
-        if (op->type != OP_START && op->type != OP_END) {
-          argel = list_head (op->results);
-          while (argel) {
-            struct value *val = element_getvalue (argel);
-            if (val->type != VAL_CONSTANT) {
-              if (count1++ == 0) fprintf (out, "<");
-              print_value (out, val, FALSE);
-              fprintf (out, " ");
-            }
-            argel = element_next (argel);
-          }
-          if (count1 > 0) fprintf (out, "> = ");
-
-          if (op->type == OP_PHI) {
-            fprintf (out, "PHI");
-          }
-          argel = list_head (op->operands);
-          while (argel) {
-            struct value *val = element_getvalue (argel);
-            if (val->type != VAL_CONSTANT) {
-              if (count2++ == 0) fprintf (out, "<");
-              print_value (out, val, FALSE);
-              fprintf (out, " ");
-            }
-            argel = element_next (argel);
-          }
-          if (count2 > 0) fprintf (out, ">");
-          if (count1 || count2) fprintf (out, "\\l");
-        }
-        opsel = element_next (opsel);
-      }
-    }
-    if (block->type == BLOCK_SIMPLE && (options & OUT_PRINT_CODE)) {
-      struct location *loc;
-      for (loc = block->info.simple.begin; ; loc++) {
-        fprintf (out, "%s\\l", allegrex_disassemble (loc->opc, loc->address, FALSE));
-        if (loc == block->info.simple.end) break;
-      }
-    }
+    if (options & OUT_PRINT_CODE)
+      print_block_code (out, block);
 
     fprintf (out, "\"];\n");
 
 
-    if (options & OUT_PRINT_DOMINATOR) {
-      if (block->node.dominator && list_size (block->inrefs) > 1) {
-        fprintf (out, "    %3d -> %3d [color=green];\n", block->node.dfsnum, block->node.dominator->dfsnum);
-      }
-    }
+    if (options & OUT_PRINT_DOMINATOR)
+      print_dominator (out, block, FALSE, "green");
 
-    if (options & OUT_PRINT_RDOMINATOR) {
-      if (block->revnode.dominator && list_size (block->outrefs) > 1) {
-        fprintf (out, "    %3d -> %3d [color=yellow];\n", block->node.dfsnum, block->revnode.dominator->dfsnum);
-      }
-    }
+    if (options & OUT_PRINT_RDOMINATOR)
+      print_dominator (out, block, TRUE, "yellow");
 
-    if (list_size (block->node.frontier) != 0 && (options & OUT_PRINT_FRONTIER)) {
-      fprintf (out, "    %3d -> { ", block->node.dfsnum);
-      ref = list_head (block->node.frontier);
-      while (ref) {
-        struct basicblocknode *refnode;
-        struct basicblock *refblock;
-        refnode = element_getvalue (ref);
-        refblock = element_getvalue (refnode->block);
-        fprintf (out, "%3d ", refblock->node.dfsnum);
-        ref = element_next (ref);
-      }
-      fprintf (out, " } [color=orange];\n");
-    }
+    if (options & OUT_PRINT_FRONTIER)
+      print_frontier (out, block, block->node.frontier, "orange");
 
-    if (list_size (block->revnode.frontier) != 0 && (options & OUT_PRINT_RFRONTIER)) {
-      fprintf (out, "    %3d -> { ", block->node.dfsnum);
-      ref = list_head (block->revnode.frontier);
-      while (ref) {
-        struct basicblocknode *refnode;
-        struct basicblock *refblock;
-        refnode = element_getvalue (ref);
-        refblock = element_getvalue (refnode->block);
-        fprintf (out, "%3d ", refblock->node.dfsnum);
-        ref = element_next (ref);
-      }
-      fprintf (out, " } [color=blue];\n");
-    }
+    if (options & OUT_PRINT_RFRONTIER)
+      print_frontier (out, block, block->revnode.frontier, "blue");
+
 
     if (list_size (block->outrefs) != 0) {
       ref = list_head (block->outrefs);

@@ -17,7 +17,7 @@ void print_help (char *prgname)
     "Where:\n"
     "  -g    output graphviz dot\n"
     "  -t    print depth first search number\n"
-    "  -r    print the reverse deep-first search number\n"
+    "  -r    print the reverse depth first search number\n"
     "  -d    print the dominator\n"
     "  -x    print the reverse dominator\n"
     "  -f    print the frontier\n"

@@ -68,8 +68,14 @@ struct subroutine {
 };
 
 
+struct intpair {
+  int first;
+  int last;
+};
+
 struct basicblocknode {
   int dfsnum;
+  struct intpair domdfs;
   struct basicblocknode *dominator;
   struct basicblocknode *parent;
   element block;
@@ -108,7 +114,8 @@ struct basicblock {
 
   list   inrefs, outrefs;
 
-  struct scope *sc;
+  struct scope *sc, *loopsc;
+
   int    haslabel;
   int    mark1, mark2;
 };
@@ -186,12 +193,7 @@ enum scopetype {
 
 struct scope {
   enum scopetype type;
-  struct scope *parent;
-  struct scope *breakparent;
-
   struct basicblock *start;
-  int   dfsnum, depth;
-  list  children;
 
   union {
     struct {
@@ -242,8 +244,8 @@ void extract_cfg (struct subroutine *sub);
 
 int cfg_dfs (struct subroutine *sub, int reverse);
 
-int dom_isdominator (struct basicblocknode *n1, struct basicblocknode *n2);
-struct basicblocknode *dom_intersect (struct basicblocknode *n1, struct basicblocknode *n2);
+int dom_isancestor (struct basicblocknode *n1, struct basicblocknode *n2);
+struct basicblocknode *dom_common (struct basicblocknode *n1, struct basicblocknode *n2);
 void cfg_dominance (struct subroutine *sub, int reverse);
 void cfg_frontier (struct subroutine *sub, int reverse);
 

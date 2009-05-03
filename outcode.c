@@ -65,9 +65,10 @@ void print_asm (FILE *out, int ident, struct operation *op)
 #define RS(op) ((op >> 21) & 0x1F)
 
 static
-void print_condition (FILE *out, struct location *loc)
+void print_condition (FILE *out, struct location *loc, int reverse)
 {
   fprintf (out, "if (");
+  if (reverse) fprintf (out, "!(");
   switch (loc->insn->insn) {
   case I_BNE:
   case I_BNEL:
@@ -99,6 +100,7 @@ void print_condition (FILE *out, struct location *loc)
   default:
     break;
   }
+  if (reverse) fprintf (out, ")");
   fprintf (out, ")\n");
 }
 
@@ -107,7 +109,7 @@ static
 void print_block (FILE *out, struct basicblock *block)
 {
   if (block->haslabel) {
-    ident_line (out, block->sc->depth);
+    ident_line (out, 1);
     fprintf (out, "label%d:\n", block->node.dfsnum);
   }
 
@@ -115,7 +117,7 @@ void print_block (FILE *out, struct basicblock *block)
     struct location *loc;
     for (loc = block->info.simple.begin; ;loc++) {
       if (loc != block->info.simple.jumploc) {
-        ident_line (out, block->sc->depth + 1);
+        ident_line (out, 2);
         fprintf (out, "%s\n", allegrex_disassemble (loc->opc, loc->address, FALSE));
       }
       if (loc == block->info.simple.end) break;
@@ -123,12 +125,12 @@ void print_block (FILE *out, struct basicblock *block)
     loc = block->info.simple.jumploc;
     if (loc) {
       if (loc->insn->flags & INSN_BRANCH) {
-        ident_line (out, block->sc->depth + 1);
-        print_condition (out, loc);
+        ident_line (out, 2);
+        print_condition (out, loc, FALSE);
       }
     }
   } else if (block->type == BLOCK_CALL) {
-    ident_line (out, block->sc->depth + 1);
+    ident_line (out, 2);
     if (block->info.call.calltarget) {
       print_subroutine_name (out, block->info.call.calltarget);
       fprintf (out, "();\n");

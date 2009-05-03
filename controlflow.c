@@ -247,22 +247,11 @@ void extract_cfg (struct subroutine *sub)
 static
 struct scope *scope_alloc (struct subroutine *sub, enum scopetype type, struct basicblock *start)
 {
-  struct scope *sc = fixedpool_alloc (sub->code->scopespool);
-  sc->children = list_alloc (sub->code->lstpool);
+  struct scope *sc;
+  sc = fixedpool_alloc (sub->code->scopespool);
   sc->type = type;
-  sc->parent = start->sc;
-  sc->breakparent = NULL;
-
-  if (sc->parent) {
-    if (sc->parent->type == SCOPE_LOOP)
-      sc->breakparent = sc->parent;
-    else
-      sc->breakparent = sc->parent->breakparent;
-
-    list_inserttail (sc->parent->children, sc);
-  }
-
   sc->start = start;
+
   list_inserttail (sub->scopes, sc);
   return sc;
 }
@@ -307,7 +296,7 @@ void mark_forward (struct subroutine *sub, struct basicblock *block, struct scop
     struct basicblock *block = element_getvalue (el);
     if (block->node.dfsnum > end) break;
     if (block->mark2 == num) {
-      block->sc = sc;
+      block->loopsc = sc;
       ref = list_head (block->outrefs);
       while (ref) {
         struct basicedge *edge = element_getvalue (ref);
@@ -379,7 +368,7 @@ int extract_loops (struct subroutine *sub)
     while (ref) {
       edge = element_getvalue (ref);
       if (edge->from->node.dfsnum >= block->node.dfsnum) {
-        if (!dom_isdominator (&block->node, &edge->from->node)) {
+        if (!dom_isancestor (&block->node, &edge->from->node)) {
           error (__FILE__ ": graph of sub 0x%08X is not reducible", sub->begin->address);
           return FALSE;
         }
@@ -422,7 +411,7 @@ void extract_ifs (struct subroutine *sub)
 
     if (list_size (block->outrefs) == 2 && !hasswitch) {
       struct basicblocknode *runner;
-      struct basicblock *next, *end;
+      struct basicblock *runnerblock, *end;
 
       node = &block->revnode;
       end = element_getvalue (node->dominator->block);
@@ -434,20 +423,19 @@ void extract_ifs (struct subroutine *sub)
           struct basicedge *edge = element_getvalue (ref);
           sc = NULL;
           if (block->node.dfsnum < edge->to->node.dfsnum) {
-            next = edge->to;
-            runner = &next->revnode;
+            runnerblock = edge->to;
+            runner = &runnerblock->revnode;
             while (runner != node->dominator) {
-              if ((block->sc->parent == next->sc && block->sc->type == SCOPE_IF) ||
-                  next->sc == block->sc) {
-                if (!sc) {
-                  sc = scope_alloc (sub, SCOPE_IF, block);
-                  sc->info.branch.edge = edge;
-                  sc->info.branch.end = end;
-                }
-                next->sc = sc;
-              } else break;
+              if (!sc) {
+                sc = scope_alloc (sub, SCOPE_IF, block);
+                sc->info.branch.edge = edge;
+                sc->info.branch.end = end;
+              }
+              runnerblock->sc = sc;
+
+
               runner = runner->dominator;
-              next = element_getvalue (runner->block);
+              runnerblock = element_getvalue (runner->block);
             }
           }
           ref = element_next (ref);
@@ -459,24 +447,9 @@ void extract_ifs (struct subroutine *sub)
   }
 }
 
-static
-void scopes_dfs (struct scope *sc, int depth, int *dfsnum)
-{
-  element el;
-
-  sc->depth = depth;
-  el = list_head (sc->children);
-  while (el) {
-    scopes_dfs (element_getvalue (el), depth + 1, dfsnum);
-    el = element_next (el);
-  }
-  sc->dfsnum = (*dfsnum)--;
-}
-
 void extract_scopes (struct subroutine *sub)
 {
   struct scope *mainsc;
-  int dfsnum;
   element el;
 
   sub->scopes = list_alloc (sub->code->lstpool);
@@ -497,7 +470,4 @@ void extract_scopes (struct subroutine *sub)
   }
 
   extract_ifs (sub);
-
-  dfsnum = list_size (sub->scopes);
-  scopes_dfs (mainsc, 0, &dfsnum);
 }

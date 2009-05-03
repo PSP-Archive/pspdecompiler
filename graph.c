@@ -3,7 +3,7 @@
 #include "utils.h"
 
 static
-void dfs_step (struct subroutine *sub, struct basicblock *block, int reverse)
+void dfs_step (struct basicblock *block, int reverse)
 {
   struct basicblock *next;
   struct basicblocknode *node, *nextnode;
@@ -13,11 +13,11 @@ void dfs_step (struct subroutine *sub, struct basicblock *block, int reverse)
   if (reverse) {
     node = &block->revnode;
     refs = block->inrefs;
-    out = sub->revdfsblocks;
+    out = block->sub->revdfsblocks;
   } else {
     node = &block->node;
     refs = block->outrefs;
-    out = sub->dfsblocks;
+    out = block->sub->dfsblocks;
   }
   node->dfsnum = -1;
 
@@ -36,12 +36,12 @@ void dfs_step (struct subroutine *sub, struct basicblock *block, int reverse)
     if (!nextnode->dfsnum) {
       nextnode->parent = node;
       list_inserttail (node->children, nextnode);
-      dfs_step (sub, next, reverse);
+      dfs_step (next, reverse);
     }
     el = element_next (el);
   }
 
-  node->dfsnum = sub->temp--;
+  node->dfsnum = block->sub->temp--;
   node->block = list_inserthead (out, block);
 }
 
@@ -51,19 +51,17 @@ int cfg_dfs (struct subroutine *sub, int reverse)
   sub->temp = list_size (sub->blocks);
   start = reverse ? sub->endblock : sub->startblock;
 
-  dfs_step (sub, start, reverse);
+  dfs_step (start, reverse);
   return (sub->temp == 0);
 }
 
-int dom_isdominator (struct basicblocknode *n1, struct basicblocknode *n2)
+int dom_isancestor (struct basicblocknode *n1, struct basicblocknode *n2)
 {
-  while (n2->dfsnum > n1->dfsnum) {
-    n2 = n2->dominator;
-  }
-  return (n1 == n2);
+  return (n1->domdfs.first <= n2->domdfs.first &&
+          n1->domdfs.last <= n2->domdfs.last);
 }
 
-struct basicblocknode *dom_intersect (struct basicblocknode *n1, struct basicblocknode *n2)
+struct basicblocknode *dom_common (struct basicblocknode *n1, struct basicblocknode *n2)
 {
   while (n1 != n2) {
     while (n1->dfsnum > n2->dfsnum) {
@@ -76,21 +74,40 @@ struct basicblocknode *dom_intersect (struct basicblocknode *n1, struct basicblo
   return n1;
 }
 
+static
+void dom_dfs_step (struct basicblocknode *node, struct intpair *domdfs)
+{
+  struct basicblocknode *next;
+  element el;
+
+  node->domdfs.first = (domdfs->first)++;
+  el = list_head (node->domchildren);
+  while (el) {
+    next = element_getvalue (el);
+    if (!next->domdfs.first)
+      dom_dfs_step (next, domdfs);
+    el = element_next (el);
+  }
+  node->domdfs.last = (domdfs->last)--;
+}
+
 void cfg_dominance (struct subroutine *sub, int reverse)
 {
   struct basicblock *start;
+  struct basicblocknode *startnode;
   list blocks, refs;
   int changed = TRUE;
+  struct intpair domdfs;
   element el;
 
   if (reverse) {
     blocks = sub->revdfsblocks;
     start = sub->endblock;
-    start->revnode.dominator = &start->revnode;
+    startnode = start->revnode.dominator = &start->revnode;
   } else {
     blocks = sub->dfsblocks;
     start = sub->startblock;
-    start->node.dominator = &start->node;
+    startnode = start->node.dominator = &start->node;
   }
 
   while (changed) {
@@ -123,7 +140,7 @@ void cfg_dominance (struct subroutine *sub, int reverse)
           if (!dom) {
             dom = brefnode;
           } else {
-            dom = dom_intersect (dom, brefnode);
+            dom = dom_common (dom, brefnode);
           }
         }
 
@@ -151,6 +168,10 @@ void cfg_dominance (struct subroutine *sub, int reverse)
 
     el = element_next (el);
   }
+
+  domdfs.first = 0;
+  domdfs.last = list_size (blocks);
+  dom_dfs_step (startnode, &domdfs);
 }
 
 void cfg_frontier (struct subroutine *sub, int reverse)
