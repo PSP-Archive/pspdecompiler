@@ -344,7 +344,7 @@ void mark_loop (struct subroutine *sub, struct loopstructure *loop)
 }
 
 static
-int extract_loops (struct subroutine *sub)
+void extract_loops (struct subroutine *sub)
 {
   struct basicblock *block;
   struct basicedge *edge;
@@ -362,10 +362,10 @@ int extract_loops (struct subroutine *sub)
       if (edge->from->node.dfsnum >= block->node.dfsnum) {
         edge->type = EDGE_CONTINUE;
         if (!dom_isancestor (&block->node, &edge->from->node)) {
-          error (__FILE__ ": graph of sub 0x%08X is not reducible", sub->begin->address);
-          return FALSE;
-        }
-        if (block->loopst == edge->from->loopst ||
+          error (__FILE__ ": graph of sub 0x%08X is not reducible (using goto)", sub->begin->address);
+          edge->type = EDGE_GOTO;
+          edge->to->haslabel = TRUE;
+        } else if (block->loopst == edge->from->loopst ||
             dom_isancestor (&block->revnode, &edge->from->revnode)) {
           if (!loop) {
             loop = fixedpool_alloc (sub->code->loopspool);
@@ -383,8 +383,6 @@ int extract_loops (struct subroutine *sub)
     if (loop) mark_loop (sub, loop);
     el = element_next (el);
   }
-
-  return TRUE;
 }
 
 static
@@ -469,7 +467,6 @@ void structure_search (struct basicblock *block, int identsize, struct ifstructu
     if (block->ifst->end)
       ifend = block->ifst->end;
 
-  block->sub->temp++;
   block->mark1 = 1;
 
   if (block->loopst) {
@@ -553,23 +550,17 @@ void extract_structures (struct subroutine *sub)
   sub->temp = 0;
   reset_marks (sub);
 
-  if (!extract_loops (sub)) {
-    sub->haserror = TRUE;
-    return;
-  }
-
+  extract_loops (sub);
   extract_ifs (sub);
 
   reset_marks (sub);
   sub->temp = 0;
+
   el = list_head (sub->blocks);
-  while (sub->temp < list_size (sub->blocks)) {
+  while (el) {
     struct basicblock *block = element_getvalue (el);
-    while (el && block->mark1) {
-      el = element_next (el);
-      block = element_getvalue (el);
-    }
-    if (!el) break;
-    structure_search (block, 0, NULL);
+    if (!block->mark1)
+      structure_search (block, 0, NULL);
+    el = element_next (el);
   }
 }

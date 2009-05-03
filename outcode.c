@@ -76,7 +76,6 @@ void print_block_recursive (FILE *out, struct basicblock *block)
   element ref;
 
   block->mark1 = 1;
-  block->sub->temp++;
 
   if (block->haslabel) {
     fprintf (out, "\n");
@@ -200,16 +199,12 @@ void print_subroutine (FILE *out, struct code *c, struct subroutine *sub)
     element el;
     reset_marks (sub);
 
-    sub->temp = 0;
     el = list_head (sub->blocks);
-    while (sub->temp < list_size (sub->blocks)) {
+    while (el) {
       struct basicblock *block = element_getvalue (el);
-      while (el && block->mark1) {
-        el = element_next (el);
-        block = element_getvalue (el);
-      }
-      if (!el) break;
-      print_block_recursive (out, block);
+      if (!block->mark1)
+        print_block_recursive (out, block);
+      el = element_next (el);
     }
   }
   fprintf (out, "}\n\n");
