@@ -13,6 +13,7 @@
 #define OUT_PRINT_RFRONTIER  32
 #define OUT_PRINT_PHIS       64
 #define OUT_PRINT_CODE      128
+#define OUT_PRINT_SCOPES    256
 
 
 void get_base_name (char *filename, char *basename, size_t len);

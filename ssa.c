@@ -167,16 +167,13 @@ void simplify_operation (struct subroutine *sub, struct operation *op)
 }
 
 static
-void append_value (struct subroutine *sub, list l, enum valuetype type, uint32 value, int inserthead)
+void append_value (struct subroutine *sub, list l, enum valuetype type, uint32 value)
 {
   struct value *val;
   val = fixedpool_alloc (sub->code->valspool);
   val->type = type;
   val->val.intval = value;
-  if (inserthead)
-    list_inserthead (l, val);
-  else
-    list_inserttail (l, val);
+  list_inserttail (l, val);
 }
 
 #define BLOCK_GPR_KILL() \
@@ -192,18 +189,18 @@ void append_value (struct subroutine *sub, list l, enum valuetype type, uint32 v
   }
 
 #define ASM_GPR_KILL() \
-  BLOCK_GPR_KILL ()                                              \
-  if (!IS_BIT_SET (asm_kill, regno) && regno != 0) {             \
-    BIT_SET (asm_kill, regno);                                   \
-    append_value (sub, op->results, VAL_REGISTER, regno, FALSE); \
+  BLOCK_GPR_KILL ()                                       \
+  if (!IS_BIT_SET (asm_kill, regno) && regno != 0) {      \
+    BIT_SET (asm_kill, regno);                            \
+    append_value (sub, op->results, VAL_REGISTER, regno); \
   }
 
 #define ASM_GPR_GEN() \
-  BLOCK_GPR_GEN ()                                                \
-  if (!IS_BIT_SET (asm_kill, regno) && regno != 0 &&              \
-      !IS_BIT_SET (asm_gen, regno)) {                             \
-    BIT_SET (asm_gen, regno);                                     \
-    append_value (sub, op->operands, VAL_REGISTER, regno, FALSE); \
+  BLOCK_GPR_GEN ()                                         \
+  if (!IS_BIT_SET (asm_kill, regno) && regno != 0 &&       \
+      !IS_BIT_SET (asm_gen, regno)) {                      \
+    BIT_SET (asm_gen, regno);                              \
+    append_value (sub, op->operands, VAL_REGISTER, regno); \
   }
 
 static
@@ -238,69 +235,99 @@ void extract_operations (struct subroutine *sub, list *defblocks)
           op->type = OP_INSTRUCTION;
           op->begin = op->end = loc;
 
+          if (loc->insn->flags & INSN_READ_GPR_S) {
+            int regno = RS (loc->opc);
+            BLOCK_GPR_GEN ()
+            append_value (sub, op->operands, VAL_REGISTER, regno);
+          }
+
+          if (loc->insn->flags & INSN_READ_GPR_T) {
+            int regno = RT (loc->opc);
+            BLOCK_GPR_GEN ()
+            append_value (sub, op->operands, VAL_REGISTER, regno);
+          }
+
+          if (loc->insn->flags & INSN_READ_GPR_D) {
+            int regno = RD (loc->opc);
+            BLOCK_GPR_GEN ()
+            append_value (sub, op->operands, VAL_REGISTER, regno);
+          }
+
+          if (loc->insn->flags & INSN_READ_LO) {
+            int regno = REGISTER_LO;
+            BLOCK_GPR_GEN ()
+            append_value (sub, op->operands, VAL_REGISTER, regno);
+          }
+
+          if (loc->insn->flags & INSN_READ_HI) {
+            int regno = REGISTER_HI;
+            BLOCK_GPR_GEN ()
+            append_value (sub, op->operands, VAL_REGISTER, regno);
+          }
+
           if (loc->insn->flags & (INSN_LOAD | INSN_STORE)) {
-            append_value (sub, op->operands, VAL_CONSTANT, IMM (loc->opc), FALSE);
+            append_value (sub, op->operands, VAL_CONSTANT, IMM (loc->opc));
             op->flushed = TRUE;
           }
 
           switch (loc->insn->insn) {
           case I_ADDI:
             insn = I_ADD;
-            append_value (sub, op->operands, VAL_CONSTANT, IMM (loc->opc), FALSE);
+            append_value (sub, op->operands, VAL_CONSTANT, IMM (loc->opc));
             break;
           case I_ADDIU:
             insn = I_ADDU;
-            append_value (sub, op->operands, VAL_CONSTANT, IMM (loc->opc), FALSE);
+            append_value (sub, op->operands, VAL_CONSTANT, IMM (loc->opc));
             break;
           case I_ORI:
             insn = I_OR;
-            append_value (sub, op->operands, VAL_CONSTANT, IMMU (loc->opc), FALSE);
+            append_value (sub, op->operands, VAL_CONSTANT, IMMU (loc->opc));
             break;
           case I_XORI:
             insn = I_XOR;
-            append_value (sub, op->operands, VAL_CONSTANT, IMMU (loc->opc), FALSE);
+            append_value (sub, op->operands, VAL_CONSTANT, IMMU (loc->opc));
             break;
           case I_ANDI:
             insn = I_AND;
-            append_value (sub, op->operands, VAL_CONSTANT, IMMU (loc->opc), FALSE);
+            append_value (sub, op->operands, VAL_CONSTANT, IMMU (loc->opc));
             break;
           case I_LUI:
             op->type = OP_MOVE;
-            append_value (sub, op->operands, VAL_CONSTANT, IMMU (loc->opc) << 16, FALSE);
+            append_value (sub, op->operands, VAL_CONSTANT, IMMU (loc->opc) << 16);
             break;
           case I_SLTI:
             insn = I_SLT;
-            append_value (sub, op->operands, VAL_CONSTANT, IMM (loc->opc), FALSE);
+            append_value (sub, op->operands, VAL_CONSTANT, IMM (loc->opc));
             break;
           case I_SLTIU:
             insn = I_SLTU;
-            append_value (sub, op->operands, VAL_CONSTANT, IMM (loc->opc), FALSE);
+            append_value (sub, op->operands, VAL_CONSTANT, IMM (loc->opc));
             break;
           case I_EXT:
             insn = I_EXT;
-            append_value (sub, op->operands, VAL_CONSTANT, SA (loc->opc), FALSE);
-            append_value (sub, op->operands, VAL_CONSTANT, RD (loc->opc) + 1, FALSE);
+            append_value (sub, op->operands, VAL_CONSTANT, SA (loc->opc));
+            append_value (sub, op->operands, VAL_CONSTANT, RD (loc->opc) + 1);
             break;
           case I_INS:
             insn = I_INS;
-            append_value (sub, op->operands, VAL_CONSTANT, SA (loc->opc), FALSE);
-            append_value (sub, op->operands, VAL_CONSTANT, RD (loc->opc) - SA (loc->opc) + 1, FALSE);
+            append_value (sub, op->operands, VAL_CONSTANT, SA (loc->opc));
+            append_value (sub, op->operands, VAL_CONSTANT, RD (loc->opc) - SA (loc->opc) + 1);
             break;
           case I_ROTR:
             insn = I_ROTV;
-            append_value (sub, op->operands, VAL_CONSTANT, SA (loc->opc), FALSE);
+            append_value (sub, op->operands, VAL_CONSTANT, SA (loc->opc));
             break;
           case I_SLL:
             insn = I_SLLV;
-            append_value (sub, op->operands, VAL_CONSTANT, SA (loc->opc), FALSE);
+            append_value (sub, op->operands, VAL_CONSTANT, SA (loc->opc));
             break;
           case I_SRA:
             insn = I_SRAV;
-            append_value (sub, op->operands, VAL_CONSTANT, SA (loc->opc), FALSE);
+            append_value (sub, op->operands, VAL_CONSTANT, SA (loc->opc));
             break;
           case I_SRL:
             insn = I_SRLV;
-            append_value (sub, op->operands, VAL_CONSTANT, SA (loc->opc), FALSE);
+            append_value (sub, op->operands, VAL_CONSTANT, SA (loc->opc));
             break;
           case I_BEQL:
             insn = I_BEQ;
@@ -328,64 +355,34 @@ void extract_operations (struct subroutine *sub, list *defblocks)
           }
           op->insn = insn;
 
-          if (loc->insn->flags & INSN_READ_HI) {
-            int regno = REGISTER_HI;
-            BLOCK_GPR_GEN ()
-            append_value (sub, op->operands, VAL_REGISTER, regno, TRUE);
-          }
-
-          if (loc->insn->flags & INSN_READ_LO) {
-            int regno = REGISTER_LO;
-            BLOCK_GPR_GEN ()
-            append_value (sub, op->operands, VAL_REGISTER, regno, TRUE);
-          }
-
-          if (loc->insn->flags & INSN_READ_GPR_D) {
-            int regno = RD (loc->opc);
-            BLOCK_GPR_GEN ()
-            append_value (sub, op->operands, VAL_REGISTER, regno, TRUE);
-          }
-
-          if (loc->insn->flags & INSN_READ_GPR_T) {
-            int regno = RT (loc->opc);
-            BLOCK_GPR_GEN ()
-            append_value (sub, op->operands, VAL_REGISTER, regno, TRUE);
-          }
-
-          if (loc->insn->flags & INSN_READ_GPR_S) {
-            int regno = RS (loc->opc);
-            BLOCK_GPR_GEN ()
-            append_value (sub, op->operands, VAL_REGISTER, regno, TRUE);
-          }
-
           if (loc->insn->flags & INSN_WRITE_GPR_T) {
             int regno = RT (loc->opc);
             BLOCK_GPR_KILL ()
-            append_value (sub, op->results, VAL_REGISTER, regno, FALSE);
+            append_value (sub, op->results, VAL_REGISTER, regno);
           }
 
           if (loc->insn->flags & INSN_WRITE_GPR_D) {
             int regno = RD (loc->opc);
             BLOCK_GPR_KILL ()
-            append_value (sub, op->results, VAL_REGISTER, regno, FALSE);
+            append_value (sub, op->results, VAL_REGISTER, regno);
           }
 
           if (loc->insn->flags & INSN_WRITE_LO) {
             int regno = REGISTER_LO;
             BLOCK_GPR_KILL ()
-            append_value (sub, op->results, VAL_REGISTER, regno, FALSE);
+            append_value (sub, op->results, VAL_REGISTER, regno);
           }
 
           if (loc->insn->flags & INSN_WRITE_HI) {
             int regno = REGISTER_HI;
             BLOCK_GPR_KILL ()
-            append_value (sub, op->results, VAL_REGISTER, regno, FALSE);
+            append_value (sub, op->results, VAL_REGISTER, regno);
           }
 
           if (loc->insn->flags & INSN_LINK) {
             int regno = REGISTER_LINK;
             BLOCK_GPR_KILL ()
-            append_value (sub, op->results, VAL_REGISTER, regno, FALSE);
+            append_value (sub, op->results, VAL_REGISTER, regno);
           }
 
           simplify_operation (sub, op);
@@ -469,21 +466,21 @@ void extract_operations (struct subroutine *sub, list *defblocks)
       for (regno = 1; regno <= REGISTER_LINK; regno++) {
         if ((1 << regno) & CALLIN_REGMASK) {
           BLOCK_GPR_GEN ()
-          append_value (sub, op->operands, VAL_REGISTER, regno, FALSE);
+          append_value (sub, op->operands, VAL_REGISTER, regno);
         }
         if ((1 << regno) & CALLOUT_REGMASK) {
           BLOCK_GPR_KILL ()
-          append_value (sub, op->results, VAL_REGISTER, regno, FALSE);
+          append_value (sub, op->results, VAL_REGISTER, regno);
         }
       }
 
       regno = REGISTER_LO;
       BLOCK_GPR_KILL ()
-      append_value (sub, op->results, VAL_REGISTER, regno, FALSE);
+      append_value (sub, op->results, VAL_REGISTER, regno);
 
       regno = REGISTER_HI;
       BLOCK_GPR_KILL ()
-      append_value (sub, op->results, VAL_REGISTER, regno, FALSE);
+      append_value (sub, op->results, VAL_REGISTER, regno);
     }
 
     el = element_next (el);
@@ -576,9 +573,9 @@ void ssa_place_phis (struct subroutine *sub, list *defblocks)
           op = alloc_operation (sub, bref);
           op->type = OP_PHI;
           op->flushed = TRUE;
-          append_value (sub, op->results, VAL_REGISTER, i, FALSE);
+          append_value (sub, op->results, VAL_REGISTER, i);
           for (j = list_size (bref->inrefs); j > 0; j--)
-            append_value (sub, op->operands, VAL_REGISTER, i, FALSE);
+            append_value (sub, op->operands, VAL_REGISTER, i);
           list_inserthead (bref->operations, op);
 
           if (bref->mark1 != i) {
@@ -713,7 +710,7 @@ void build_ssa (struct subroutine *sub)
 
   for (i = 1; i < NUM_REGISTERS; i++) {
     BIT_SET (sub->startblock->reg_kill, i);
-    append_value (sub, op->results, VAL_REGISTER, i, FALSE);
+    append_value (sub, op->results, VAL_REGISTER, i);
   }
 
   list_inserttail (sub->startblock->operations, op);
@@ -724,7 +721,7 @@ void build_ssa (struct subroutine *sub)
   for (i = 1; i <= REGISTER_LINK; i++) {
     if (END_REGMASK & (1 << i)) {
       BIT_SET (sub->endblock->reg_gen, i);
-      append_value (sub, op->operands, VAL_REGISTER, i, FALSE);
+      append_value (sub, op->operands, VAL_REGISTER, i);
     }
   }
 

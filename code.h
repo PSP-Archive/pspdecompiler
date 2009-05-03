@@ -74,6 +74,7 @@ struct basicblocknode {
   struct basicblocknode *parent;
   element block;
   list children;
+  list domchildren;
   list frontier;
 };
 
@@ -112,15 +113,7 @@ struct basicblock {
   int    mark1, mark2;
 };
 
-enum basicedgetype {
-  EDGE_INVALID,
-  EDGE_NORMAL,
-  EDGE_LOOP,
-  EDGE_GOTO
-};
-
 struct basicedge {
-  enum basicedgetype type;
   struct basicblock *from, *to;
   int fromnum, tonum;
 };
@@ -188,8 +181,7 @@ struct operation {
 enum scopetype {
   SCOPE_MAIN,
   SCOPE_LOOP,
-  SCOPE_IFTHEN,
-  SCOPE_IFELSE
+  SCOPE_IF
 };
 
 struct scope {
@@ -198,11 +190,17 @@ struct scope {
   struct scope *breakparent;
 
   struct basicblock *start;
-  int   maxdfsnum;
   int   dfsnum, depth;
-
-  list  edges;
   list  children;
+
+  union {
+    struct {
+      list  edges;
+    } loop;
+    struct {
+      struct basicblock *end;
+    } branch;
+  } info;
 };
 
 
@@ -241,12 +239,13 @@ void extract_subroutines (struct code *c);
 void extract_cfg (struct subroutine *sub);
 
 int cfg_dfs (struct subroutine *sub, int reverse);
+
+int dom_isdominator (struct basicblocknode *n1, struct basicblocknode *n2);
 struct basicblocknode *dom_intersect (struct basicblocknode *n1, struct basicblocknode *n2);
 void cfg_dominance (struct subroutine *sub, int reverse);
 void cfg_frontier (struct subroutine *sub, int reverse);
 
 void extract_scopes (struct subroutine *sub);
-int scope_isancestor (struct scope *node, struct scope *ancestor);
 
 void build_ssa (struct subroutine *sub);
 void extract_variables (struct subroutine *sub);

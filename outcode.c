@@ -138,78 +138,6 @@ void print_block (FILE *out, struct basicblock *block)
 }
 
 static
-void print_block_recursive (FILE *out, struct basicblock *block)
-{
-  struct basicedge *edge;
-  struct scope *current;
-  element ref;
-  int count, isbranch;
-
-  print_block (out, block);
-  block->mark1 = 1;
-  ref = list_tail (block->outrefs);
-  isbranch = (list_size (block->outrefs) == 2);
-
-  while (ref) {
-    edge = element_getvalue (ref);
-    if (edge->type == EDGE_GOTO) {
-      if (isbranch) ident_line (out, block->sc->depth + 2);
-      else ident_line (out, block->sc->depth + 1);
-      fprintf (out, "goto label%d;\n", edge->to->node.dfsnum);
-    } else if (edge->type == EDGE_LOOP) {
-      if (isbranch) ident_line (out, block->sc->depth + 2);
-      else ident_line (out, block->sc->depth + 1);
-      fprintf (out, "continue;\n");
-    } else {
-      if (edge->to->sc == block->sc) {
-        print_block_recursive (out, edge->to);
-      } else {
-        count = scope_isancestor (block->sc, edge->to->sc);
-        if (count >= 0) {
-          while (count--) {
-            ident_line (out, edge->to->sc->depth + count + 1);
-            fprintf (out, "}\n");
-          }
-          print_block_recursive (out, edge->to);
-        } else {
-          count = scope_isancestor (edge->to->sc, block->sc);
-          if (count >= 0) {
-            current = edge->to->sc;
-            while (current != block->sc) {
-              ident_line (out, current->depth);
-              if (current->type == SCOPE_LOOP)
-                fprintf (out, "while(1) ");
-              fprintf (out, "{\n");
-              current = current->parent;
-            }
-            print_block_recursive (out, edge->to);
-          } else {
-            fprintf (out, "Caralho de asa\n");
-          }
-        }
-      }
-    }
-    ref = element_previous (ref);
-    if (isbranch && ref) {
-      ident_line (out, block->sc->depth + 1);
-      fprintf (out, "else\n");
-    }
-  }
-
-  ref = block->node.block;
-  current = block->sc;
-  while (ref) {
-    block = element_getvalue (ref);
-    if (block->sc == current &&
-        !block->mark1) {
-      print_block_recursive (out, block);
-      break;
-    }
-    ref = element_next (ref);
-  }
-}
-
-static
 void print_subroutine (FILE *out, struct code *c, struct subroutine *sub)
 {
   if (sub->import) return;
@@ -227,16 +155,7 @@ void print_subroutine (FILE *out, struct code *c, struct subroutine *sub)
       if (loc == sub->end) break;
     }
   } else {
-    element el;
-
-    el = list_head (sub->dfsblocks);
-    while (el) {
-      struct basicblock *block = element_getvalue (el);
-      block->mark1 = 0;
-      el = element_next (el);
-    }
-
-    print_block_recursive (out, sub->startblock);
+    print_block (out, sub->startblock);
   }
   fprintf (out, "}\n\n");
 }

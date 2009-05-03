@@ -21,6 +21,22 @@ void print_subroutine_graph (FILE *out, struct code *c, struct subroutine *sub, 
 
     fprintf (out, "    %3d ", block->node.dfsnum);
     fprintf (out, "[label=\"");
+
+    if (options & OUT_PRINT_SCOPES) {
+      struct scope *sc;
+      sc = block->sc;
+      while (sc) {
+        fprintf (out, "Scope ");
+        switch (sc->type) {
+        case SCOPE_IF: fprintf (out, "IF"); break;
+        case SCOPE_LOOP: fprintf (out, "LOOP"); break;
+        case SCOPE_MAIN: fprintf (out, "MAIN"); break;
+        }
+        fprintf (out, " %d depth %d start %d\\l", sc->dfsnum, sc->depth, sc->start->node.dfsnum);
+        sc = sc->parent;
+      }
+    }
+
     if (options & OUT_PRINT_DFS)  fprintf (out, "(%d) ", block->node.dfsnum);
     if (options & OUT_PRINT_RDFS) fprintf (out, "(%d) ", block->revnode.dfsnum);
 
@@ -79,6 +95,7 @@ void print_subroutine_graph (FILE *out, struct code *c, struct subroutine *sub, 
         if (loc == block->info.simple.end) break;
       }
     }
+
     fprintf (out, "\"];\n");
 
 

@@ -55,6 +55,14 @@ int cfg_dfs (struct subroutine *sub, int reverse)
   return (sub->temp == 0);
 }
 
+int dom_isdominator (struct basicblocknode *n1, struct basicblocknode *n2)
+{
+  while (n2->dfsnum > n1->dfsnum) {
+    n2 = n2->dominator;
+  }
+  return (n1 == n2);
+}
+
 struct basicblocknode *dom_intersect (struct basicblocknode *n1, struct basicblocknode *n2)
 {
   while (n1 != n2) {
@@ -73,6 +81,7 @@ void cfg_dominance (struct subroutine *sub, int reverse)
   struct basicblock *start;
   list blocks, refs;
   int changed = TRUE;
+  element el;
 
   if (reverse) {
     blocks = sub->revdfsblocks;
@@ -85,8 +94,6 @@ void cfg_dominance (struct subroutine *sub, int reverse)
   }
 
   while (changed) {
-    element el;
-
     changed = FALSE;
     el = list_head (blocks);
     el = element_next (el);
@@ -131,6 +138,18 @@ void cfg_dominance (struct subroutine *sub, int reverse)
 
       el = element_next (el);
     }
+  }
+
+  el = list_head (blocks);
+  while (el) {
+    struct basicblock *block;
+    struct basicblocknode *node;
+
+    block = element_getvalue (el);
+    node = (reverse) ? &block->revnode : &block->node;
+    list_inserttail (node->dominator->domchildren, node);
+
+    el = element_next (el);
   }
 }
 

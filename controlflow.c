@@ -12,6 +12,8 @@ struct basicblock *alloc_block (struct subroutine *sub)
   block->outrefs = list_alloc (sub->code->lstpool);
   block->node.children = list_alloc (sub->code->lstpool);
   block->revnode.children = list_alloc (sub->code->lstpool);
+  block->node.domchildren = list_alloc (sub->code->lstpool);
+  block->revnode.domchildren = list_alloc (sub->code->lstpool);
   block->node.frontier = list_alloc (sub->code->lstpool);
   block->revnode.frontier = list_alloc (sub->code->lstpool);
   block->sub = sub;
@@ -243,22 +245,21 @@ void extract_cfg (struct subroutine *sub)
 
 
 static
-struct scope *scope_alloc (struct subroutine *sub, struct scope *parent, enum scopetype type, struct basicblock *start)
+struct scope *scope_alloc (struct subroutine *sub, enum scopetype type, struct basicblock *start)
 {
   struct scope *sc = fixedpool_alloc (sub->code->scopespool);
-  sc->edges = list_alloc (sub->code->lstpool);
   sc->children = list_alloc (sub->code->lstpool);
   sc->type = type;
-  sc->parent = parent;
+  sc->parent = start->sc;
   sc->breakparent = NULL;
 
-  if (parent) {
-    if (parent->type == SCOPE_LOOP)
-      sc->breakparent = parent;
+  if (sc->parent) {
+    if (sc->parent->type == SCOPE_LOOP)
+      sc->breakparent = sc->parent;
     else
-      sc->breakparent = parent->breakparent;
+      sc->breakparent = sc->parent->breakparent;
 
-    list_inserttail (parent->children, sc);
+    list_inserttail (sc->parent->children, sc);
   }
 
   sc->start = start;
@@ -267,132 +268,101 @@ struct scope *scope_alloc (struct subroutine *sub, struct scope *parent, enum sc
 }
 
 static
-int mark_forward (struct basicblock *block, int maxdfsnum, struct scope *currscope)
+void mark_backward (struct subroutine *sub, struct basicblock *block, int num, int end)
 {
-  struct basicedge *edge;
-  struct scope *sc;
   element el, ref;
-  int mark;
-
-  mark = ++block->sub->temp;
-  sc = block->sc;
-  if (currscope) block->sc = currscope;
-  block->mark1 = mark;
-  block->mark2 = 0;
+  int count = 1;
 
   el = block->node.block;
-  while (el) {
-    block = element_getvalue (el);
-    if (block->node.dfsnum > maxdfsnum) break;
-    if (block->mark1 == mark) {
-      ref = list_head (block->outrefs);
-      while (ref) {
-        edge = element_getvalue (ref);
-        if (edge->to->node.dfsnum > block->node.dfsnum &&
-            edge->to->node.dfsnum <= maxdfsnum &&
-            edge->to->sc == sc) {
-          if (currscope) edge->to->sc = currscope;
-          edge->to->mark1 = mark;
-          edge->to->mark2 = 0;
-        }
-        ref = element_next (ref);
-      }
-    }
-    el = element_next (el);
-  }
+  while (el && count) {
+    struct basicblock *block = element_getvalue (el);
+    if (block->node.dfsnum < end) break;
 
-  return mark;
-}
-
-static
-void mark_branch (struct scope *sc)
-{
-  struct basicedge *edge;
-  int maxdfsnum;
-
-  edge = list_headvalue (sc->edges);
-  maxdfsnum = sc->start->revnode.dominator->dfsnum;
-  mark_forward (edge->to, maxdfsnum, sc);
-}
-
-static
-void mark_backward (struct basicblock *block, int mark, struct scope *currscope)
-{
-  struct basicedge *edge;
-  element el, ref;
-
-  block->sc = currscope;
-  block->mark2 = 1;
-
-  el = block->node.block;
-  while (el) {
-    block = element_getvalue (el);
-    if (block->mark2 && block->mark1 == mark) {
+    if (block->mark1 == num) {
+      count = 0;
       ref = list_head (block->inrefs);
       while (ref) {
-        edge = element_getvalue (ref);
-        if (edge->from->node.dfsnum < block->node.dfsnum &&
-            edge->from->mark1 == mark &&
-            !edge->from->mark2) {
-          edge->from->sc = currscope;
-          edge->from->mark2 = 1;
+        struct basicedge *edge = element_getvalue (ref);
+        struct basicblock *next = edge->from;
+        if (next->node.dfsnum >= end &&
+            next->node.dfsnum < block->node.dfsnum) {
+          if (next->mark1 != num) count++;
+          next->mark1 = num;
         }
         ref = element_next (ref);
       }
     }
+
     el = element_previous (el);
   }
 }
 
 static
-void mark_loop (struct scope *sc)
+void mark_forward (struct subroutine *sub, struct basicblock *block, struct scope *sc, int num, int end)
 {
-  struct basicedge *edge;
-  element ref;
-  int mark;
+  element el, ref;
 
-  mark = mark_forward (sc->start, sc->maxdfsnum, NULL);
-  ref = list_head (sc->edges);
-  while (ref) {
-    edge = element_getvalue (ref);
-    mark_backward (edge->from, mark, sc);
-    ref = element_next (ref);
+  el = block->node.block;
+  while (el) {
+    struct basicblock *block = element_getvalue (el);
+    if (block->node.dfsnum > end) break;
+    if (block->mark2 == num) {
+      block->sc = sc;
+      ref = list_head (block->outrefs);
+      while (ref) {
+        struct basicedge *edge = element_getvalue (ref);
+        struct basicblock *next = edge->to;
+        if (next->node.dfsnum > block->node.dfsnum) {
+          if (next->mark1 == num || list_size (next->inrefs) == 1) {
+
+            if (next->node.dfsnum > end)
+              end = next->node.dfsnum;
+
+            next->mark2 = num;
+          }
+        }
+        ref = element_next (ref);
+      }
+    }
+
+    el = element_next (el);
   }
 }
 
 
 static
-void dfs_scopes (struct scope *sc, int depth)
+void mark_loop (struct subroutine *sub, struct scope *sc)
 {
   element el;
-  el = list_head (sc->children);
+  int num = ++sub->temp;
+  int maxdfs = -1;
+
+  el = list_head (sc->info.loop.edges);
   while (el) {
-    struct scope *next = element_getvalue (el);
-    dfs_scopes (next, depth + 1);
+    struct basicedge *edge = element_getvalue (el);
+    struct basicblock *block = edge->from;
+
+    if (maxdfs < block->node.dfsnum)
+      maxdfs = block->node.dfsnum;
+
+    if (block->mark1 != num) {
+      block->mark1 = num;
+      mark_backward (sub, block, num, sc->start->node.dfsnum);
+    }
     el = element_next (el);
   }
-  sc->dfsnum = sc->start->sub->temp--;
-  sc->depth = depth;
+
+  sc->start->mark2 = num;
+  mark_forward (sub, sc->start, sc, num, maxdfs);
 }
 
-void extract_scopes (struct subroutine *sub)
+static
+int extract_loops (struct subroutine *sub)
 {
   struct basicblock *block;
   struct basicedge *edge;
-  struct scope *mainsc, *sc;
+  struct scope *sc;
   element el, ref;
-
-  sub->scopes = list_alloc (sub->code->lstpool);
-  mainsc = scope_alloc (sub, NULL, SCOPE_MAIN, sub->startblock);
-
-  sub->temp = 0;
-  el = list_head (sub->dfsblocks);
-  while (el) {
-    block = element_getvalue (el);
-    block->sc = mainsc;
-    block->mark1 = 0;
-    el = element_next (el);
-  }
 
   el = list_head (sub->dfsblocks);
   while (el) {
@@ -403,75 +373,131 @@ void extract_scopes (struct subroutine *sub)
     while (ref) {
       edge = element_getvalue (ref);
       if (edge->from->node.dfsnum >= block->node.dfsnum) {
-        if (edge->from->sc == block->sc) {
-          edge->type = EDGE_LOOP;
-          if (!sc) {
-            sc = scope_alloc (sub, block->sc, SCOPE_LOOP, block);
-            sc->maxdfsnum = edge->from->node.dfsnum;
-          }
-          if (sc->maxdfsnum < edge->from->node.dfsnum)
-            sc->maxdfsnum = edge->from->node.dfsnum;
-          list_inserttail (sc->edges, edge);
+        if (!dom_isdominator (&block->node, &edge->from->node)) {
+          error (__FILE__ ": graph of sub 0x%08X is not reducible", sub->begin->address);
+          return FALSE;
+        }
+        if (block->sc == edge->from->sc) {
+          if (!sc) sc = scope_alloc (sub, SCOPE_LOOP, block);
+          if (!sc->info.loop.edges) sc->info.loop.edges = list_alloc (sub->code->lstpool);
+          list_inserttail (sc->info.loop.edges, edge);
         } else {
-          edge->type = EDGE_GOTO;
           edge->to->haslabel = TRUE;
         }
       }
       ref = element_next (ref);
     }
 
-    if (sc) mark_loop (sc);
-
-    sc = NULL;
-    if (list_size (block->outrefs) == 2) {
-      edge = list_headvalue (block->outrefs);
-      if (edge->to->node.dfsnum > block->node.dfsnum) {
-        if (edge->to->sc == block->sc) {
-          sc = scope_alloc (sub, block->sc, SCOPE_IFELSE, block);
-          edge->type = EDGE_NORMAL;
-          list_inserttail (sc->edges, edge);
-          mark_branch (sc);
-        } else {
-          edge->type = EDGE_GOTO;
-          edge->to->haslabel = TRUE;
-        }
-      }
-
-      edge = list_tailvalue (block->outrefs);
-      if (edge->to->node.dfsnum > block->node.dfsnum) {
-        if (edge->to->sc == block->sc) {
-          sc = scope_alloc (sub, block->sc, SCOPE_IFTHEN, block);
-          edge->type = EDGE_NORMAL;
-          list_inserttail (sc->edges, edge);
-          mark_branch (sc);
-        } else {
-          edge->type = EDGE_GOTO;
-          edge->to->haslabel = TRUE;
-        }
-      }
-
-    } else if (list_size (block->outrefs) == 1) {
-      edge = list_headvalue (block->outrefs);
-      if (edge->type == EDGE_INVALID)
-        edge->type = EDGE_NORMAL;
-    }
+    if (sc) mark_loop (sub, sc);
 
     el = element_next (el);
   }
 
-  sub->temp = list_size (sub->scopes);
-  dfs_scopes (mainsc, 0);
+  return TRUE;
 }
 
-
-int scope_isancestor (struct scope *node, struct scope *ancestor)
+static
+void extract_ifs (struct subroutine *sub)
 {
-  int count = 0;
-  while (node) {
-    if (node == ancestor)
-      return count;
-    node = node->parent;
-    count++;
+  struct basicblock *block;
+  struct basicblocknode *node;
+  struct scope *sctrue, *scfalse;
+  element el;
+
+  el = list_head (sub->dfsblocks);
+  while (el) {
+    int hasswitch = FALSE;
+    block = element_getvalue (el);
+
+    if (block->type == BLOCK_SIMPLE) {
+      if (block->info.simple.jumploc) {
+        if (block->info.simple.jumploc->cswitch)
+          hasswitch = TRUE;
+      }
+    }
+
+    if (list_size (block->outrefs) == 2 && !hasswitch) {
+      struct basicedge *edge1, *edge2;
+      struct basicblocknode *runner;
+      struct basicblock *next;
+
+      edge1 = list_headvalue (block->outrefs);
+      edge2 = list_tailvalue (block->outrefs);
+
+      sctrue = scfalse = NULL;
+      node = &block->revnode;
+
+      if (block->node.dfsnum < edge1->to->node.dfsnum) {
+        next = edge1->to;
+        runner = &next->revnode;
+        while (runner != node->dominator) {
+          if (next->sc == block->sc) {
+            if (!scfalse) scfalse = scope_alloc (sub, SCOPE_IF, block);
+            next->sc = scfalse;
+          }
+          runner = runner->dominator;
+          next = element_getvalue (runner->block);
+        }
+      }
+
+      if (block->node.dfsnum < edge2->to->node.dfsnum) {
+        next = edge2->to;
+        runner = &next->revnode;
+        while (runner != node->dominator) {
+          if (next->sc == block->sc) {
+            if (!sctrue) sctrue = scope_alloc (sub, SCOPE_IF, block);
+            next->sc = sctrue;
+          }
+          runner = runner->dominator;
+          next = element_getvalue (runner->block);
+        }
+      }
+
+    }
+
+    el = element_next (el);
   }
-  return -1;
+}
+
+static
+void scopes_dfs (struct scope *sc, int depth, int *dfsnum)
+{
+  element el;
+
+  sc->depth = depth;
+  el = list_head (sc->children);
+  while (el) {
+    scopes_dfs (element_getvalue (el), depth + 1, dfsnum);
+    el = element_next (el);
+  }
+  sc->dfsnum = (*dfsnum)--;
+}
+
+void extract_scopes (struct subroutine *sub)
+{
+  struct scope *mainsc;
+  int dfsnum;
+  element el;
+
+  sub->scopes = list_alloc (sub->code->lstpool);
+  mainsc = scope_alloc (sub, SCOPE_MAIN, sub->startblock);
+
+  sub->temp = 0;
+  el = list_head (sub->blocks);
+  while (el) {
+    struct basicblock *block = element_getvalue (el);
+    block->sc = mainsc;
+    block->mark1 = block->mark2 = 0;
+    el = element_next (el);
+  }
+
+  if (!extract_loops (sub)) {
+    sub->haserror = TRUE;
+    return;
+  }
+
+  extract_ifs (sub);
+
+  dfsnum = list_size (sub->scopes);
+  scopes_dfs (mainsc, 0, &dfsnum);
 }

@@ -15,8 +15,8 @@ void print_help (char *prgname)
     "Usage:\n"
     "  %s [-g] [-n nidsfile] [-v] prxfile\n"
     "Where:\n"
-    "  -g    output graph\n"
-    "  -t    print deep-first search number\n"
+    "  -g    output graphviz dot\n"
+    "  -t    print depth first search number\n"
     "  -r    print the reverse deep-first search number\n"
     "  -d    print the dominator\n"
     "  -x    print the reverse dominator\n"
@@ -24,6 +24,7 @@ void print_help (char *prgname)
     "  -z    print the reverse frontier\n"
     "  -p    print phi functions\n"
     "  -q    print code into nodes\n"
+    "  -s    print scopes\n"
     "  -c    output code\n"
     "  -v    increase verbosity\n"
     "  -n    specify nids xml file\n",
@@ -64,6 +65,7 @@ int main (int argc, char **argv)
         case 'z': graphoptions |= OUT_PRINT_RFRONTIER; break;
         case 'p': graphoptions |= OUT_PRINT_PHIS; break;
         case 'q': graphoptions |= OUT_PRINT_CODE; break;
+        case 's': graphoptions |= OUT_PRINT_SCOPES; break;
         case 'n':
           if (i == (argc - 1))
             fatal (__FILE__ ": missing nids file");

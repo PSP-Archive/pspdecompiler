@@ -251,7 +251,7 @@ void delimit_borders (struct code *c)
 
 
 static
-void check_switches (struct code *c, struct subroutine *sub)
+void check_switches (struct subroutine *sub)
 {
   struct location *loc;
   loc = sub->begin;
@@ -271,13 +271,13 @@ void check_switches (struct code *c, struct subroutine *sub)
 
       if (haserror) {
         report (__FILE__ ": invalid switch at 0x%08X\n", loc->address);
-        fixedpool_free (c->switchpool, loc->cswitch);
+        fixedpool_free (sub->code->switchpool, loc->cswitch);
         loc->cswitch = NULL;
       } else {
         loc->cswitch->checked = TRUE;
         if (loc->reachable == LOCATION_REACHABLE) {
           loc->reachable = LOCATION_UNREACHABLE;
-          mark_reachable (c, loc);
+          mark_reachable (sub->code, loc);
         }
       }
     }
@@ -285,7 +285,7 @@ void check_switches (struct code *c, struct subroutine *sub)
 }
 
 static
-void check_subroutine (struct code *c, struct subroutine *sub)
+void check_subroutine (struct subroutine *sub)
 {
   struct location *loc;
   loc = sub->begin;
@@ -327,7 +327,7 @@ void check_subroutine (struct code *c, struct subroutine *sub)
 
     if (loc->target) {
       if (!loc->target->references)
-        loc->target->references = list_alloc (c->lstpool);
+        loc->target->references = list_alloc (sub->code->lstpool);
       list_inserttail (loc->target->references, loc);
     }
   } while (loc++ != sub->end);
@@ -369,8 +369,8 @@ void extract_subroutines (struct code *c)
   while (el) {
     struct subroutine *sub = element_getvalue (el);
     if (!sub->import) {
-      check_switches (c, sub);
-      check_subroutine (c, sub);
+      check_switches (sub);
+      check_subroutine (sub);
       if (!sub->haserror) extract_cfg (sub);
       if (!sub->haserror) extract_scopes (sub);
       if (!sub->haserror) build_ssa (sub);
