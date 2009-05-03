@@ -28,7 +28,7 @@ void print_subroutine_graph (FILE *out, struct code *c, struct subroutine *sub, 
       while (sc) {
         fprintf (out, "Scope ");
         switch (sc->type) {
-        case SCOPE_IF: fprintf (out, "IF"); break;
+        case SCOPE_IF:   fprintf (out, "IF");   break;
         case SCOPE_LOOP: fprintf (out, "LOOP"); break;
         case SCOPE_MAIN: fprintf (out, "MAIN"); break;
         }

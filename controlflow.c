@@ -277,9 +277,8 @@ void mark_backward (struct subroutine *sub, struct basicblock *block, int num, i
   while (el && count) {
     struct basicblock *block = element_getvalue (el);
     if (block->node.dfsnum < end) break;
-
     if (block->mark1 == num) {
-      count = 0;
+      count--;
       ref = list_head (block->inrefs);
       while (ref) {
         struct basicedge *edge = element_getvalue (ref);
@@ -301,6 +300,7 @@ static
 void mark_forward (struct subroutine *sub, struct basicblock *block, struct scope *sc, int num, int end)
 {
   element el, ref;
+  struct basicblock *loopend = NULL;
 
   el = block->node.block;
   while (el) {
@@ -314,11 +314,15 @@ void mark_forward (struct subroutine *sub, struct basicblock *block, struct scop
         struct basicblock *next = edge->to;
         if (next->node.dfsnum > block->node.dfsnum) {
           if (next->mark1 == num || list_size (next->inrefs) == 1) {
-
             if (next->node.dfsnum > end)
               end = next->node.dfsnum;
-
             next->mark2 = num;
+          }
+
+          if (block->mark1 == num && next->mark1 != num) {
+            if (!loopend) loopend = next;
+            if (list_size (loopend->inrefs) < list_size (next->inrefs))
+              loopend = next;
           }
         }
         ref = element_next (ref);
@@ -327,6 +331,8 @@ void mark_forward (struct subroutine *sub, struct basicblock *block, struct scop
 
     el = element_next (el);
   }
+
+  sc->info.loop.end = loopend;
 }
 
 
@@ -387,9 +393,7 @@ int extract_loops (struct subroutine *sub)
       }
       ref = element_next (ref);
     }
-
     if (sc) mark_loop (sub, sc);
-
     el = element_next (el);
   }
 
@@ -401,8 +405,8 @@ void extract_ifs (struct subroutine *sub)
 {
   struct basicblock *block;
   struct basicblocknode *node;
-  struct scope *sctrue, *scfalse;
-  element el;
+  struct scope *sc;
+  element el, ref;
 
   el = list_head (sub->dfsblocks);
   while (el) {
@@ -417,42 +421,38 @@ void extract_ifs (struct subroutine *sub)
     }
 
     if (list_size (block->outrefs) == 2 && !hasswitch) {
-      struct basicedge *edge1, *edge2;
       struct basicblocknode *runner;
-      struct basicblock *next;
+      struct basicblock *next, *end;
 
-      edge1 = list_headvalue (block->outrefs);
-      edge2 = list_tailvalue (block->outrefs);
-
-      sctrue = scfalse = NULL;
       node = &block->revnode;
+      end = element_getvalue (node->dominator->block);
+      if (end->node.dfsnum > block->node.dfsnum) {
+        if (end->sc != block->sc) end = NULL;
 
-      if (block->node.dfsnum < edge1->to->node.dfsnum) {
-        next = edge1->to;
-        runner = &next->revnode;
-        while (runner != node->dominator) {
-          if (next->sc == block->sc) {
-            if (!scfalse) scfalse = scope_alloc (sub, SCOPE_IF, block);
-            next->sc = scfalse;
+        ref = list_head (block->outrefs);
+        while (ref) {
+          struct basicedge *edge = element_getvalue (ref);
+          sc = NULL;
+          if (block->node.dfsnum < edge->to->node.dfsnum) {
+            next = edge->to;
+            runner = &next->revnode;
+            while (runner != node->dominator) {
+              if ((block->sc->parent == next->sc && block->sc->type == SCOPE_IF) ||
+                  next->sc == block->sc) {
+                if (!sc) {
+                  sc = scope_alloc (sub, SCOPE_IF, block);
+                  sc->info.branch.edge = edge;
+                  sc->info.branch.end = end;
+                }
+                next->sc = sc;
+              } else break;
+              runner = runner->dominator;
+              next = element_getvalue (runner->block);
+            }
           }
-          runner = runner->dominator;
-          next = element_getvalue (runner->block);
+          ref = element_next (ref);
         }
       }
-
-      if (block->node.dfsnum < edge2->to->node.dfsnum) {
-        next = edge2->to;
-        runner = &next->revnode;
-        while (runner != node->dominator) {
-          if (next->sc == block->sc) {
-            if (!sctrue) sctrue = scope_alloc (sub, SCOPE_IF, block);
-            next->sc = sctrue;
-          }
-          runner = runner->dominator;
-          next = element_getvalue (runner->block);
-        }
-      }
-
     }
 
     el = element_next (el);

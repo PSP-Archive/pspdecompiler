@@ -195,10 +195,12 @@ struct scope {
 
   union {
     struct {
+      struct basicblock *end;
       list  edges;
     } loop;
     struct {
       struct basicblock *end;
+      struct basicedge *edge;
     } branch;
   } info;
 };

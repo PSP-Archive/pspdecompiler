@@ -340,38 +340,66 @@ graph_double_break:
         li      $8,98
         li      $10,51
         li      $6,100
-1:
-        andi    $2,$3,0x1
+1:      andi    $2,$3,0x1
         beql    $2,$0,2f
         sra     $3,$3,1
-
         mult    $3,$9
         mflo    $2
         addiu   $3,$2,1
-2:
-        bne     $3,$7,3f
+2:      bne     $3,$7,3f
         slt     $2,$4,11
-
         beq     $2,$0,5f
         move    $3,$10
-
         j       4f
         addiu   $4,$4,1
-
-3:
-        beq     $4,$8,5f
+3:      beq     $4,$8,5f
         addiu   $5,$5,1
-
         addiu   $4,$4,1
-4:
-        bne     $4,$6,1b
+4:      bne     $4,$6,1b
         addiu   $5,$5,2
-
-5:
-        j       $ra
+5:      j       $ra
         move    $2,$5
 
         .end    graph_double_break
+
+        .global graph_nested_ifs
+        .ent    graph_nested_ifs
+graph_nested_ifs:
+        beq     $a0, $0, 2f
+        nop
+        beq     $a1, $0, 1f
+        nop
+        li      $v0, 1
+        j       4f
+        nop
+1:      li      $v0, 2
+        j       4f
+        nop
+2:      beq     $a1, $0, 3f
+        nop
+        li      $v0, 3
+        j       4f
+        nop
+3:      li      $v0, 4
+4:      jr      $ra
+        nop
+
+        .end    graph_nested_ifs
+
+        .global graph_for_inside_if
+        .ent    graph_for_inside_if
+graph_for_inside_if:
+        beq     $a0, $0, 2f
+        move    $v0, $0
+        li      $a1, 1
+1:      addiu   $a0, $a0, -1
+        bne     $a0, $0, 1b
+        addu    $a1, $a1, $a1
+        move    $v0, $a0
+2:      jr      $ra
+        nop
+
+        .end    graph_for_inside_if
 
         .section .rodata
 switch1:

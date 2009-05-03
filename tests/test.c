@@ -13,6 +13,8 @@ extern void cfg_jumptobegin (void);
 extern void cfg_callnoswap (void);
 extern void cfg_switch (void);
 extern void graph_double_break (void);
+extern void graph_nested_ifs (void);
+extern void graph_for_inside_if (void);
 
 
 int module_start (SceUInt argc, void *arg)
@@ -28,6 +30,8 @@ int module_start (SceUInt argc, void *arg)
   cfg_callnoswap ();
   cfg_switch ();
   graph_double_break ();
+  graph_nested_ifs ();
+  graph_for_inside_if ();
 
   sceKernelSleepThread ();
   return 0;

@@ -16,9 +16,13 @@ PSP_EXPORT_FUNC_HASH (cfg_branches_noswap)
 PSP_EXPORT_FUNC_HASH (cfg_branches_never)
 PSP_EXPORT_FUNC_HASH (cfg_branches_always)
 PSP_EXPORT_FUNC_HASH (cfg_branchlink)
+PSP_EXPORT_FUNC_HASH (cfg_jumptobegin)
 PSP_EXPORT_FUNC_HASH (cfg_strangerefs)
 PSP_EXPORT_FUNC_HASH (cfg_callnoswap)
 PSP_EXPORT_FUNC_HASH (cfg_switch)
+PSP_EXPORT_FUNC_HASH (graph_double_break)
+PSP_EXPORT_FUNC_HASH (graph_nested_ifs)
+PSP_EXPORT_FUNC_HASH (graph_for_inside_if)
 PSP_EXPORT_END
 
 
