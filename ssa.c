@@ -293,7 +293,7 @@ void extract_operations (struct subroutine *sub, list *defblocks)
             break;
           case I_LUI:
             op->type = OP_MOVE;
-            append_value (sub, op->operands, VAL_CONSTANT, IMMU (loc->opc) << 16);
+            append_value (sub, op->operands, VAL_CONSTANT, ((unsigned int) IMMU (loc->opc)) << 16);
             break;
           case I_SLTI:
             insn = I_SLT;

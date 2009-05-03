@@ -272,7 +272,7 @@ int check_apply_relocs (struct prx *p)
       }
 
       loaddr = r->target & 0xFFFF;
-      hiaddr = (((r->target >> 16) + 1) >> 1) & 0xFFFF;
+      hiaddr = (((r->target >> 15) + 1) >> 1) & 0xFFFF;
 
       while (base < index) {
         p->relocs[base].target = r->target;
@@ -298,7 +298,7 @@ int check_apply_relocs (struct prx *p)
       break;
     case R_MIPSX_HI16:
       r->target = ((addend & 0xFFFF) << 16) + addrbase->vaddr + r->addend;
-      addend = (addend & ~0xFFFF) | ((((r->target >> 16) + 1) >> 1) & 0xFFFF);
+      addend = (addend & ~0xFFFF) | ((((r->target >> 15) + 1) >> 1) & 0xFFFF);
       if (!inside_progmem (addrbase, r->target, 1)) {
         error (__FILE__ ": xhi16 reference out of range at 0x%08X (0x%08X)", r->vaddr, r->target);
       }
