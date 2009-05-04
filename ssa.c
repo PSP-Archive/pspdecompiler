@@ -267,7 +267,6 @@ void extract_operations (struct subroutine *sub, list *defblocks)
 
           if (loc->insn->flags & (INSN_LOAD | INSN_STORE)) {
             append_value (sub, op->operands, VAL_CONSTANT, IMM (loc->opc));
-            op->flushed = TRUE;
           }
 
           switch (loc->insn->insn) {
@@ -392,7 +391,6 @@ void extract_operations (struct subroutine *sub, list *defblocks)
             op = alloc_operation (sub, block);
             op->begin = op->end = loc;
             op->type = OP_ASM;
-            op->flushed = TRUE;
             asm_gen[0] = asm_gen[1] = 0;
             asm_kill[0] = asm_kill[1] = 0;
           } else {
@@ -460,7 +458,6 @@ void extract_operations (struct subroutine *sub, list *defblocks)
       int regno;
       op = alloc_operation (sub, block);
       op->type = OP_CALL;
-      op->flushed = TRUE;
       list_inserttail (block->operations, op);
 
       for (regno = 1; regno <= REGISTER_LINK; regno++) {
@@ -572,7 +569,6 @@ void ssa_place_phis (struct subroutine *sub, list *defblocks)
           bref->mark2 = i;
           op = alloc_operation (sub, bref);
           op->type = OP_PHI;
-          op->flushed = TRUE;
           append_value (sub, op->results, VAL_REGISTER, i);
           for (j = list_size (bref->inrefs); j > 0; j--)
             append_value (sub, op->operands, VAL_REGISTER, i);

@@ -6,11 +6,13 @@
 
 #include "nids.h"
 #include "hash.h"
+#include "alloc.h"
 #include "utils.h"
 
 struct nidstable {
   hashpool pool;
   hashtable libs;
+  fixedpool infopool;
   char *buffer;
 };
 
@@ -23,7 +25,8 @@ enum XMLSCOPE {
 enum XMLELEMENT {
   XMLE_DEFAULT,
   XMLE_NID,
-  XMLE_NAME
+  XMLE_NAME,
+  XMLE_NUMARGS
 };
 
 struct xml_data {
@@ -35,18 +38,22 @@ struct xml_data {
   hashtable curlib;
   const char *libname;
 
-  unsigned int nid;
-  const char *name;
+  struct nidinfo currnid;
   int error;
 };
 
 void nids_free (struct nidstable *nids)
 {
   nids->libs = NULL;
-  if (nids->buffer) free (nids->buffer);
+  if (nids->buffer)
+    free (nids->buffer);
   nids->buffer = NULL;
-  if (nids->pool) hashpool_destroy (nids->pool);
+  if (nids->pool)
+    hashpool_destroy (nids->pool);
   nids->pool = NULL;
+  if (nids->infopool)
+    fixedpool_destroy (nids->infopool, NULL, NULL);
+  nids->infopool = NULL;
   free (nids);
 }
 
@@ -63,11 +70,15 @@ void start_hndl (void *data, const char *el, const char **attr)
   } else if (strcmp (el, "NAME") == 0) {
     d->last = XMLE_NAME;
   } else if (strcmp (el, "FUNCTION") == 0) {
+    d->currnid.isvariable = 0;
     d->scope = XMLS_FUNCTION;
   } else if (strcmp (el, "VARIABLE") == 0) {
+    d->currnid.isvariable = 1;
     d->scope = XMLS_VARIABLE;
   } else if (strcmp (el, "NID") == 0) {
     d->last = XMLE_NID;
+  } else if (strcmp (el, "NUMARGS") == 0) {
+    d->last = XMLE_NUMARGS;
   }
 }
 
@@ -83,22 +94,25 @@ void end_hndl (void *data, const char *el)
     d->libname = NULL;
   } else if (strcmp (el, "FUNCTION") == 0 || strcmp (el, "VARIABLE") == 0) {
     d->scope = XMLS_LIBRARY;
-    if (d->name && d->nid && d->curlib) {
-      const char *name = hashtable_searchhash (d->curlib, NULL, NULL, d->nid);
-      if (name) {
-        if (strcmp (name, d->name)) {
-          error (__FILE__ ": NID `0x%08X' repeated in library `%s'", d->nid, d->libname);
+    if (d->currnid.name && d->currnid.nid && d->curlib) {
+      struct nidinfo *info = hashtable_searchhash (d->curlib, NULL, NULL, d->currnid.nid);
+      if (info) {
+        if (strcmp (info->name, d->currnid.name)) {
+          error (__FILE__ ": NID `0x%08X' repeated in library `%s'", d->currnid.nid, d->libname);
           d->error = 1;
         }
       } else {
-        hashtable_inserthash (d->curlib, NULL, (void *) d->name, d->nid);
+        info = fixedpool_alloc (d->result->infopool);
+        memcpy (info, &d->currnid, sizeof (struct nidinfo));
+        hashtable_inserthash (d->curlib, NULL, info, d->currnid.nid);
       }
     } else {
       error (__FILE__ ": missing function or variable definition");
       d->error = 1;
     }
-    d->name = NULL;
-    d->nid = 0;
+    d->currnid.name = NULL;
+    d->currnid.nid = 0;
+    d->currnid.numargs = 0;
   }
 }
 
@@ -124,13 +138,13 @@ void char_hndl (void *data, const char *txt, int txtlen)
   case XMLS_FUNCTION:
   case XMLS_VARIABLE:
     if (d->last == XMLE_NAME) {
-      if (d->name) {
+      if (d->currnid.name) {
         error (__FILE__ ": repeated name in function/variable");
         d->error = 1;
       } else {
-        d->name = dup_string (d, txt, txtlen);
+        d->currnid.name = dup_string (d, txt, txtlen);
       }
-    } else if (d->last == XMLE_NID) {
+    } else if (d->last == XMLE_NID || d->last == XMLE_NUMARGS) {
       char buffer[256];
 
       if (txtlen > sizeof (buffer) - 1)
@@ -138,12 +152,17 @@ void char_hndl (void *data, const char *txt, int txtlen)
       memcpy (buffer, txt, txtlen);
       buffer[txtlen] = '\0';
 
-      if (d->nid) {
-        error (__FILE__ ": nid repeated in function/variable");
-        d->error = 1;
+      if (d->last == XMLE_NID) {
+        if (d->currnid.nid) {
+          error (__FILE__ ": nid repeated in function/variable");
+          d->error = 1;
+        } else {
+          d->currnid.nid = 0;
+          sscanf (buffer, "0x%X", &d->currnid.nid);
+        }
       } else {
-        d->nid = 0;
-        sscanf (buffer, "0x%X", &d->nid);
+        d->currnid.numargs = 0;
+        sscanf (buffer, "%d", &d->currnid.numargs);
       }
     }
     break;
@@ -187,14 +206,20 @@ struct nidstable *nids_load (const char *xmlpath)
   data.error = 0;
   data.curlib = NULL;
   data.libname = NULL;
-  data.name = NULL;
-  data.nid = 0;
+  data.currnid.name = NULL;
+  data.currnid.nid = 0;
+  data.currnid.numargs = 0;
   data.scope = XMLS_LIBRARY;
   data.last = XMLE_DEFAULT;
 
-  data.result = (struct nidstable *) xmalloc (sizeof (struct nidstable));
-  data.result->pool = hashpool_create (256, 8192);
-  data.result->libs = hashtable_alloc (data.result->pool, 32, &hashtable_hash_string, &hashtable_string_compare);
+  data.result =
+    (struct nidstable *) xmalloc (sizeof (struct nidstable));
+  data.result->pool =
+    hashpool_create (256, 8192);
+  data.result->libs =
+    hashtable_alloc (data.result->pool, 32, &hashtable_hash_string,
+                     &hashtable_string_compare);
+  data.result->infopool = fixedpool_create (sizeof (struct nidinfo), 8192, 0);
 
   data.buffer_pos = 0;
   data.result->buffer = buf;
@@ -224,28 +249,32 @@ struct nidstable *nids_load (const char *xmlpath)
 }
 
 static
-void print_level1 (void *key, void *value, unsigned int hash, void *arg)
+void print_level2 (void *key, void *value, unsigned int hash, void *arg)
 {
-  report ("    NID: 0x%08X - Name: %s\n", hash, (char *) value);
+  struct nidinfo *info = value;
+  report ("    NID: 0x%08X ", info->nid);
+  if (info->isvariable) report ("(Variable)");
+  else report ("Num args: %d", info->numargs);
+  report (" Name: %s\n", info->name);
 }
 
 static
-void print_level0 (void *key, void *value, unsigned int hash, void *arg)
+void print_level1 (void *key, void *value, unsigned int hash, void *arg)
 {
   hashtable lib = (hashtable) value;
   report ("  %s:\n", (char *) key);
-  hashtable_traverse (lib, &print_level1, NULL);
+  hashtable_traverse (lib, &print_level2, NULL);
   report ("\n");
 }
 
 void nids_print (struct nidstable *nids)
 {
   report ("Libraries:\n");
-  hashtable_traverse (nids->libs, &print_level0, NULL);
+  hashtable_traverse (nids->libs, &print_level1, NULL);
 }
 
 
-const char *nids_find (struct nidstable *nids, const char *library, unsigned int nid)
+struct nidinfo *nids_find (struct nidstable *nids, const char *library, unsigned int nid)
 {
   hashtable lib;
 

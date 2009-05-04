@@ -183,6 +183,7 @@ struct prx_function {
   uint32 vaddr;
   uint32 nid;
   const char *name;
+  int numargs;
 };
 
 struct prx_variable {

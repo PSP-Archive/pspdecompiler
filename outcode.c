@@ -5,67 +5,30 @@
 #include "output.h"
 #include "utils.h"
 
-void ident_line (FILE *out, int size)
-{
-  int i;
-  for (i = 0; i < size; i++)
-    fprintf (out, "  ");
-}
-
-#define RT(op) ((op >> 16) & 0x1F)
-#define RS(op) ((op >> 21) & 0x1F)
 
 static
-void print_condition (FILE *out, struct location *loc, int reverse)
-{
-  fprintf (out, "if (");
-  if (reverse) fprintf (out, "!(");
-  switch (loc->insn->insn) {
-  case I_BNE:
-  case I_BNEL:
-    fprintf (out, "%s != %s", gpr_names[RS (loc->opc)], gpr_names[RT (loc->opc)]);
-    break;
-  case I_BEQ:
-  case I_BEQL:
-    fprintf (out, "%s == %s", gpr_names[RS (loc->opc)], gpr_names[RT (loc->opc)]);
-    break;
-  case I_BGEZ:
-  case I_BGEZAL:
-  case I_BGEZL:
-    fprintf (out, "%s >= 0", gpr_names[RS (loc->opc)]);
-    break;
-  case I_BGTZ:
-  case I_BGTZL:
-    fprintf (out, "%s > 0", gpr_names[RS (loc->opc)]);
-    break;
-  case I_BLEZ:
-  case I_BLEZL:
-    fprintf (out, "%s <= 0", gpr_names[RS (loc->opc)]);
-    break;
-  case I_BLTZ:
-  case I_BLTZAL:
-  case I_BLTZALL:
-  case I_BLTZL:
-    fprintf (out, "%s < 0", gpr_names[RS (loc->opc)]);
-    break;
-  default:
-    break;
-  }
-  if (reverse) fprintf (out, ")");
-  fprintf (out, ")\n");
-}
-
-
-static
-void print_block (FILE *out, struct basicblock *block)
+void print_block (FILE *out, struct basicblock *block, int reversecond)
 {
   element opel;
+  struct operation *jumpop = NULL;
+  int options = 0;
+
+  if (reversecond) options |= OPTS_REVERSECOND;
   opel = list_head (block->operations);
   while (opel) {
     struct operation *op = element_getvalue (opel);
-    print_operation (out, op, block->identsize + 1);
+    if (!op->deferred) {
+      if (op->type == OP_INSTRUCTION) {
+        if (op->begin->insn->flags & (INSN_JUMP | INSN_BRANCH))
+          jumpop = op;
+      }
+      if (op != jumpop)
+        print_operation (out, op, block->identsize + 1, options);
+    }
     opel = element_next (opel);
   }
+  if (jumpop)
+    print_operation (out, jumpop, block->identsize + 1, options);
 }
 
 static
@@ -99,7 +62,6 @@ void print_block_recursive (FILE *out, struct basicblock *block, int verbosity)
     }
     fprintf (out, "*/\n");
   }
-  print_block (out, block);
 
   if (block->ifst) {
     struct basicedge *edge1, *edge2;
@@ -116,9 +78,10 @@ void print_block_recursive (FILE *out, struct basicblock *block, int verbosity)
     }
 
     fprintf (out, "\n");
-    ident_line (out, block->identsize + 1);
-    print_condition (out, block->info.simple.jumploc, reversecond);
   }
+
+  print_block (out, block, reversecond);
+
 
   ref = list_head (block->outrefs);
   while (ref) {

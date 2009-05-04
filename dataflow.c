@@ -58,20 +58,31 @@ void extract_variables (struct subroutine *sub)
         mark_variable (var, VARIABLE_INVALID, 1);
       } else {
         int istemp = FALSE;
+
         if (list_size (var->uses) <= 1) {
           struct operation *op = list_headvalue (var->uses);
           if (op) {
-            if (op->type != OP_PHI) istemp = TRUE;
+            if (op->type != OP_PHI)
+              istemp = TRUE;
           } else {
             istemp = TRUE;
           }
         }
 
+        if (var->def->type == OP_MOVE || var->def->type == OP_INSTRUCTION) {
+          if (var->def->type == OP_INSTRUCTION) {
+            if (var->def->begin->insn->flags & (INSN_LOAD | INSN_STORE | INSN_BRANCH))
+              istemp = FALSE;
+          }
+        } else {
+          istemp = FALSE;
+        }
+
         if (istemp) {
+          var->def->deferred = TRUE;
           var->type = VARIABLE_TEMP;
           var->varnum = 1;
         } else {
-          var->def->flushed = TRUE;
           mark_variable (var, VARIABLE_LOCAL,  ++count);
         }
       }

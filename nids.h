@@ -3,8 +3,16 @@
 
 struct nidstable;
 
+struct nidinfo {
+  const char *name;
+  unsigned int nid;
+  int isvariable;
+  int numargs;
+  int isvarargs;
+};
+
 struct nidstable *nids_load (const char *xmlpath);
-const char *nids_find (struct nidstable *nids, const char *library, unsigned int nid);
+struct nidinfo *nids_find (struct nidstable *nids, const char *library, unsigned int nid);
 void nids_print (struct nidstable *nids);
 void nids_free (struct nidstable *nids);
 

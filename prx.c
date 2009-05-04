@@ -1523,32 +1523,44 @@ void prx_print (struct prx *p, int prtrelocs)
 void prx_resolve_nids (struct prx *p, struct nidstable *nids)
 {
   uint32 i, j;
-  const char *name;
+  struct nidinfo *ninfo;
   struct prx_modinfo *info = p->modinfo;
+
   for (i = 0; i < info->numimports; i++) {
     struct prx_import *imp = &info->imports[i];
     for (j = 0; j < imp->nfuncs; j++) {
       struct prx_function *f = &imp->funcs[j];
-      name = nids_find (nids, imp->name, f->nid);
-      if (name) f->name = name;
+      ninfo = nids_find (nids, imp->name, f->nid);
+      if (ninfo) {
+        f->name = ninfo->name;
+        f->numargs = ninfo->numargs;
+      }
     }
     for (j = 0; j < imp->nvars; j++) {
       struct prx_variable *v = &imp->vars[j];
-      name = nids_find (nids, imp->name, v->nid);
-      if (name) v->name = name;
+      ninfo = nids_find (nids, imp->name, v->nid);
+      if (ninfo) {
+        v->name = ninfo->name;
+      }
     }
   }
+
   for (i = 0; i < info->numexports; i++) {
     struct prx_export *exp = &info->exports[i];
     for (j = 0; j < exp->nfuncs; j++) {
       struct prx_function *f = &exp->funcs[j];
-      name = nids_find (nids, exp->name, f->nid);
-      if (name) f->name = name;
+      ninfo = nids_find (nids, exp->name, f->nid);
+      if (ninfo) {
+        f->name = ninfo->name;
+        f->numargs = ninfo->numargs;
+      }
     }
     for (j = 0; j < exp->nvars; j++) {
       struct prx_variable *v = &exp->vars[j];
-      name = nids_find (nids, exp->name, v->nid);
-      if (name) v->name = name;
+      ninfo = nids_find (nids, exp->name, v->nid);
+      if (ninfo) {
+        v->name = ninfo->name;
+      }
     }
   }
 }

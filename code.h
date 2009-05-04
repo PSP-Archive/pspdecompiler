@@ -194,7 +194,7 @@ struct operation {
   struct location *end;
   struct basicblock *block;
 
-  int  flushed;
+  int  deferred;
 
   list results;
   list operands;
