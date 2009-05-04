@@ -48,7 +48,6 @@ void print_block_recursive (FILE *out, struct basicblock *block, int verbosity)
 
   if (block->loopst) {
     if (block->loopst->start == block) {
-      fprintf (out, "\n");
       ident_line (out, block->identsize);
       fprintf (out, "loop {\n");
     }
@@ -76,8 +75,6 @@ void print_block_recursive (FILE *out, struct basicblock *block, int verbosity)
       if (edge1->type == EDGE_FOLLOW)
         reversecond = TRUE;
     }
-
-    fprintf (out, "\n");
   }
 
   print_block (out, block, reversecond);
@@ -136,7 +133,7 @@ void print_block_recursive (FILE *out, struct basicblock *block, int verbosity)
   if (block->loopst) {
     if (block->loopst->start == block) {
       ident_line (out, block->identsize);
-      fprintf (out, "}\n\n");
+      fprintf (out, "}\n");
       if (block->loopst->end) {
         if (block->loopst->hasendgoto) {
           ident_line (out, block->identsize + 1);

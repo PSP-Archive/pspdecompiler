@@ -1112,6 +1112,7 @@ void print_instruction (const struct allegrex_instruction *insn, unsigned int op
       len += sprintf (&buffer[len], "%c", c);
     }
   }
+  while (buffer[len-1] == ' ' && len > 0) len--;
   buffer[len] = '\0';
 }
 

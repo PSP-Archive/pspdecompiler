@@ -995,6 +995,7 @@ int load_module_import (struct prx *p, struct prx_import *imp)
       struct prx_function *f = &imp->funcs[i];
       f->nid = read_uint32_le (&p->data[offset + 4 * i]);
       f->vaddr = imp->funcsvaddr + 8 * i;
+      f->libname = imp->name;
       f->name = NULL;
     }
   }
@@ -1006,6 +1007,7 @@ int load_module_import (struct prx *p, struct prx_import *imp)
       struct prx_variable *v = &imp->vars[i];
       v->nid = read_uint32_le (&p->data[offset + 8 * i + 4]);
       v->vaddr = read_uint32_le (&p->data[offset +  8 * i]);
+      v->libname = imp->name;
       v->name = NULL;
     }
  }
@@ -1076,6 +1078,7 @@ int load_module_export (struct prx *p, struct prx_export *exp)
       f->vaddr = read_uint32_le (&p->data[offset + disp]);
       f->nid = read_uint32_le (&p->data[offset]);
       f->name = NULL;
+      f->libname = exp->name;
       offset += 4;
       if (exp->namevaddr == 0) {
         f->name = resolve_syslib_nid (f->nid);
@@ -1090,6 +1093,7 @@ int load_module_export (struct prx *p, struct prx_export *exp)
       v->vaddr = read_uint32_le (&p->data[offset + disp]);
       v->nid = read_uint32_le (&p->data[offset]);
       v->name = NULL;
+      v->libname = exp->name;
       offset += 4;
       if (exp->namevaddr == 0) {
         v->name = resolve_syslib_nid (v->nid);

@@ -33,7 +33,13 @@ void print_subroutine_name (FILE *out, struct subroutine *sub)
     if (sub->export->name) {
       fprintf (out, "%s", sub->export->name);
     } else {
-      fprintf (out, "nid_%08X", sub->export->nid);
+      fprintf (out, "%s_%08X", sub->export->libname, sub->export->nid);
+    }
+  } else if (sub->import) {
+    if (sub->import->name) {
+      fprintf (out, "%s", sub->import->name);
+    } else {
+      fprintf (out, "%s_%08X", sub->import->libname, sub->import->nid);
     }
   } else {
     fprintf (out, "sub_%05X", sub->begin->address);
@@ -45,17 +51,27 @@ void print_value (FILE *out, struct value *val)
   switch (val->type) {
   case VAL_CONSTANT: fprintf (out, "0x%08X", val->val.intval); break;
   case VAL_VARIABLE:
-    if (val->val.variable->type == VARIABLE_INVALID) {
-      print_value (out, &val->val.variable->name);
-      fprintf (out, "/* Invalid */");
-    } else if (val->val.variable->type == VARIABLE_ARGUMENT) {
+    switch (val->val.variable->type) {
+    case VARIABLE_ARGUMENT:
       fprintf (out, "arg%d", val->val.variable->name.val.intval);
-    } else if (val->val.variable->type == VARIABLE_LOCAL) {
-      fprintf (out, "local%d", val->val.variable->varnum);
-    } else {
+      break;
+    case VARIABLE_LOCAL:
+      fprintf (out, "local%d", val->val.variable->info);
+      break;
+    case VARIABLE_CONSTANT:
+      fprintf (out, "0x%08X", val->val.variable->info);
+      break;
+    case VARIABLE_TEMP:
       fprintf (out, "(");
       print_operation (out, val->val.variable->def, 0, TRUE);
       fprintf (out, ")");
+      break;
+    default:
+      print_value (out, &val->val.variable->name);
+      fprintf (out, "/* Invalid block %d %d */",
+          val->val.variable->def->block->node.dfsnum,
+          val->val.variable->def->type);
+      break;
     }
     break;
   case VAL_REGISTER:
@@ -68,12 +84,30 @@ void print_value (FILE *out, struct value *val)
   }
 }
 
+static
+void print_asm_reglist (FILE *out, list regs, int identsize, int options)
+{
+  element el;
+  ident_line (out, identsize);
+  fprintf (out, "  : ");
+
+  el = list_head (regs);
+  while (el) {
+    struct value *val = element_getvalue (el);
+    if (el != list_head (regs))
+      fprintf (out, ", ");
+    fprintf (out, "\"=r\"(");
+    print_value (out, val);
+    fprintf (out, ")");
+    el = element_next (el);
+  }
+  fprintf (out, "\n");
+}
 
 static
 void print_asm (FILE *out, struct operation *op, int identsize, int options)
 {
   struct location *loc;
-  element el;
 
   ident_line (out, identsize);
   fprintf (out, "__asm__ (\n");
@@ -82,35 +116,13 @@ void print_asm (FILE *out, struct operation *op, int identsize, int options)
     fprintf (out, "  \"%s\"\n", allegrex_disassemble (loc->opc, loc->address, FALSE));
     if (loc == op->end) break;
   }
-  ident_line (out, identsize);
-  fprintf (out, "  : ");
-
-  el = list_head (op->results);
-  while (el) {
-    struct value *val = element_getvalue (el);
-    if (el != list_head (op->results))
-      fprintf (out, ", ");
-    fprintf (out, "\"=r\"(");
-    print_value (out, val);
-    fprintf (out, ")");
-    el = element_next (el);
-  }
-  fprintf (out, "\n");
-
-  ident_line (out, identsize);
-  fprintf (out, "  : ");
-  el = list_head (op->results);
-  while (el) {
-    struct value *val = element_getvalue (el);
-    if (el != list_head (op->results))
-      fprintf (out, ", ");
-    fprintf (out, "\"r\"(");
-    print_value (out, val);
-    fprintf (out, ")");
-    el = element_next (el);
+  if (list_size (op->results) != 0 || list_size (op->operands) != 0) {
+    print_asm_reglist (out, op->results, identsize, options);
+    if (list_size (op->operands) != 0) {
+      print_asm_reglist (out, op->operands, identsize, options);
+    }
   }
 
-  fprintf (out, "\n");
   ident_line (out, identsize);
   fprintf (out, ");\n");
 }

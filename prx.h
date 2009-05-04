@@ -183,6 +183,7 @@ struct prx_function {
   uint32 vaddr;
   uint32 nid;
   const char *name;
+  const char *libname;
   int numargs;
 };
 
@@ -190,6 +191,7 @@ struct prx_variable {
   uint32 vaddr;
   uint32 nid;
   const char *name;
+  const char *libname;
 };
 
 

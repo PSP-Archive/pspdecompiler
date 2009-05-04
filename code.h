@@ -161,16 +161,19 @@ struct value {
 
 
 enum variabletype {
+  VARIABLE_UNK = 0,
   VARIABLE_LOCAL,
   VARIABLE_ARGUMENT,
   VARIABLE_TEMP,
+  VARIABLE_CONSTANT,
+  VARIABLE_CONSTANTUNK,
   VARIABLE_INVALID
 };
 
 struct variable {
   struct value name;
   enum variabletype type;
-  int varnum;
+  uint32 info;
 
   struct operation *def;
   list   uses;
