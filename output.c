@@ -320,6 +320,59 @@ void print_signextend (FILE *out, struct operation *op, int isbyte, int options)
 }
 
 static
+void print_memory_address (FILE *out, struct operation *op, int size, int isunsigned, int options)
+{
+  struct value *val;
+  uint32 address;
+  const char *type;
+
+  if (size == 0) {
+    if (isunsigned) type = "unsigned char *";
+    else type = "char *";
+  } else if (size == 1) {
+    if (isunsigned) type = "unsigned short *";
+    else type = "short *";
+  } else if (size == 2) {
+    type = "int *";
+  }
+
+  val = list_headvalue (op->operands);
+  if (val->type == VAL_VARIABLE) {
+    if (val->val.variable->type == VARIABLE_CONSTANT) {
+      address = val->val.variable->type;
+      val = list_tailvalue (op->operands);
+      address += val->val.intval;
+      fprintf (out, "*((%s) 0x%08X)", type, address);
+      return;
+    }
+  }
+
+  fprintf (out, "((%s) ", type);
+  print_value (out, val);
+  val = list_tailvalue (op->operands);
+  fprintf (out, ")[%d]", val->val.intval >> size);
+}
+
+static
+void print_load (FILE *out, struct operation *op, int size, int isunsigned, int options)
+{
+  if (!(options & OPTS_DEFERRED)) {
+    print_value (out, list_headvalue (op->results));
+    fprintf (out, " = ");
+  }
+  print_memory_address (out, op, size, isunsigned, options);
+}
+
+static
+void print_store (FILE *out, struct operation *op, int size, int isunsigned, int options)
+{
+  struct value *val = element_getvalue (element_next (list_head (op->operands)));
+  print_memory_address (out, op, size, isunsigned, options);
+  fprintf (out, " = ");
+  print_value (out, val);
+}
+
+static
 void print_condition (FILE *out, struct operation *op, int options)
 {
   fprintf (out, "if (");
@@ -400,17 +453,17 @@ void print_operation (FILE *out, struct operation *op, int identsize, int option
     case I_MOVZ: print_movnz (out, op, FALSE, options);      break;
     case I_SLT:  print_slt (out, op, FALSE, options);        break;
     case I_SLTU: print_slt (out, op, TRUE, options);         break;
-    case I_LW:   print_complexop (out, op, "LW", options);   break;
-    case I_LB:   print_complexop (out, op, "LB", options);   break;
-    case I_LBU:  print_complexop (out, op, "LBU", options);  break;
-    case I_LH:   print_complexop (out, op, "LH", options);   break;
-    case I_LHU:  print_complexop (out, op, "LHU", options);  break;
+    case I_LW:   print_load (out, op, 2, FALSE, options);    break;
+    case I_LB:   print_load (out, op, 0, FALSE, options);    break;
+    case I_LBU:  print_load (out, op, 0, TRUE, options);     break;
+    case I_LH:   print_load (out, op, 1, FALSE, options);    break;
+    case I_LHU:  print_load (out, op, 1, TRUE, options);     break;
     case I_LL:   print_complexop (out, op, "LL", options);   break;
     case I_LWL:  print_complexop (out, op, "LWL", options);  break;
     case I_LWR:  print_complexop (out, op, "LWR", options);  break;
-    case I_SW:   print_complexop (out, op, "SW", options);   break;
-    case I_SH:   print_complexop (out, op, "SH", options);   break;
-    case I_SB:   print_complexop (out, op, "SB", options);   break;
+    case I_SW:   print_store (out, op, 2, FALSE, options);   break;
+    case I_SH:   print_store (out, op, 1, FALSE, options);   break;
+    case I_SB:   print_store (out, op, 0, FALSE, options);   break;
     case I_SC:   print_complexop (out, op, "SC", options);   break;
     case I_SWL:  print_complexop (out, op, "SWL", options);  break;
     case I_SWR:  print_complexop (out, op, "SWR", options);  break;
