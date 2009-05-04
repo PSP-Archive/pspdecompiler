@@ -88,6 +88,8 @@ static
 void print_asm_reglist (FILE *out, list regs, int identsize, int options)
 {
   element el;
+
+  fprintf (out, "\n");
   ident_line (out, identsize);
   fprintf (out, "  : ");
 
@@ -101,7 +103,6 @@ void print_asm_reglist (FILE *out, list regs, int identsize, int options)
     fprintf (out, ")");
     el = element_next (el);
   }
-  fprintf (out, "\n");
 }
 
 static
@@ -110,10 +111,14 @@ void print_asm (FILE *out, struct operation *op, int identsize, int options)
   struct location *loc;
 
   ident_line (out, identsize);
-  fprintf (out, "__asm__ (\n");
+  fprintf (out, "__asm__ (");
   for (loc = op->begin; ; loc++) {
-    ident_line (out, identsize);
-    fprintf (out, "  \"%s\"\n", allegrex_disassemble (loc->opc, loc->address, FALSE));
+    if (loc != op->begin) {
+      fprintf (out, "\n");
+      ident_line (out, identsize);
+      fprintf (out, "         ");
+    }
+    fprintf (out, "\"%s\"", allegrex_disassemble (loc->opc, loc->address, FALSE));
     if (loc == op->end) break;
   }
   if (list_size (op->results) != 0 || list_size (op->operands) != 0) {
@@ -123,7 +128,6 @@ void print_asm (FILE *out, struct operation *op, int identsize, int options)
     }
   }
 
-  ident_line (out, identsize);
   fprintf (out, ");\n");
 }
 
@@ -300,6 +304,22 @@ void print_slt (FILE *out, struct operation *op, int isunsigned, int options)
 }
 
 static
+void print_signextend (FILE *out, struct operation *op, int isbyte, int options)
+{
+  if (!(options & OPTS_DEFERRED)) {
+    print_value (out, list_headvalue (op->results));
+    fprintf (out, " = ");
+  }
+
+  if (isbyte)
+    fprintf (out, "(char) ");
+  else
+    fprintf (out, "(short) ");
+
+  print_value (out, list_headvalue (op->operands));
+}
+
+static
 void print_condition (FILE *out, struct operation *op, int options)
 {
   fprintf (out, "if (");
@@ -394,6 +414,8 @@ void print_operation (FILE *out, struct operation *op, int identsize, int option
     case I_SC:   print_complexop (out, op, "SC", options);   break;
     case I_SWL:  print_complexop (out, op, "SWL", options);  break;
     case I_SWR:  print_complexop (out, op, "SWR", options);  break;
+    case I_SEB:  print_signextend (out, op, TRUE, options);  break;
+    case I_SEH:  print_signextend (out, op, TRUE, options);  break;
     default:
       if (op->begin->insn->flags & INSN_BRANCH) {
         print_condition (out, op, options);

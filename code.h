@@ -203,7 +203,14 @@ struct operation {
   list operands;
 };
 
+enum looptype {
+  LOOP_WHILE,
+  LOOP_REPEAT,
+  LOOP_FOR
+};
+
 struct loopstructure {
+  enum looptype type;
   struct basicblock *start;
   struct basicblock *end;
   int    hasendgoto;

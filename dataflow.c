@@ -12,6 +12,36 @@ uint32 get_constant_value (struct value *val)
 }
 
 static
+void combine_constants (struct variable *out, struct value *val)
+{
+  uint32 constant;
+  if (out->type == VARIABLE_UNK) return;
+
+  if (val->type == VAL_REGISTER) {
+    out->type = VARIABLE_UNK;
+    return;
+  }
+
+  if (val->type == VAL_VARIABLE) {
+    if (val->val.variable->type == VARIABLE_CONSTANTUNK)
+      return;
+    if (val->val.variable->type == VARIABLE_UNK) {
+      out->type = VARIABLE_UNK;
+      return;
+    }
+  }
+
+  constant = get_constant_value (val);
+  if (out->type == VARIABLE_CONSTANTUNK) {
+    out->type = VARIABLE_CONSTANT;
+    out->info = constant;
+  } else {
+    if (out->info != constant)
+      out->type = VARIABLE_UNK;
+  }
+}
+
+static
 void propagate_constants (struct subroutine *sub)
 {
   list worklist = list_alloc (sub->code->lstpool);
@@ -34,17 +64,26 @@ void propagate_constants (struct subroutine *sub)
     struct variable *var = list_removehead (worklist);
     struct variable temp;
     struct value *val;
-    int changed = FALSE;
+    element opel;
 
-    if (var->type != VARIABLE_UNK) {
-      element opel;
+    if (var->type == VARIABLE_UNK) continue;
+
+    if (var->def->type == OP_PHI) {
+      temp.type = VARIABLE_CONSTANTUNK;
 
       opel = list_head (var->def->operands);
+      while (opel) {
+        val = element_getvalue (opel);
+        combine_constants (&temp, val);
+        opel = element_next (opel);
+      }
+    } else {
       temp.type = VARIABLE_CONSTANT;
+
+      opel = list_head (var->def->operands);
       while (opel) {
         val = element_getvalue (opel);
         if (val->type == VAL_CONSTANT) {
-
         } else if (val->type == VAL_VARIABLE) {
           if (val->val.variable->type == VARIABLE_UNK)
             temp.type = VARIABLE_UNK;
@@ -60,20 +99,6 @@ void propagate_constants (struct subroutine *sub)
           val = list_headvalue (var->def->operands);
           temp.info = get_constant_value (val);
           var->def->deferred = TRUE;
-        } else if (var->def->type == OP_PHI) {
-          opel = list_head (var->def->operands);
-          while (opel) {
-            uint32 intval = get_constant_value (element_getvalue (opel));
-            if (opel == list_head (var->def->operands))
-              temp.info = intval;
-            else {
-              if (temp.info != intval) {
-                temp.type = VARIABLE_UNK;
-                break;
-              }
-            }
-            opel = element_next (opel);
-          }
         } else if (var->def->type == OP_INSTRUCTION) {
           uint32 val1, val2;
           switch (var->def->insn) {
@@ -97,13 +122,9 @@ void propagate_constants (struct subroutine *sub)
         }
       }
 
-      if (temp.type != var->type)
-        changed = TRUE;
-      var->type = temp.type;
-      var->info = temp.info;
     }
 
-    if (changed) {
+    if (temp.type != var->type) {
       element useel;
       useel = list_head (var->uses);
       while (useel) {
@@ -118,6 +139,9 @@ void propagate_constants (struct subroutine *sub)
         useel = element_next (useel);
       }
     }
+    var->type = temp.type;
+    var->info = temp.info;
+
   }
 
   list_free (worklist);

@@ -55,7 +55,7 @@ void print_block_recursive (FILE *out, struct basicblock *block, int verbosity)
 
   if (verbosity > 2) {
     ident_line (out, block->identsize + 1);
-    fprintf (out, "/* Block %d ", block->node.dfsnum);
+    fprintf (out, "/* Block %d outrefs: ", block->node.dfsnum);
     if (block->type == BLOCK_SIMPLE) {
       fprintf (out, "Address 0x%08X ", block->info.simple.begin->address);
     }
@@ -68,11 +68,11 @@ void print_block_recursive (FILE *out, struct basicblock *block, int verbosity)
     edge1 = list_headvalue (block->outrefs);
     edge2 = list_tailvalue (block->outrefs);
 
-    if (edge1->type == EDGE_FOLLOW &&
-        edge2->type == EDGE_FOLLOW) {
+    if (edge1->type != EDGE_IFEXIT &&
+        edge2->type != EDGE_IFEXIT) {
       haselse = TRUE;
     } else {
-      if (edge1->type == EDGE_FOLLOW)
+      if (edge2->type == EDGE_IFEXIT)
         reversecond = TRUE;
     }
   }
@@ -80,7 +80,11 @@ void print_block_recursive (FILE *out, struct basicblock *block, int verbosity)
   print_block (out, block, reversecond);
 
 
-  ref = list_head (block->outrefs);
+  if (reversecond)
+    ref = list_tail (block->outrefs);
+  else
+    ref = list_head (block->outrefs);
+
   while (ref) {
     edge = element_getvalue (ref);
 
@@ -96,10 +100,7 @@ void print_block_recursive (FILE *out, struct basicblock *block, int verbosity)
       }
     } else if (edge->type != EDGE_IFEXIT) {
       int identsize = block->identsize + 1;
-      if (block->ifst) {
-        if (ref == list_head (block->outrefs))
-          identsize++;
-      }
+      if (block->ifst) identsize++;
       ident_line (out, identsize);
       switch (edge->type) {
       case EDGE_GOTO:     fprintf (out, "goto label%d;\n", edge->to->node.dfsnum); break;
@@ -110,7 +111,10 @@ void print_block_recursive (FILE *out, struct basicblock *block, int verbosity)
       }
     }
 
-    ref = element_next (ref);
+    if (reversecond)
+      ref = element_previous (ref);
+    else
+      ref = element_next (ref);
 
     if (ref && haselse) {
       ident_line (out, block->identsize + 1);
@@ -136,7 +140,7 @@ void print_block_recursive (FILE *out, struct basicblock *block, int verbosity)
       fprintf (out, "}\n");
       if (block->loopst->end) {
         if (block->loopst->hasendgoto) {
-          ident_line (out, block->identsize + 1);
+          ident_line (out, block->identsize);
           fprintf (out, "goto label%d;\n", block->loopst->end->node.dfsnum);
         } else {
           print_block_recursive (out, block->loopst->end, verbosity);
