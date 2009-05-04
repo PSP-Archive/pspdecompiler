@@ -122,6 +122,16 @@ element make_link_and_insert (struct basicblock *from, struct basicblock *to, el
   return inserted;
 }
 
+static
+void make_call (struct basicblock *block, struct location *loc)
+{
+  block->type = BLOCK_CALL;
+  if (loc->target) {
+    block->info.call.calltarget = loc->target->sub;
+    list_inserttail (loc->target->sub->wherecalled, block);
+  }
+}
+
 
 static
 void link_blocks (struct subroutine *sub)
@@ -172,13 +182,11 @@ void link_blocks (struct subroutine *sub)
         if (loc->insn->flags & INSN_LINK) {
           inserted = make_link_and_insert (block, loc[2].block, el);
           target = element_getvalue (inserted);
-          target->type = BLOCK_CALL;
-          target->info.call.calltarget = loc->target->sub;
+          make_call (target, loc);
         } else if (loc->target->sub->begin == loc->target) {
           inserted = make_link_and_insert (block, sub->endblock, el);
           target = element_getvalue (inserted);
-          target->type = BLOCK_CALL;
-          target->info.call.calltarget = loc->target->sub;
+          make_call (target, loc);
         } else {
           make_link (block, loc->target->block);
         }
@@ -187,16 +195,13 @@ void link_blocks (struct subroutine *sub)
         if (loc->insn->flags & (INSN_LINK | INSN_WRITE_GPR_D)) {
           inserted = make_link_and_insert (block, next, el);
           target = element_getvalue (inserted);
-          target->type = BLOCK_CALL;
-          if (loc->target)
-            target->info.call.calltarget = loc->target->sub;
+          make_call (target, loc);
         } else {
           if (loc->target) {
             if (loc->target->sub->begin == loc->target) {
               inserted = make_link_and_insert (block, sub->endblock, el);
               target = element_getvalue (inserted);
-              target->type = BLOCK_CALL;
-              target->info.call.calltarget = loc->target->sub;
+              make_call (target, loc);
             } else {
               make_link (block, loc->target->block);
             }

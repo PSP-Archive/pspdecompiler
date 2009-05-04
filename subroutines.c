@@ -71,6 +71,7 @@ void new_subroutine (struct code *c, struct location *loc, struct prx_function *
     sub = fixedpool_alloc (c->subspool);
     sub->begin = loc;
     sub->code = c;
+    sub->wherecalled = list_alloc (c->lstpool);
     loc->sub = sub;
   }
   if (imp) sub->import = imp;

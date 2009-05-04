@@ -24,7 +24,7 @@ void print_operation (FILE *out, struct operation *op, int identsize);
 void print_complexop (FILE *out, struct operation *op, const char *opsymbol);
 void print_subroutine_name (FILE *out, struct subroutine *sub);
 
-int print_code (struct code *c, char *filename);
+int print_code (struct code *c, char *filename, int verbosity);
 int print_graph (struct code *c, char *prxname, int options);
 
 #endif /* __OUTPUT_H */

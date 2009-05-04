@@ -38,7 +38,7 @@ int main (int argc, char **argv)
   char *prxfilename = NULL;
   char *nidsfilename = NULL;
 
-  int i, j, verbose = 0;
+  int i, j, verbosity = 0;
   int printgraph = FALSE;
   int graphoptions = 0;
   int printcode = FALSE;
@@ -55,7 +55,7 @@ int main (int argc, char **argv)
       char *s = argv[i];
       for (j = 0; s[j]; j++) {
         switch (s[j]) {
-        case 'v': verbose++; break;
+        case 'v': verbosity++; break;
         case 'g': printgraph = TRUE; break;
         case 'c': printcode = TRUE; break;
         case 't': graphoptions |= OUT_PRINT_DFS; break;
@@ -96,10 +96,10 @@ int main (int argc, char **argv)
   if (nids)
     prx_resolve_nids (p, nids);
 
-  if (verbose > 2 && nids)
+  if (verbosity > 2 && nids)
     nids_print (nids);
 
-  if (verbose > 0) prx_print (p, (verbose > 1));
+  if (verbosity > 0) prx_print (p, (verbosity > 1));
 
   c = code_analyse (p);
   if (!c)
@@ -110,7 +110,7 @@ int main (int argc, char **argv)
     print_graph (c, prxfilename, graphoptions);
 
   if (printcode)
-    print_code (c, prxfilename);
+    print_code (c, prxfilename, verbosity);
 
   code_free (c);
 

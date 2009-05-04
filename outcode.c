@@ -69,7 +69,7 @@ void print_block (FILE *out, struct basicblock *block)
 }
 
 static
-void print_block_recursive (FILE *out, struct basicblock *block)
+void print_block_recursive (FILE *out, struct basicblock *block, int verbosity)
 {
   struct basicedge *edge;
   int reversecond = FALSE, haselse = FALSE;
@@ -91,6 +91,14 @@ void print_block_recursive (FILE *out, struct basicblock *block)
     }
   }
 
+  if (verbosity > 2) {
+    ident_line (out, block->identsize + 1);
+    fprintf (out, "/* Block %d ", block->node.dfsnum);
+    if (block->type == BLOCK_SIMPLE) {
+      fprintf (out, "Address 0x%08X ", block->info.simple.begin->address);
+    }
+    fprintf (out, "*/\n");
+  }
   print_block (out, block);
 
   if (block->ifst) {
@@ -121,7 +129,7 @@ void print_block_recursive (FILE *out, struct basicblock *block)
         ident_line (out, block->identsize + 1);
         fprintf (out, "{\n");
       }
-      print_block_recursive (out, edge->to);
+      print_block_recursive (out, edge->to, verbosity);
       if (block->ifst) {
         ident_line (out, block->identsize + 1);
         fprintf (out, "}\n");
@@ -157,7 +165,7 @@ void print_block_recursive (FILE *out, struct basicblock *block)
         ident_line (out, block->identsize + 1);
         fprintf (out, "goto label%d;\n", block->ifst->end->node.dfsnum);
       } else {
-        print_block_recursive (out, block->ifst->end);
+        print_block_recursive (out, block->ifst->end, verbosity);
       }
     }
   }
@@ -171,7 +179,7 @@ void print_block_recursive (FILE *out, struct basicblock *block)
           ident_line (out, block->identsize + 1);
           fprintf (out, "goto label%d;\n", block->loopst->end->node.dfsnum);
         } else {
-          print_block_recursive (out, block->loopst->end);
+          print_block_recursive (out, block->loopst->end, verbosity);
         }
       }
     }
@@ -179,11 +187,18 @@ void print_block_recursive (FILE *out, struct basicblock *block)
 }
 
 static
-void print_subroutine (FILE *out, struct code *c, struct subroutine *sub)
+void print_subroutine (FILE *out, struct subroutine *sub, int verbosity)
 {
   if (sub->import) return;
 
   fprintf (out, "/**\n * Subroutine at address 0x%08X\n", sub->begin->address);
+  if (verbosity > 1 && !sub->haserror) {
+    struct location *loc = sub->begin;
+    for (loc = sub->begin; ; loc++) {
+      fprintf (out, " * %s\n", allegrex_disassemble (loc->opc, loc->address, TRUE));
+      if (loc == sub->end) break;
+    }
+  }
   fprintf (out, " */\n");
   fprintf (out, "void ");
   print_subroutine_name (out, sub);
@@ -203,7 +218,7 @@ void print_subroutine (FILE *out, struct code *c, struct subroutine *sub)
     while (el) {
       struct basicblock *block = element_getvalue (el);
       if (!block->mark1)
-        print_block_recursive (out, block);
+        print_block_recursive (out, block, verbosity);
       el = element_next (el);
     }
   }
@@ -211,7 +226,7 @@ void print_subroutine (FILE *out, struct code *c, struct subroutine *sub)
 }
 
 static
-void print_source (FILE *out, struct code *c, char *headerfilename)
+void print_source (FILE *out, struct code *c, char *headerfilename, int verbosity)
 {
   uint32 i, j;
   element el;
@@ -240,7 +255,7 @@ void print_source (FILE *out, struct code *c, char *headerfilename)
     struct subroutine *sub;
     sub = element_getvalue (el);
 
-    print_subroutine (out, c, sub);
+    print_subroutine (out, sub, verbosity);
     el = element_next (el);
   }
 
@@ -284,7 +299,7 @@ void print_header (FILE *out, struct code *c, char *headerfilename)
 }
 
 
-int print_code (struct code *c, char *prxname)
+int print_code (struct code *c, char *prxname, int verbosity)
 {
   char buffer[64];
   char basename[32];
@@ -309,7 +324,7 @@ int print_code (struct code *c, char *prxname)
 
 
   print_header (hout, c, buffer);
-  print_source (cout, c, buffer);
+  print_source (cout, c, buffer, verbosity);
 
   fclose (cout);
   fclose (hout);

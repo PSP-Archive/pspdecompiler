@@ -60,7 +60,11 @@ struct subroutine {
   struct basicblock *endblock;
   list   blocks, dfsblocks, revdfsblocks;
 
+  list   wherecalled;
   list   variables;
+
+  uint32 stacksize;
+  int    numregargs;
 
   int    haserror;
   int    temp;
