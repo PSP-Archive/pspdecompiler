@@ -12,54 +12,6 @@ struct variable *alloc_variable (struct basicblock *block)
 }
 
 static
-void live_registers (struct subroutine *sub)
-{
-  list worklist = list_alloc (sub->code->lstpool);
-  struct basicblock *block;
-  element el;
-
-  el = list_head (sub->blocks);
-  while (el) {
-    block = element_getvalue (el);
-    block->mark1 = 0;
-    el = element_next (el);
-  }
-
-  list_inserthead (worklist, sub->endblock);
-
-  while (list_size (worklist) != 0) {
-    struct basicedge *edge;
-    struct basicblock *bref;
-
-    block = list_removehead (worklist);
-    block->mark1 = 0;
-    block->reg_live_out[0] = (block->reg_live_in[0] & ~(block->reg_kill[0])) | block->reg_gen[0];
-    block->reg_live_out[1] = (block->reg_live_in[1] & ~(block->reg_kill[1])) | block->reg_gen[1];
-    el = list_head (block->inrefs);
-    while (el) {
-      uint32 changed;
-
-      edge = element_getvalue (el);
-      bref = edge->from;
-
-      changed = block->reg_live_out[0] & (~bref->reg_live_in[0]);
-      bref->reg_live_in[0] |= block->reg_live_out[0];
-      changed |= block->reg_live_out[1] & (~bref->reg_live_in[1]);
-      bref->reg_live_in[1] |= block->reg_live_out[1];
-
-      if (changed && !bref->mark1) {
-        list_inserttail (worklist, bref);
-        bref->mark1 = 1;
-      }
-
-      el = element_next (el);
-    }
-  }
-
-  list_free (worklist);
-}
-
-static
 void ssa_place_phis (struct subroutine *sub, list *defblocks)
 {
   struct basicblock *block, *bref;
@@ -216,6 +168,7 @@ void ssa_search (struct basicblock *block, list *vars)
 void build_ssa (struct subroutine *sub)
 {
   list reglist[NUM_REGISTERS];
+  element blockel;
   int i;
 
   reglist[0] = NULL;
@@ -226,6 +179,15 @@ void build_ssa (struct subroutine *sub)
   sub->variables = list_alloc (sub->code->lstpool);
 
   extract_operations (sub);
+  blockel = list_head (sub->blocks);
+  while (blockel) {
+    struct basicblock *block = element_getvalue (blockel);
+    for (i = 0; i < NUM_REGISTERS; i++) {
+      if (IS_BIT_SET (block->reg_kill, i))
+        list_inserttail (reglist[i], block);
+    }
+    blockel = element_next (blockel);
+  }
 
   live_registers (sub);
   ssa_place_phis (sub, reglist);

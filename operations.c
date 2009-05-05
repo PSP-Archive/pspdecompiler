@@ -33,7 +33,7 @@
 struct operation *operation_alloc (struct basicblock *block)
 {
   struct operation *op;
-  struct code *c = op->block->sub->code;
+  struct code *c = block->sub->code;
 
   op = fixedpool_alloc (c->opspool);
   op->block = block;

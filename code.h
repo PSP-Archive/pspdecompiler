@@ -305,6 +305,8 @@ void value_append (struct subroutine *sub, list l, enum valuetype type, uint32 v
 void extract_operations (struct subroutine *sub);
 
 void build_ssa (struct subroutine *sub);
+void live_registers (struct subroutine *sub);
+void propagate_constants (struct subroutine *sub);
 void extract_variables (struct subroutine *sub);
 
 
