@@ -7,6 +7,22 @@
 #include "lists.h"
 #include "types.h"
 
+
+#define RT(op) ((op >> 16) & 0x1F)
+#define RS(op) ((op >> 21) & 0x1F)
+#define RD(op) ((op >> 11) & 0x1F)
+#define SA(op) ((op >> 6)  & 0x1F)
+#define IMM(op) ((signed short) (op & 0xFFFF))
+#define IMMU(op) ((unsigned short) (op & 0xFFFF))
+
+#define END_REGMASK     0xFCFF000C
+#define CALLIN_REGMASK  0x00000FF0
+#define CALLOUT_REGMASK 0x0300FFFE
+
+#define IS_BIT_SET(flags, bit) ((1 << ((bit) & 31)) & ((flags)[(bit) >> 5]))
+#define BIT_SET(flags, bit) ((flags)[(bit) >> 5]) |= 1 << ((bit) & 31)
+
+
 /* Possible reachable status */
 enum locationreachable {
   LOCATION_UNREACHABLE = 0,  /* Location is not reachable by any means */
@@ -55,6 +71,8 @@ struct codeswitch {
 /* Subroutine decompilation status */
 #define SUBROUTINE_EXTRACTED          1
 #define SUBROUTINE_CFG_EXTRACTED      2
+#define SUBROUTINE_CFG_TRAVERSE       4
+#define SUBROUTINE_CFG_TRAVERSE_REV   8
 
 /* A subroutine */
 struct subroutine {
@@ -274,13 +292,17 @@ void extract_switches (struct code *c);
 void extract_subroutines (struct code *c);
 
 void extract_cfg (struct subroutine *sub);
-void make_graph (struct subroutine *sub, int reverse);
+void cfg_traverse (struct subroutine *sub, int reverse);
 
 int dom_isancestor (struct basicblocknode *ancestor, struct basicblocknode *node);
 struct basicblocknode *dom_common (struct basicblocknode *n1, struct basicblocknode *n2);
 
 void reset_marks (struct subroutine *sub);
 void extract_structures (struct subroutine *sub);
+
+struct operation *operation_alloc (struct basicblock *block);
+void value_append (struct subroutine *sub, list l, enum valuetype type, uint32 value);
+void extract_operations (struct subroutine *sub);
 
 void build_ssa (struct subroutine *sub);
 void extract_variables (struct subroutine *sub);

@@ -372,16 +372,34 @@ void extract_subroutines (struct code *c)
     if (!sub->import) {
       check_switches (sub);
       check_subroutine (sub);
+
       if (!sub->haserror) {
         sub->status |= SUBROUTINE_EXTRACTED;
         extract_cfg (sub);
       }
       if (!sub->haserror) {
         sub->status |= SUBROUTINE_CFG_EXTRACTED;
+        cfg_traverse (sub, FALSE);
+      }
+
+      if (!sub->haserror) {
+        sub->status |= SUBROUTINE_CFG_TRAVERSE;
+        cfg_traverse (sub, TRUE);
+      }
+
+      if (!sub->haserror) {
+        sub->status |= SUBROUTINE_CFG_TRAVERSE_REV;
+        build_ssa (sub);
+      }
+
+      if (!sub->haserror) {
+        extract_variables (sub);
+      }
+
+      if (!sub->haserror) {
         extract_structures (sub);
       }
-      if (!sub->haserror) build_ssa (sub);
-      if (!sub->haserror) extract_variables (sub);
+
     }
     el = element_next (el);
   }

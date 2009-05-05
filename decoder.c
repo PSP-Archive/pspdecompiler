@@ -4,10 +4,6 @@
 #include "code.h"
 #include "utils.h"
 
-#define RT(op) ((op >> 16) & 0x1F)
-#define RS(op) ((op >> 21) & 0x1F)
-#define RD(op) ((op >> 11) & 0x1F)
-
 int decode_instructions (struct code *c)
 {
   struct location *base;

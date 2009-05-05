@@ -211,16 +211,16 @@ void cfg_frontier (struct subroutine *sub, int reverse)
   }
 }
 
-void make_graph (struct subroutine *sub, int reverse)
+void cfg_traverse (struct subroutine *sub, int reverse)
 {
   if (!reverse) {
-    if (!cfg_dfs (sub, 0)) {
+    if (!cfg_dfs (sub, FALSE)) {
       error (__FILE__ ": unreachable code at subroutine 0x%08X", sub->begin->address);
       sub->haserror = TRUE;
       return;
     }
   } else {
-    if (!cfg_dfs (sub, 1)) {
+    if (!cfg_dfs (sub, TRUE)) {
       error (__FILE__ ": infinite loop at subroutine 0x%08X", sub->begin->address);
       sub->haserror = TRUE;
       return;
