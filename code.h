@@ -7,115 +7,129 @@
 #include "lists.h"
 #include "types.h"
 
+/* Possible reachable status */
 enum locationreachable {
-  LOCATION_UNREACHABLE = 0,
-  LOCATION_REACHABLE,
-  LOCATION_DELAY_SLOT
+  LOCATION_UNREACHABLE = 0,  /* Location is not reachable by any means */
+  LOCATION_REACHABLE,        /* Location is reachable by some path */
+  LOCATION_DELAY_SLOT        /* Location is a delay slot of a reachable branch/jump */
 };
 
+/* If an error was detected one a location */
 enum locationerror {
-  ERROR_NONE = 0,
-  ERROR_INVALID_OPCODE,
-  ERROR_DELAY_SLOT,
-  ERROR_TARGET_OUTSIDE_FILE,
-  ERROR_ILLEGAL_BRANCH
+  ERROR_NONE = 0,              /* No error */
+  ERROR_INVALID_OPCODE,        /* Opcode is not recognized */
+  ERROR_DELAY_SLOT,            /* Branch/jump inside a delay slot */
+  ERROR_TARGET_OUTSIDE_FILE,   /* Branch/jump target outside the code */
+  ERROR_ILLEGAL_BRANCH         /* Branch with a condition that can never occur, such as `bne  $0, $0, target' */
 };
 
+/* Represents a location in the code */
 struct location {
-  uint32 opc;
-  uint32 address;
+  uint32 opc;                                /* The opcode (little-endian) */
+  uint32 address;                            /* The virtual address of the location */
 
-  const struct allegrex_instruction *insn;
-  struct location *target;
+  const struct allegrex_instruction *insn;   /* The decoded instruction or null (illegal opcode) */
+  struct location *target;                   /* A possible target of a branch/jump */
 
-  list references;
-  int  branchalways;
-  enum locationreachable reachable;
-  enum locationerror  error;
+  list references;                           /* Number of references to this target inside the same subroutine */
+  int  branchalways;                         /* True if this location is a branch that always occurs */
+  enum locationreachable reachable;          /* Reachable status */
+  enum locationerror  error;                 /* Error status */
 
-  struct subroutine *sub;
-  struct basicblock *block;
-  struct codeswitch *cswitch;
+  struct subroutine *sub;                    /* Owner subroutine */
+  struct basicblock *block;                  /* Basic block mark (used when extracting basic blocks) */
+  struct codeswitch *cswitch;                /* Code switch mark */
 };
 
+/* Represents a switch in the code */
 struct codeswitch {
   struct prx_reloc *jumpreloc;
   struct prx_reloc *switchreloc;
-  struct location  *location;
-  struct location  *jumplocation;
-  list   references;
-  int    count;
-  int    checked;
+  struct location  *location;       /* The location that loads the base address of the switch */
+  struct location  *jumplocation;   /* The location of the jump instruction */
+  list   references;                /* A list of possible target locations (without repeating) */
+  int    count;                     /* How many possible targets this switch have */
+  int    checked;                   /* Is this switch valid? */
 };
 
+/* Subroutine decompilation status */
+#define SUBROUTINE_EXTRACTED          1
+#define SUBROUTINE_CFG_EXTRACTED      2
+
+/* A subroutine */
 struct subroutine {
-  struct code *code;
-  struct prx_function *export;
-  struct prx_function *import;
+  struct code *code;                /* The owner code of this subroutine */
+  struct prx_function *export;      /* Is this a function export? */
+  struct prx_function *import;      /* Is this a function import? */
 
-  struct location *begin;
-  struct location *end;
+  struct location *begin;           /* Where the subroutine begins */
+  struct location *end;             /* Where the subroutine ends */
 
-  struct basicblock *startblock;
-  struct basicblock *endblock;
-  list   blocks, dfsblocks, revdfsblocks;
+  struct basicblock *startblock;    /* Points to the first basic block of this subroutine */
+  struct basicblock *endblock;      /* Points to the last basic block of this subroutine */
+  list   blocks;                    /* A list of the basic blocks of this subroutine */
+  list   dfsblocks, revdfsblocks;   /* Blocks ordered in DFS and Reverse-DFS order */
 
-  list   wherecalled;
+  list   whereused;                 /* A list of basic blocks calling this subroutine */
   list   variables;
 
   uint32 stacksize;
   int    numregargs;
 
-  int    haserror;
+  int    haserror, status;          /* Subroutine decompilation status */
   int    temp;
 };
 
-
+/* Represents a pair of integers */
 struct intpair {
-  int first;
-  int last;
+  int first, last;
 };
 
+
+/* Abstract node in DFS and DOM trees (or reverse DFS and DOM trees) */
 struct basicblocknode {
-  int dfsnum;
-  struct intpair domdfs;
-  struct basicblocknode *dominator;
-  struct basicblocknode *parent;
-  element block;
-  list children;
-  list domchildren;
-  list frontier;
+  int dfsnum;                        /* The Depth-First search number */
+  struct intpair domdfsnum;          /* To determine ancestry information in the dominator tree */
+  struct basicblocknode *dominator;  /* The dominator node */
+  struct basicblocknode *parent;     /* The parent node (in the depth-first search) */
+  element blockel;                   /* An element inside the list (dfsblocks or revdfsblocks) */
+  list children;                     /* Children in the DFS tree */
+  list domchildren;                  /* Children in the dominator tree */
+  list frontier;                     /* The dominator frontier */
 };
 
+/* The type of the basic block */
 enum basicblocktype {
-  BLOCK_START = 0,
-  BLOCK_END,
-  BLOCK_SIMPLE,
-  BLOCK_CALL
+  BLOCK_START = 0,      /* The first basic block in a subroutine */
+  BLOCK_SIMPLE,         /* A simple block */
+  BLOCK_CALL,           /* A block that represents a call */
+  BLOCK_END             /* The last basic block */
 };
 
+/* The basic block */
 struct basicblock {
-  enum basicblocktype type;
+  enum basicblocktype type;                /* The type of the basic block *?
+  element blockel;                         /* An element inside the list sub->blocks */
   union {
     struct {
-      struct location *begin;
-      struct location *end;
-      struct location *jumploc;
+      struct location *begin;              /* The start of the simple block */
+      struct location *end;                /* The end of the simple block */
+      struct location *jumploc;            /* The jump/branch location inside the block */
     } simple;
     struct {
-      struct subroutine *calltarget;
+      struct subroutine *calltarget;       /* The target of the call */
     } call;
   } info;
 
   uint32 reg_gen[2], reg_kill[2];
   uint32 reg_live_in[2], reg_live_out[2];
   list   operations;
-  struct subroutine *sub;
+  struct subroutine *sub;                  /* The owner subroutine */
 
-  struct basicblocknode node;
-  struct basicblocknode revnode;
+  struct basicblocknode node;              /* Node info for DFS and DOM trees */
+  struct basicblocknode revnode;           /* Node info for the reverse DFS and DOM trees */
 
-  list   inrefs, outrefs;
+  list   inrefs, outrefs;                  /* A list of in- and out-edges of this block */
 
   struct loopstructure *loopst;
   struct ifstructure *ifst;
@@ -137,6 +151,7 @@ enum edgetype {
 struct basicedge {
   enum edgetype type;
   struct basicblock *from, *to;
+  element fromel, toel;
   int fromnum, tonum;
 };
 

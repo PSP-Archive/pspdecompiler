@@ -562,7 +562,7 @@ void ssa_place_phis (struct subroutine *sub, list *defblocks)
       ref = list_head (block->node.frontier);
       while (ref) {
         brefnode = element_getvalue (ref);
-        bref = element_getvalue (brefnode->block);
+        bref = element_getvalue (brefnode->blockel);
         if (bref->mark2 != i && IS_BIT_SET (bref->reg_live_out, i)) {
           struct operation *op;
 
@@ -677,7 +677,7 @@ void ssa_search (struct basicblock *block, list *vars)
     struct basicblock *child;
 
     childnode = element_getvalue (el);
-    child = element_getvalue (childnode->block);
+    child = element_getvalue (childnode->blockel);
     ssa_search (child, vars);
     el = element_next (el);
   }

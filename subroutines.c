@@ -71,7 +71,7 @@ void new_subroutine (struct code *c, struct location *loc, struct prx_function *
     sub = fixedpool_alloc (c->subspool);
     sub->begin = loc;
     sub->code = c;
-    sub->wherecalled = list_alloc (c->lstpool);
+    sub->whereused = list_alloc (c->lstpool);
     loc->sub = sub;
   }
   if (imp) sub->import = imp;
@@ -128,7 +128,7 @@ void extract_from_relocs (struct code *c)
       if (!loc->cswitch)
         new_subroutine (c, loc, NULL, NULL);
     } else if (rel->type == R_MIPS_HI16 || rel->type == R_MIPSX_HI16) {
-      /* TODO */
+      /* TODO: is this OK to do? */
       if (!loc->cswitch)
         new_subroutine (c, loc, NULL, NULL);
     }
@@ -201,7 +201,7 @@ void extract_hidden_subroutines (struct code *c)
   uint32 i;
   int changed = TRUE;
 
-  /* TODO */
+  /* TODO: improve the hidden subroutine detection algorithm */
   while (changed) {
     changed = FALSE;
     for (i = 0; i < c->numopc; i++) {
@@ -372,8 +372,14 @@ void extract_subroutines (struct code *c)
     if (!sub->import) {
       check_switches (sub);
       check_subroutine (sub);
-      if (!sub->haserror) extract_cfg (sub);
-      if (!sub->haserror) extract_structures (sub);
+      if (!sub->haserror) {
+        sub->status |= SUBROUTINE_EXTRACTED;
+        extract_cfg (sub);
+      }
+      if (!sub->haserror) {
+        sub->status |= SUBROUTINE_CFG_EXTRACTED;
+        extract_structures (sub);
+      }
       if (!sub->haserror) build_ssa (sub);
       if (!sub->haserror) extract_variables (sub);
     }

@@ -42,7 +42,7 @@ void dfs_step (struct basicblock *block, int reverse)
   }
 
   node->dfsnum = block->sub->temp--;
-  node->block = list_inserthead (out, block);
+  node->blockel = list_inserthead (out, block);
 }
 
 int cfg_dfs (struct subroutine *sub, int reverse)
@@ -57,8 +57,8 @@ int cfg_dfs (struct subroutine *sub, int reverse)
 
 int dom_isancestor (struct basicblocknode *ancestor, struct basicblocknode *node)
 {
-  return (ancestor->domdfs.first <= node->domdfs.first &&
-          ancestor->domdfs.last <= node->domdfs.last);
+  return (ancestor->domdfsnum.first <= node->domdfsnum.first &&
+          ancestor->domdfsnum.last <= node->domdfsnum.last);
 }
 
 struct basicblocknode *dom_common (struct basicblocknode *n1, struct basicblocknode *n2)
@@ -75,29 +75,29 @@ struct basicblocknode *dom_common (struct basicblocknode *n1, struct basicblockn
 }
 
 static
-void dom_dfs_step (struct basicblocknode *node, struct intpair *domdfs)
+void dom_dfs_step (struct basicblocknode *node, struct intpair *domdfsnum)
 {
   struct basicblocknode *next;
   element el;
 
-  node->domdfs.first = (domdfs->first)++;
+  node->domdfsnum.first = (domdfsnum->first)++;
   el = list_head (node->domchildren);
   while (el) {
     next = element_getvalue (el);
-    if (!next->domdfs.first)
-      dom_dfs_step (next, domdfs);
+    if (!next->domdfsnum.first)
+      dom_dfs_step (next, domdfsnum);
     el = element_next (el);
   }
-  node->domdfs.last = (domdfs->last)--;
+  node->domdfsnum.last = (domdfsnum->last)--;
 }
 
 void cfg_dominance (struct subroutine *sub, int reverse)
 {
   struct basicblock *start;
   struct basicblocknode *startnode;
-  list blocks, refs;
+  struct intpair domdfsnum;
   int changed = TRUE;
-  struct intpair domdfs;
+  list blocks, refs;
   element el;
 
   if (reverse) {
@@ -169,9 +169,9 @@ void cfg_dominance (struct subroutine *sub, int reverse)
     el = element_next (el);
   }
 
-  domdfs.first = 0;
-  domdfs.last = list_size (blocks);
-  dom_dfs_step (startnode, &domdfs);
+  domdfsnum.first = 0;
+  domdfsnum.last = list_size (blocks);
+  dom_dfs_step (startnode, &domdfsnum);
 }
 
 void cfg_frontier (struct subroutine *sub, int reverse)

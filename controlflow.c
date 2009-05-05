@@ -17,6 +17,7 @@ struct basicblock *alloc_block (struct subroutine *sub)
   block->node.frontier = list_alloc (sub->code->lstpool);
   block->revnode.frontier = list_alloc (sub->code->lstpool);
   block->sub = sub;
+
   return block;
 }
 
@@ -32,7 +33,7 @@ void extract_blocks (struct subroutine *sub)
   sub->dfsblocks = list_alloc (sub->code->lstpool);
 
   block = alloc_block (sub);
-  list_inserttail (sub->blocks, block);
+  block->blockel = list_inserttail (sub->blocks, block);
   block->type = BLOCK_START;
   sub->startblock = block;
 
@@ -40,7 +41,7 @@ void extract_blocks (struct subroutine *sub)
 
   while (1) {
     block = alloc_block (sub);
-    list_inserttail (sub->blocks, block);
+    block->blockel = list_inserttail (sub->blocks, block);
 
     if (!begin) break;
     next = begin;
@@ -106,20 +107,19 @@ void make_link (struct basicblock *from, struct basicblock *to)
   edge->to = to;
   edge->tonum = list_size (to->inrefs);
 
-  list_inserttail (from->outrefs, edge);
-  list_inserttail (to->inrefs, edge);
+  edge->fromel = list_inserttail (from->outrefs, edge);
+  edge->toel = list_inserttail (to->inrefs, edge);
 }
 
 static
-element make_link_and_insert (struct basicblock *from, struct basicblock *to, element el)
+struct basicblock *make_link_and_insert (struct basicblock *from, struct basicblock *to, element el)
 {
   struct basicblock *block = alloc_block (from->sub);
-  element inserted = element_alloc (from->sub->code->lstpool, block);
-
-  element_insertbefore (el, inserted);
+  block->blockel = element_alloc (from->sub->code->lstpool, block);
+  element_insertbefore (el, block->blockel);
   make_link (from, block);
   make_link (block, to);
-  return inserted;
+  return block;
 }
 
 static
@@ -128,7 +128,7 @@ void make_call (struct basicblock *block, struct location *loc)
   block->type = BLOCK_CALL;
   if (loc->target) {
     block->info.call.calltarget = loc->target->sub;
-    list_inserttail (loc->target->sub->wherecalled, block);
+    list_inserttail (loc->target->sub->whereused, block);
   }
 }
 
@@ -139,7 +139,7 @@ void link_blocks (struct subroutine *sub)
   struct basicblock *block, *next;
   struct basicblock *target;
   struct location *loc;
-  element el, inserted;
+  element el;
 
   el = list_head (sub->blocks);
 
@@ -169,8 +169,8 @@ void link_blocks (struct subroutine *sub)
 
         if (loc == block->info.simple.end) {
           struct basicblock *slot = alloc_block (sub);
-          inserted = element_alloc (sub->code->lstpool, slot);
-          element_insertbefore (el, inserted);
+          slot->blockel = element_alloc (sub->code->lstpool, slot);
+          element_insertbefore (el, slot->blockel);
 
           slot->type = BLOCK_SIMPLE;
           slot->info.simple.begin = &block->info.simple.end[1];
@@ -180,12 +180,10 @@ void link_blocks (struct subroutine *sub)
         }
 
         if (loc->insn->flags & INSN_LINK) {
-          inserted = make_link_and_insert (block, loc[2].block, el);
-          target = element_getvalue (inserted);
+          target = make_link_and_insert (block, loc[2].block, el);
           make_call (target, loc);
         } else if (loc->target->sub->begin == loc->target) {
-          inserted = make_link_and_insert (block, sub->endblock, el);
-          target = element_getvalue (inserted);
+          target = make_link_and_insert (block, sub->endblock, el);
           make_call (target, loc);
         } else {
           make_link (block, loc->target->block);
@@ -193,14 +191,12 @@ void link_blocks (struct subroutine *sub)
 
       } else {
         if (loc->insn->flags & (INSN_LINK | INSN_WRITE_GPR_D)) {
-          inserted = make_link_and_insert (block, next, el);
-          target = element_getvalue (inserted);
+          target = make_link_and_insert (block, next, el);
           make_call (target, loc);
         } else {
           if (loc->target) {
             if (loc->target->sub->begin == loc->target) {
-              inserted = make_link_and_insert (block, sub->endblock, el);
-              target = element_getvalue (inserted);
+              target = make_link_and_insert (block, sub->endblock, el);
               make_call (target, loc);
             } else {
               make_link (block, loc->target->block);
@@ -222,7 +218,6 @@ void link_blocks (struct subroutine *sub)
     } else {
       make_link (block, next);
     }
-
   }
 }
 
@@ -255,7 +250,7 @@ void mark_backward (struct subroutine *sub, struct basicblock *block, int num, i
   element el, ref;
   int count = 1;
 
-  el = block->node.block;
+  el = block->node.blockel;
   while (el && count) {
     struct basicblock *block = element_getvalue (el);
     if (block->node.dfsnum < end) break;
@@ -284,7 +279,7 @@ void mark_forward (struct subroutine *sub, struct basicblock *block,
 {
   element el, ref;
 
-  el = block->node.block;
+  el = block->node.blockel;
   while (el) {
     struct basicblock *block = element_getvalue (el);
     if (block->node.dfsnum > end) break;
@@ -428,7 +423,7 @@ void extract_ifs (struct subroutine *sub)
         while (domel) {
           int incount = 0;
           struct basicblocknode *dom = element_getvalue (domel);
-          struct basicblock *domblock = element_getvalue (dom->block);
+          struct basicblock *domblock = element_getvalue (dom->blockel);
           element ref;
 
           ref = list_head (domblock->inrefs);

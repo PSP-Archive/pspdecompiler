@@ -83,10 +83,10 @@ void print_dominator (FILE *out, struct basicblock *block, int reverse, const ch
 
   if (reverse) {
     if (list_size (block->outrefs) <= 1) return;
-    dominator = element_getvalue (block->revnode.dominator->block);
+    dominator = element_getvalue (block->revnode.dominator->blockel);
   } else {
     if (list_size (block->inrefs) <= 1) return;
-    dominator = element_getvalue (block->node.dominator->block);
+    dominator = element_getvalue (block->node.dominator->blockel);
   }
   fprintf (out, "    %3d -> %3d [color=%s];\n",
       block->node.dfsnum, dominator->node.dfsnum, color);
@@ -105,7 +105,7 @@ void print_frontier (FILE *out, struct basicblock *block, list frontier, const c
     struct basicblock *refblock;
 
     refnode = element_getvalue (ref);
-    refblock = element_getvalue (refnode->block);
+    refblock = element_getvalue (refnode->blockel);
 
     fprintf (out, "%3d ", refblock->node.dfsnum);
     ref = element_next (ref);
@@ -183,7 +183,7 @@ void print_subroutine_graph (FILE *out, struct code *c, struct subroutine *sub, 
         if (ref != list_head (block->outrefs))
           fprintf (out, "[arrowtail=dot]");
 
-        if (element_getvalue (refblock->node.parent->block) == block) {
+        if (element_getvalue (refblock->node.parent->blockel) == block) {
           fprintf (out, "[style=bold]");
         } else if (block->node.dfsnum >= refblock->node.dfsnum) {
           fprintf (out, "[color=red]");
