@@ -45,6 +45,7 @@ void dfs_step (struct basicblock *block, int reverse)
   node->blockel = list_inserthead (out, block);
 }
 
+static
 int cfg_dfs (struct subroutine *sub, int reverse)
 {
   struct basicblock *start;
@@ -91,6 +92,7 @@ void dom_dfs_step (struct basicblocknode *node, struct intpair *domdfsnum)
   node->domdfsnum.last = (domdfsnum->last)--;
 }
 
+static
 void cfg_dominance (struct subroutine *sub, int reverse)
 {
   struct basicblock *start;
@@ -174,6 +176,7 @@ void cfg_dominance (struct subroutine *sub, int reverse)
   dom_dfs_step (startnode, &domdfsnum);
 }
 
+static
 void cfg_frontier (struct subroutine *sub, int reverse)
 {
   struct basicblock *block;
@@ -206,4 +209,24 @@ void cfg_frontier (struct subroutine *sub, int reverse)
     }
     el = element_next (el);
   }
+}
+
+void make_graph (struct subroutine *sub, int reverse)
+{
+  if (!reverse) {
+    if (!cfg_dfs (sub, 0)) {
+      error (__FILE__ ": unreachable code at subroutine 0x%08X", sub->begin->address);
+      sub->haserror = TRUE;
+      return;
+    }
+  } else {
+    if (!cfg_dfs (sub, 1)) {
+      error (__FILE__ ": infinite loop at subroutine 0x%08X", sub->begin->address);
+      sub->haserror = TRUE;
+      return;
+    }
+  }
+
+  cfg_dominance (sub, reverse);
+  cfg_frontier (sub, reverse);
 }

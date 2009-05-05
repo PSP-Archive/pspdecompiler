@@ -274,13 +274,10 @@ void extract_switches (struct code *c);
 void extract_subroutines (struct code *c);
 
 void extract_cfg (struct subroutine *sub);
-
-int cfg_dfs (struct subroutine *sub, int reverse);
+void make_graph (struct subroutine *sub, int reverse);
 
 int dom_isancestor (struct basicblocknode *ancestor, struct basicblocknode *node);
 struct basicblocknode *dom_common (struct basicblocknode *n1, struct basicblocknode *n2);
-void cfg_dominance (struct subroutine *sub, int reverse);
-void cfg_frontier (struct subroutine *sub, int reverse);
 
 void reset_marks (struct subroutine *sub);
 void extract_structures (struct subroutine *sub);
