@@ -554,8 +554,6 @@ void extract_structures (struct subroutine *sub)
   extract_ifs (sub);
 
   reset_marks (sub);
-  sub->temp = 0;
-
   el = list_head (sub->blocks);
   while (el) {
     struct basicblock *block = element_getvalue (el);

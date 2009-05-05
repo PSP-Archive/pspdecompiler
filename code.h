@@ -108,7 +108,7 @@ enum basicblocktype {
 
 /* The basic block */
 struct basicblock {
-  enum basicblocktype type;                /* The type of the basic block *?
+  enum basicblocktype type;                /* The type of the basic block */
   element blockel;                         /* An element inside the list sub->blocks */
   union {
     struct {
