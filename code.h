@@ -239,14 +239,15 @@ struct ifstructure {
 };
 
 
+/* Represents the entire PRX code */
 struct code {
-  struct prx *file;
+  struct prx *file;        /* The PRX file */
 
-  uint32 baddr, numopc;
-  struct location *base;
-  struct location *end;
+  uint32 baddr, numopc;    /* The code segment base address and number of opcodes */
+  struct location *base;   /* The code segment start */
+  struct location *end;    /* The code segment end */
 
-  list subroutines;
+  list subroutines;        /* The list of subroutines */
 
   listpool  lstpool;
   fixedpool switchpool;

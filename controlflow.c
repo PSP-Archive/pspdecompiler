@@ -3,7 +3,7 @@
 #include "utils.h"
 
 static
-struct basicblock *alloc_block (struct subroutine *sub)
+struct basicblock *alloc_block (struct subroutine *sub, int insert)
 {
   struct basicblock *block;
   block = fixedpool_alloc (sub->code->blockspool);
@@ -17,6 +17,11 @@ struct basicblock *alloc_block (struct subroutine *sub)
   block->node.frontier = list_alloc (sub->code->lstpool);
   block->revnode.frontier = list_alloc (sub->code->lstpool);
   block->sub = sub;
+  if (insert) {
+    block->blockel = list_inserttail (sub->blocks, block);
+  } else {
+    block->blockel = element_alloc (sub->code->lstpool, block);
+  }
 
   return block;
 }
@@ -32,16 +37,14 @@ void extract_blocks (struct subroutine *sub)
   sub->revdfsblocks = list_alloc (sub->code->lstpool);
   sub->dfsblocks = list_alloc (sub->code->lstpool);
 
-  block = alloc_block (sub);
-  block->blockel = list_inserttail (sub->blocks, block);
+  block = alloc_block (sub, TRUE);
   block->type = BLOCK_START;
   sub->startblock = block;
 
   begin = sub->begin;
 
   while (1) {
-    block = alloc_block (sub);
-    block->blockel = list_inserttail (sub->blocks, block);
+    block = alloc_block (sub, TRUE);
 
     if (!begin) break;
     next = begin;
@@ -114,8 +117,7 @@ void make_link (struct basicblock *from, struct basicblock *to)
 static
 struct basicblock *make_link_and_insert (struct basicblock *from, struct basicblock *to, element el)
 {
-  struct basicblock *block = alloc_block (from->sub);
-  block->blockel = element_alloc (from->sub->code->lstpool, block);
+  struct basicblock *block = alloc_block (from->sub, FALSE);
   element_insertbefore (el, block->blockel);
   make_link (from, block);
   make_link (block, to);
@@ -168,8 +170,7 @@ void link_blocks (struct subroutine *sub)
         }
 
         if (loc == block->info.simple.end) {
-          struct basicblock *slot = alloc_block (sub);
-          slot->blockel = element_alloc (sub->code->lstpool, slot);
+          struct basicblock *slot = alloc_block (sub, FALSE);
           element_insertbefore (el, slot->blockel);
 
           slot->type = BLOCK_SIMPLE;
