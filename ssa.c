@@ -178,7 +178,6 @@ void build_ssa (struct subroutine *sub)
 
   sub->variables = list_alloc (sub->code->lstpool);
 
-  extract_operations (sub);
   blockel = list_head (sub->blocks);
   while (blockel) {
     struct basicblock *block = element_getvalue (blockel);
@@ -189,7 +188,6 @@ void build_ssa (struct subroutine *sub)
     blockel = element_next (blockel);
   }
 
-  live_registers (sub);
   ssa_place_phis (sub, reglist);
   ssa_search (sub->startblock, reglist);
 

@@ -3,9 +3,14 @@
 #include "utils.h"
 
 
+const uint32 regmask_call_gen[NUM_REGMASK] =   { 0xAC000000, 0x00000000 };
+const uint32 regmask_call_kill[NUM_REGMASK] =  { 0x0300FFFE, 0x00000003 };
+const uint32 regmask_subend_gen[NUM_REGMASK] = { 0xF0FF0000, 0x00000000 };
+
+
 #define BLOCK_GPR_KILL() \
-  if (!IS_BIT_SET (block->reg_kill, regno) && regno != 0) { \
-    BIT_SET (block->reg_kill, regno);                       \
+  if (regno != 0) {                   \
+    BIT_SET (block->reg_kill, regno); \
   }
 
 #define BLOCK_GPR_GEN() \
@@ -64,6 +69,7 @@ void simplify_reg_zero (list l)
 {
   struct value *val;
   element el;
+
   el = list_head (l);
   while (el) {
     val = element_getvalue (el);
@@ -186,18 +192,19 @@ void value_append (struct subroutine *sub, list l, enum valuetype type, uint32 v
 void extract_operations (struct subroutine *sub)
 {
   struct operation *op;
-  int i;
+  struct basicblock *block;
   element el;
+  int regno;
 
   el = list_head (sub->blocks);
   while (el) {
-    struct basicblock *block = element_getvalue (el);
+    block = element_getvalue (el);
     block->operations = list_alloc (sub->code->lstpool);
     block->reg_gen[0] = block->reg_gen[1] = 0;
     block->reg_kill[0] = block->reg_kill[1] = 0;
 
     if (block->type == BLOCK_SIMPLE) {
-      uint32 asm_gen[2], asm_kill[2];
+      uint32 asm_gen[NUM_REGMASK], asm_kill[NUM_REGMASK];
       struct location *loc;
       int lastasm = FALSE;
 
@@ -216,31 +223,31 @@ void extract_operations (struct subroutine *sub)
           op->begin = op->end = loc;
 
           if (loc->insn->flags & INSN_READ_GPR_S) {
-            int regno = RS (loc->opc);
+            regno = RS (loc->opc);
             BLOCK_GPR_GEN ()
             value_append (sub, op->operands, VAL_REGISTER, regno);
           }
 
           if (loc->insn->flags & INSN_READ_GPR_T) {
-            int regno = RT (loc->opc);
+            regno = RT (loc->opc);
             BLOCK_GPR_GEN ()
             value_append (sub, op->operands, VAL_REGISTER, regno);
           }
 
           if (loc->insn->flags & INSN_READ_GPR_D) {
-            int regno = RD (loc->opc);
+            regno = RD (loc->opc);
             BLOCK_GPR_GEN ()
             value_append (sub, op->operands, VAL_REGISTER, regno);
           }
 
           if (loc->insn->flags & INSN_READ_LO) {
-            int regno = REGISTER_LO;
+            regno = REGISTER_LO;
             BLOCK_GPR_GEN ()
             value_append (sub, op->operands, VAL_REGISTER, regno);
           }
 
           if (loc->insn->flags & INSN_READ_HI) {
-            int regno = REGISTER_HI;
+            regno = REGISTER_HI;
             BLOCK_GPR_GEN ()
             value_append (sub, op->operands, VAL_REGISTER, regno);
           }
@@ -335,31 +342,31 @@ void extract_operations (struct subroutine *sub)
           op->insn = insn;
 
           if (loc->insn->flags & INSN_WRITE_GPR_T) {
-            int regno = RT (loc->opc);
+            regno = RT (loc->opc);
             BLOCK_GPR_KILL ()
             value_append (sub, op->results, VAL_REGISTER, regno);
           }
 
           if (loc->insn->flags & INSN_WRITE_GPR_D) {
-            int regno = RD (loc->opc);
+            regno = RD (loc->opc);
             BLOCK_GPR_KILL ()
             value_append (sub, op->results, VAL_REGISTER, regno);
           }
 
           if (loc->insn->flags & INSN_WRITE_LO) {
-            int regno = REGISTER_LO;
+            regno = REGISTER_LO;
             BLOCK_GPR_KILL ()
             value_append (sub, op->results, VAL_REGISTER, regno);
           }
 
           if (loc->insn->flags & INSN_WRITE_HI) {
-            int regno = REGISTER_HI;
+            regno = REGISTER_HI;
             BLOCK_GPR_KILL ()
             value_append (sub, op->results, VAL_REGISTER, regno);
           }
 
           if (loc->insn->flags & INSN_LINK) {
-            int regno = REGISTER_LINK;
+            regno = REGISTER_GPR_RA;
             BLOCK_GPR_KILL ()
             value_append (sub, op->results, VAL_REGISTER, regno);
           }
@@ -379,52 +386,52 @@ void extract_operations (struct subroutine *sub)
           lastasm = TRUE;
 
           if (loc->insn->flags & INSN_READ_LO) {
-            int regno = REGISTER_LO;
+            regno = REGISTER_LO;
             ASM_GPR_GEN ()
           }
 
           if (loc->insn->flags & INSN_READ_HI) {
-            int regno = REGISTER_HI;
+            regno = REGISTER_HI;
             ASM_GPR_GEN ()
           }
 
           if (loc->insn->flags & INSN_READ_GPR_D) {
-            int regno = RD (loc->opc);
+            regno = RD (loc->opc);
             ASM_GPR_GEN ()
           }
 
           if (loc->insn->flags & INSN_READ_GPR_T) {
-            int regno = RT (loc->opc);
+            regno = RT (loc->opc);
             ASM_GPR_GEN ()
           }
 
           if (loc->insn->flags & INSN_READ_GPR_S) {
-            int regno = RS (loc->opc);
+            regno = RS (loc->opc);
             ASM_GPR_GEN ()
           }
 
           if (loc->insn->flags & INSN_WRITE_GPR_T) {
-            int regno = RT (loc->opc);
+            regno = RT (loc->opc);
             ASM_GPR_KILL ()
           }
 
           if (loc->insn->flags & INSN_WRITE_GPR_D) {
-            int regno = RD (loc->opc);
+            regno = RD (loc->opc);
             ASM_GPR_KILL ()
           }
 
           if (loc->insn->flags & INSN_WRITE_LO) {
-            int regno = REGISTER_LO;
+            regno = REGISTER_LO;
             ASM_GPR_KILL ()
           }
 
           if (loc->insn->flags & INSN_WRITE_HI) {
-            int regno = REGISTER_HI;
+            regno = REGISTER_HI;
             ASM_GPR_KILL ()
           }
 
           if (loc->insn->flags & INSN_LINK) {
-            int regno = REGISTER_LINK;
+            regno = REGISTER_GPR_RA;
             ASM_GPR_KILL ()
           }
         }
@@ -435,54 +442,44 @@ void extract_operations (struct subroutine *sub)
         }
       }
     } else if (block->type == BLOCK_CALL) {
-      int regno;
       op = operation_alloc (block);
       op->type = OP_CALL;
       list_inserttail (block->operations, op);
 
-      for (regno = 1; regno <= REGISTER_LINK; regno++) {
-        if ((1 << regno) & CALLIN_REGMASK) {
+      for (regno = 1; regno <= NUM_REGISTERS; regno++) {
+        if (IS_BIT_SET (regmask_call_gen, regno)) {
           BLOCK_GPR_GEN ()
-          value_append (sub, op->operands, VAL_REGISTER, regno);
         }
-        if ((1 << regno) & CALLOUT_REGMASK) {
+        if (IS_BIT_SET (regmask_call_kill, regno)) {
           BLOCK_GPR_KILL ()
-          value_append (sub, op->results, VAL_REGISTER, regno);
         }
       }
-
-      regno = REGISTER_LO;
-      BLOCK_GPR_KILL ()
-      value_append (sub, op->results, VAL_REGISTER, regno);
-
-      regno = REGISTER_HI;
-      BLOCK_GPR_KILL ()
-      value_append (sub, op->results, VAL_REGISTER, regno);
     }
 
     el = element_next (el);
   }
 
-  op = operation_alloc (sub->startblock);
+  block = sub->startblock;
+  op = operation_alloc (block);
   op->type = OP_START;
 
-  for (i = 1; i < NUM_REGISTERS; i++) {
-    BIT_SET (sub->startblock->reg_kill, i);
-    value_append (sub, op->results, VAL_REGISTER, i);
+  for (regno = 1; regno < NUM_REGISTERS; regno++) {
+    BLOCK_GPR_KILL ()
+    value_append (sub, op->results, VAL_REGISTER, regno);
   }
+  list_inserttail (block->operations, op);
 
-  list_inserttail (sub->startblock->operations, op);
-
-  op = operation_alloc (sub->endblock);
+  block = sub->endblock;
+  op = operation_alloc (block);
   op->type = OP_END;
 
-  for (i = 1; i <= REGISTER_LINK; i++) {
-    if (END_REGMASK & (1 << i)) {
-      BIT_SET (sub->endblock->reg_gen, i);
-      value_append (sub, op->operands, VAL_REGISTER, i);
+  for (regno = 1; regno < NUM_REGISTERS; regno++) {
+    if (IS_BIT_SET (regmask_subend_gen, regno)) {
+      BLOCK_GPR_GEN ()
+      value_append (sub, op->operands, VAL_REGISTER, regno);
     }
   }
 
-  list_inserttail (sub->endblock->operations, op);
+  list_inserttail (block->operations, op);
 
 }

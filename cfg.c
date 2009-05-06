@@ -45,6 +45,7 @@ void extract_blocks (struct subroutine *sub)
 
   while (1) {
     block = alloc_block (sub, TRUE);
+    if (sub->firstblock) sub->firstblock = block;
 
     if (!begin) break;
     next = begin;
@@ -128,6 +129,7 @@ static
 void make_call (struct basicblock *block, struct location *loc)
 {
   block->type = BLOCK_CALL;
+  list_inserttail (block->sub->callblocks, block);
   if (loc->target) {
     block->info.call.calltarget = loc->target->sub;
     list_inserttail (loc->target->sub->whereused, block);

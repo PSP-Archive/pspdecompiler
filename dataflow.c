@@ -41,8 +41,7 @@ void mark_variable (struct variable *var, enum variabletype type, int num)
   }
 }
 
-static
-void mark_variables (struct subroutine *sub)
+void extract_variables (struct subroutine *sub)
 {
   element varel;
   int count = 0;
@@ -89,10 +88,4 @@ void mark_variables (struct subroutine *sub)
     }
     varel = element_next (varel);
   }
-}
-
-void extract_variables (struct subroutine *sub)
-{
-  propagate_constants (sub);
-  mark_variables (sub);
 }

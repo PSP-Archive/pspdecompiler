@@ -29,6 +29,9 @@ struct code *code_alloc (void)
 struct code* code_analyse (struct prx *p)
 {
   struct code *c = code_alloc ();
+  struct subroutine *sub;
+  element el;
+
   c->file = p;
 
   if (!decode_instructions (c)) {
@@ -38,6 +41,43 @@ struct code* code_analyse (struct prx *p)
 
   extract_switches (c);
   extract_subroutines (c);
+  live_registers (c);
+
+  el = list_head (c->subroutines);
+  while (el) {
+    sub = element_getvalue (el);
+    if (!sub->import && !sub->haserror) {
+      cfg_traverse (sub, FALSE);
+      if (!sub->haserror) {
+        sub->status |= SUBROUTINE_CFG_TRAVERSE;
+        cfg_traverse (sub, TRUE);
+      }
+      if (!sub->haserror) {
+        sub->status |= SUBROUTINE_CFG_TRAVERSE_REV;
+        build_ssa (sub);
+      }
+
+      if (!sub->haserror) {
+        sub->status |= SUBROUTINE_SSA;
+        propagate_constants (sub);
+      }
+
+      if (!sub->haserror) {
+        sub->status |= SUBROUTINE_CONSTANTS_EXTRACTED;
+        extract_variables (sub);
+      }
+
+      if (!sub->haserror) {
+        sub->status |= SUBROUTINE_VARIABLES_EXTRACTED;
+        extract_structures (sub);
+      }
+
+      if (!sub->haserror) {
+        sub->status |= SUBROUTINE_STRUCTURES_EXTRACTED;
+      }
+    }
+    el = element_next (el);
+  }
 
   return c;
 }

@@ -55,10 +55,13 @@ void print_block_recursive (FILE *out, struct basicblock *block, int verbosity)
 
   if (verbosity > 2) {
     ident_line (out, block->identsize + 1);
-    fprintf (out, "/* Block %d outrefs: ", block->node.dfsnum);
+    fprintf (out, "/* Block %d ", block->node.dfsnum);
     if (block->type == BLOCK_SIMPLE) {
       fprintf (out, "Address 0x%08X ", block->info.simple.begin->address);
     }
+    fprintf (out, "REGIN: 0x%08X REGOUT: 0x%08X REGGEN: 0x%08X REGKILL: 0x%08X ",
+        block->reg_live_in[0], block->reg_live_out[0],
+        block->reg_gen[0], block->reg_kill[0]);
     fprintf (out, "*/\n");
   }
 
@@ -156,6 +159,7 @@ void print_subroutine (FILE *out, struct subroutine *sub, int verbosity)
   if (sub->import) return;
 
   fprintf (out, "/**\n * Subroutine at address 0x%08X\n", sub->begin->address);
+  fprintf (out, " * Numargs: %d Numout: %d\n", sub->numregargs, sub->numregout);
   if (verbosity > 1 && !sub->haserror) {
     struct location *loc = sub->begin;
     for (loc = sub->begin; ; loc++) {

@@ -72,6 +72,7 @@ void new_subroutine (struct code *c, struct location *loc, struct prx_function *
     sub->begin = loc;
     sub->code = c;
     sub->whereused = list_alloc (c->lstpool);
+    sub->callblocks = list_alloc (c->lstpool);
     loc->sub = sub;
   }
   if (imp) sub->import = imp;
@@ -377,29 +378,15 @@ void extract_subroutines (struct code *c)
         sub->status |= SUBROUTINE_EXTRACTED;
         extract_cfg (sub);
       }
+
       if (!sub->haserror) {
         sub->status |= SUBROUTINE_CFG_EXTRACTED;
-        cfg_traverse (sub, FALSE);
+        extract_operations (sub);
       }
 
       if (!sub->haserror) {
-        sub->status |= SUBROUTINE_CFG_TRAVERSE;
-        cfg_traverse (sub, TRUE);
+        sub->status |= SUBROUTINE_OPERATIONS_EXTRACTED;
       }
-
-      if (!sub->haserror) {
-        sub->status |= SUBROUTINE_CFG_TRAVERSE_REV;
-        build_ssa (sub);
-      }
-
-      if (!sub->haserror) {
-        extract_variables (sub);
-      }
-
-      if (!sub->haserror) {
-        extract_structures (sub);
-      }
-
     }
     el = element_next (el);
   }

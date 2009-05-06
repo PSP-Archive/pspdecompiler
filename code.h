@@ -15,12 +15,63 @@
 #define IMM(op) ((signed short) (op & 0xFFFF))
 #define IMMU(op) ((unsigned short) (op & 0xFFFF))
 
-#define END_REGMASK     0xFCFF000C
-#define CALLIN_REGMASK  0x00000FF0
-#define CALLOUT_REGMASK 0x0300FFFE
+/* Subroutine decompilation status */
+#define SUBROUTINE_EXTRACTED               1
+#define SUBROUTINE_CFG_EXTRACTED           2
+#define SUBROUTINE_OPERATIONS_EXTRACTED    4
+#define SUBROUTINE_LIVE_REGISTERS          8
+#define SUBROUTINE_CFG_TRAVERSE           16
+#define SUBROUTINE_CFG_TRAVERSE_REV       32
+#define SUBROUTINE_SSA                    64
+#define SUBROUTINE_CONSTANTS_EXTRACTED   128
+#define SUBROUTINE_VARIABLES_EXTRACTED   256
+#define SUBROUTINE_STRUCTURES_EXTRACTED  512
+
+/* Register values */
+#define REGISTER_GPR_ZERO  0
+#define REGISTER_GPR_AT    1
+#define REGISTER_GPR_V0    2
+#define REGISTER_GPR_V1    3
+#define REGISTER_GPR_A0    4
+#define REGISTER_GPR_A1    5
+#define REGISTER_GPR_A2    6
+#define REGISTER_GPR_A3    7
+#define REGISTER_GPR_T0    8
+#define REGISTER_GPR_T1    9
+#define REGISTER_GPR_T2   10
+#define REGISTER_GPR_T3   11
+#define REGISTER_GPR_T4   12
+#define REGISTER_GPR_T5   13
+#define REGISTER_GPR_T6   14
+#define REGISTER_GPR_T7   15
+#define REGISTER_GPR_S0   16
+#define REGISTER_GPR_S1   17
+#define REGISTER_GPR_S2   18
+#define REGISTER_GPR_S3   19
+#define REGISTER_GPR_S4   20
+#define REGISTER_GPR_S5   21
+#define REGISTER_GPR_S6   22
+#define REGISTER_GPR_S7   23
+#define REGISTER_GPR_T8   24
+#define REGISTER_GPR_T9   25
+#define REGISTER_GPR_K0   26
+#define REGISTER_GPR_K1   27
+#define REGISTER_GPR_GP   28
+#define REGISTER_GPR_SP   29
+#define REGISTER_GPR_FP   30
+#define REGISTER_GPR_RA   31
+#define REGISTER_LO       32
+#define REGISTER_HI       33
+#define NUM_REGISTERS     34
+#define NUM_REGMASK   ((NUM_REGISTERS + 31) >> 4)
+
 
 #define IS_BIT_SET(flags, bit) ((1 << ((bit) & 31)) & ((flags)[(bit) >> 5]))
 #define BIT_SET(flags, bit) ((flags)[(bit) >> 5]) |= 1 << ((bit) & 31)
+
+extern const uint32 regmask_call_gen[NUM_REGMASK];
+extern const uint32 regmask_call_kill[NUM_REGMASK];
+extern const uint32 regmask_subend_gen[NUM_REGMASK];
 
 
 /* Possible reachable status */
@@ -68,12 +119,6 @@ struct codeswitch {
   int    checked;                   /* Is this switch valid? */
 };
 
-/* Subroutine decompilation status */
-#define SUBROUTINE_EXTRACTED          1
-#define SUBROUTINE_CFG_EXTRACTED      2
-#define SUBROUTINE_CFG_TRAVERSE       4
-#define SUBROUTINE_CFG_TRAVERSE_REV   8
-
 /* A subroutine */
 struct subroutine {
   struct code *code;                /* The owner code of this subroutine */
@@ -83,16 +128,18 @@ struct subroutine {
   struct location *begin;           /* Where the subroutine begins */
   struct location *end;             /* Where the subroutine ends */
 
-  struct basicblock *startblock;    /* Points to the first basic block of this subroutine */
-  struct basicblock *endblock;      /* Points to the last basic block of this subroutine */
+  struct basicblock *startblock;    /* Points to the START basic block of this subroutine */
+  struct basicblock *firstblock;    /* Points to the first SIMPLE basic block of this subroutine */
+  struct basicblock *endblock;      /* Points to the END basic block of this subroutine */
   list   blocks;                    /* A list of the basic blocks of this subroutine */
   list   dfsblocks, revdfsblocks;   /* Blocks ordered in DFS and Reverse-DFS order */
 
   list   whereused;                 /* A list of basic blocks calling this subroutine */
+  list   callblocks;                /* Inner blocks of type CALL */
   list   variables;
 
   uint32 stacksize;
-  int    numregargs;
+  int    numregargs, numregout;
 
   int    haserror, status;          /* Subroutine decompilation status */
   int    temp;
@@ -139,8 +186,8 @@ struct basicblock {
     } call;
   } info;
 
-  uint32 reg_gen[2], reg_kill[2];
-  uint32 reg_live_in[2], reg_live_out[2];
+  uint32 reg_gen[NUM_REGMASK], reg_kill[NUM_REGMASK];
+  uint32 reg_live_in[NUM_REGMASK], reg_live_out[NUM_REGMASK];
   list   operations;
   struct subroutine *sub;                  /* The owner subroutine */
 
@@ -172,11 +219,6 @@ struct basicedge {
   element fromel, toel;
   int fromnum, tonum;
 };
-
-#define REGISTER_LINK 31
-#define REGISTER_LO   32
-#define REGISTER_HI   33
-#define NUM_REGISTERS 34
 
 enum valuetype {
   VAL_CONSTANT = 0,
@@ -304,8 +346,9 @@ struct operation *operation_alloc (struct basicblock *block);
 void value_append (struct subroutine *sub, list l, enum valuetype type, uint32 value);
 void extract_operations (struct subroutine *sub);
 
+void live_registers (struct code *c);
+
 void build_ssa (struct subroutine *sub);
-void live_registers (struct subroutine *sub);
 void propagate_constants (struct subroutine *sub);
 void extract_variables (struct subroutine *sub);
 

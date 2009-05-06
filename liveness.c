@@ -2,49 +2,105 @@
 #include "code.h"
 #include "utils.h"
 
-void live_registers (struct subroutine *sub)
+static
+void live_analysis (list worklist)
 {
-  list worklist = list_alloc (sub->code->lstpool);
-  struct basicblock *block;
-  element el;
-
-  el = list_head (sub->blocks);
-  while (el) {
-    block = element_getvalue (el);
-    block->mark1 = 0;
-    el = element_next (el);
-  }
-
-  list_inserthead (worklist, sub->endblock);
-
   while (list_size (worklist) != 0) {
     struct basicedge *edge;
-    struct basicblock *bref;
+    struct basicblock *block, *bref;
+    struct subroutine *sub;
+    int i, changed, regno;
+    element ref;
 
     block = list_removehead (worklist);
     block->mark1 = 0;
-    block->reg_live_out[0] = (block->reg_live_in[0] & ~(block->reg_kill[0])) | block->reg_gen[0];
-    block->reg_live_out[1] = (block->reg_live_in[1] & ~(block->reg_kill[1])) | block->reg_gen[1];
-    el = list_head (block->inrefs);
-    while (el) {
-      uint32 changed;
+    for (i = 0; i < NUM_REGMASK; i++)
+      block->reg_live_out[i] =
+        (block->reg_live_in[i] & ~(block->reg_kill[i])) | block->reg_gen[i];
 
-      edge = element_getvalue (el);
+    ref = list_head (block->inrefs);
+    while (ref) {
+      changed = FALSE;
+
+      edge = element_getvalue (ref);
       bref = edge->from;
 
-      changed = block->reg_live_out[0] & (~bref->reg_live_in[0]);
-      bref->reg_live_in[0] |= block->reg_live_out[0];
-      changed |= block->reg_live_out[1] & (~bref->reg_live_in[1]);
-      bref->reg_live_in[1] |= block->reg_live_out[1];
+      for (i = 0; i < NUM_REGMASK; i++) {
+        changed = changed || (block->reg_live_out[i] & (~bref->reg_live_in[i]));
+        bref->reg_live_in[i] |= block->reg_live_out[i];
+      }
 
       if (changed && !bref->mark1) {
         list_inserttail (worklist, bref);
         bref->mark1 = 1;
       }
 
-      el = element_next (el);
+      ref = element_next (ref);
+    }
+
+    sub = block->info.call.calltarget;
+    if (block->type == BLOCK_CALL && sub) {
+      if (sub->status & SUBROUTINE_OPERATIONS_EXTRACTED) {
+        changed = FALSE;
+        for (regno = REGISTER_GPR_V0; regno <= REGISTER_GPR_V1; regno++) {
+          if (IS_BIT_SET (block->reg_live_in, regno)) {
+            changed = changed || !IS_BIT_SET (sub->endblock->reg_gen, regno);
+            sub->numregout = MAX (sub->numregout, regno - REGISTER_GPR_V0 + 1);
+            BIT_SET (sub->endblock->reg_gen, regno);
+          }
+        }
+        if (changed && !sub->endblock->mark1) {
+          list_inserttail (worklist, sub->endblock);
+          sub->endblock->mark1 = 1;
+        }
+      }
+    }
+
+    if (block->type == BLOCK_START) {
+      sub = block->sub;
+
+      for (regno = REGISTER_GPR_A0; regno <= REGISTER_GPR_T3; regno++) {
+        if (IS_BIT_SET (block->reg_live_in, regno)) {
+          sub->numregargs = MAX (sub->numregargs, regno - REGISTER_GPR_A0 + 1);
+        }
+      }
+
+      ref = list_head (sub->whereused);
+      while (ref) {
+        bref = element_getvalue (ref);
+        changed = FALSE;
+        for (regno = REGISTER_GPR_A0; regno <= REGISTER_GPR_T3; regno++) {
+          if (IS_BIT_SET (block->reg_live_in, regno)) {
+            changed = changed || !IS_BIT_SET (bref->reg_gen, regno);
+            BIT_SET (bref->reg_gen, regno);
+          }
+        }
+        if (changed && !bref->mark1) {
+          list_inserttail (worklist, bref);
+          bref->mark1 = 1;
+        }
+        ref = element_next (ref);
+      }
     }
   }
+}
 
+void live_registers (struct code *c)
+{
+  list worklist = list_alloc (c->lstpool);
+  element el = list_head (c->subroutines);
+
+  while (el) {
+    struct subroutine *sub = element_getvalue (el);
+    if (!sub->import && !sub->haserror) {
+      reset_marks (sub);
+      sub->status |= SUBROUTINE_LIVE_REGISTERS;
+      sub->endblock->mark1 = 1;
+      list_inserthead (worklist, sub->endblock);
+    }
+    el = element_next (el);
+  }
+
+  live_analysis (worklist);
   list_free (worklist);
 }
