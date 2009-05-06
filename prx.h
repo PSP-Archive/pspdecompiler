@@ -194,15 +194,26 @@ struct prx_variable {
   const char *libname;
 };
 
-
+uint32 read_uint32_le (const uint8 *bytes);
+uint16 read_uint16_le (const uint8 *bytes);
+void write_uint32_le (uint8 *bytes, uint32 val);
 
 struct prx *prx_load (const char *path);
 void prx_free (struct prx *p);
 void prx_print (struct prx *p, int prtrelocs);
+
 void prx_resolve_nids (struct prx *p, struct nidstable *nids);
+
 uint32 prx_translate (struct prx *p, uint32 vaddr);
+
+int prx_inside_prx (struct prx *p, uint32 offset, uint32 size);
+int prx_inside_progfile (struct elf_program *program, uint32 vaddr, uint32 size);
+int prx_inside_progmem (struct elf_program *program, uint32 vaddr, uint32 size);
+int prx_inside_strprogfile (struct elf_program *program, uint32 vaddr);
 
 uint32 prx_findreloc (struct prx *p, uint32 target);
 uint32 prx_findrelocbyaddr (struct prx *p, uint32 vaddr);
+
+
 
 #endif /* __PRX_H */
