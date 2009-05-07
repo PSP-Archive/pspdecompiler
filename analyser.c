@@ -17,7 +17,7 @@ struct code *code_alloc (void)
   c->subspool = fixedpool_create (sizeof (struct subroutine), 1024, TRUE);
   c->blockspool = fixedpool_create (sizeof (struct basicblock), 4096, TRUE);
   c->edgespool = fixedpool_create (sizeof (struct basicedge), 8192, TRUE);
-  c->varspool = fixedpool_create (sizeof (struct variable), 4096, TRUE);
+  c->ssavarspool = fixedpool_create (sizeof (struct ssavar), 4096, TRUE);
   c->opspool = fixedpool_create (sizeof (struct operation), 8192, TRUE);
   c->valspool = fixedpool_create (sizeof (struct value), 8192, TRUE);
   c->loopspool = fixedpool_create (sizeof (struct loopstructure), 256, TRUE);
@@ -136,9 +136,9 @@ void code_free (struct code *c)
     fixedpool_destroy (c->edgespool, NULL, NULL);
   c->edgespool = NULL;
 
-  if (c->varspool)
-    fixedpool_destroy (c->varspool, NULL, NULL);
-  c->varspool = NULL;
+  if (c->ssavarspool)
+    fixedpool_destroy (c->ssavarspool, NULL, NULL);
+  c->ssavarspool = NULL;
 
   if (c->opspool)
     fixedpool_destroy (c->opspool, NULL, NULL);

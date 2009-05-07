@@ -3,10 +3,10 @@
 #include "utils.h"
 
 static
-struct variable *alloc_variable (struct basicblock *block)
+struct ssavar *alloc_variable (struct basicblock *block)
 {
-  struct variable *var;
-  var = fixedpool_alloc (block->sub->code->varspool);
+  struct ssavar *var;
+  var = fixedpool_alloc (block->sub->code->ssavarspool);
   var->uses = list_alloc (block->sub->code->lstpool);
   return var;
 }
@@ -76,7 +76,7 @@ void ssa_search (struct basicblock *block, list *vars)
   el = list_head (block->operations);
   while (el) {
     struct operation *op;
-    struct variable *var;
+    struct ssavar *var;
     struct value *val;
     element opel, rel;
 
@@ -251,9 +251,9 @@ void unbuild_ssa (struct subroutine *sub)
 
   varel = list_head (sub->variables);
   while (varel) {
-    struct variable *var = element_getvalue (varel);
+    struct ssavar *var = element_getvalue (varel);
     list_free (var->uses);
-    fixedpool_free (sub->code->varspool, var);
+    fixedpool_free (sub->code->ssavarspool, var);
     varel = element_next (varel);
   }
   list_free (sub->variables);

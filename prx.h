@@ -184,6 +184,7 @@ struct prx_function {
   uint32 nid;
   const char *name;
   const char *libname;
+  void *pfunc;
   int numargs;
 };
 

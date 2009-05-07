@@ -28,6 +28,10 @@
 #define SUBROUTINE_VARIABLES_EXTRACTED     512
 #define SUBROUTINE_STRUCTURES_EXTRACTED   1024
 
+/* Operation status */
+#define OPERATION_DEFERRED            1
+
+
 /* Register values */
 #define REGISTER_GPR_ZERO  0
 #define REGISTER_GPR_AT    1
@@ -65,6 +69,9 @@
 #define REGISTER_HI       33
 #define NUM_REGISTERS     34
 #define NUM_REGMASK   ((NUM_REGISTERS + 31) >> 4)
+
+
+#define MAX_SUB_ARGS  8
 
 
 #define IS_BIT_SET(flags, bit) ((1 << ((bit) & 31)) & ((flags)[(bit) >> 5]))
@@ -232,23 +239,23 @@ struct value {
   enum valuetype type;
   union {
     uint32 intval;
-    struct variable *variable;
+    struct ssavar *variable;
   } val;
 };
 
 
-enum variabletype {
-  VARIABLE_UNK = 0,
-  VARIABLE_LOCAL,
-  VARIABLE_ARGUMENT,
-  VARIABLE_TEMP,
-  VARIABLE_CONSTANT,
-  VARIABLE_CONSTANTUNK,
-  VARIABLE_INVALID
+enum ssavartype {
+  SSAVAR_UNK = 0,
+  SSAVAR_LOCAL,
+  SSAVAR_ARGUMENT,
+  SSAVAR_TEMP,
+  SSAVAR_CONSTANT,
+  SSAVAR_CONSTANTUNK,
+  SSAVAR_INVALID
 };
 
-struct variable {
-  enum variabletype type;
+struct ssavar {
+  enum ssavartype type;
 
   struct value name;
   uint32 info;
@@ -286,7 +293,7 @@ struct operation {
     } callop;
   } info;
 
-  int  deferred;
+  int  status;
 
   list results;
   list operands;
@@ -328,7 +335,7 @@ struct code {
   fixedpool subspool;
   fixedpool blockspool;
   fixedpool edgespool;
-  fixedpool varspool;
+  fixedpool ssavarspool;
   fixedpool opspool;
   fixedpool valspool;
   fixedpool loopspool;
@@ -356,7 +363,6 @@ struct basicblocknode *dom_common (struct basicblocknode *n1, struct basicblockn
 struct operation *operation_alloc (struct basicblock *block);
 struct value *value_append (struct subroutine *sub, list l, enum valuetype type, uint32 value);
 void extract_operations (struct subroutine *sub);
-void merge_block_operations (struct subroutine *sub);
 void fixup_call_arguments (struct subroutine *sub);
 void remove_call_arguments (struct subroutine *sub);
 

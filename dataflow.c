@@ -5,7 +5,7 @@
 const uint32 regmask_localvars[NUM_REGMASK] = { 0x43FFFFFE, 0x00000000 };
 
 static
-void mark_variable (struct variable *var, enum variabletype type, int num)
+void mark_variable (struct ssavar *var, enum ssavartype type, int num)
 {
   element useel, phiel;
   struct value *val;
@@ -19,13 +19,13 @@ void mark_variable (struct variable *var, enum variabletype type, int num)
       phiel = list_head (use->operands);
       while (phiel) {
         struct value *val = element_getvalue (phiel);
-        if (val->val.variable->type == VARIABLE_UNK) {
+        if (val->val.variable->type == SSAVAR_UNK) {
           mark_variable (val->val.variable, type, num);
         }
         phiel = element_next (phiel);
       }
       val = list_headvalue (use->results);
-      if (val->val.variable->type == VARIABLE_UNK)
+      if (val->val.variable->type == SSAVAR_UNK)
         mark_variable (val->val.variable, type, num);
     }
     useel = element_next (useel);
@@ -35,7 +35,7 @@ void mark_variable (struct variable *var, enum variabletype type, int num)
     phiel = list_head (var->def->operands);
     while (phiel) {
       struct value *val = element_getvalue (phiel);
-      if (val->val.variable->type == VARIABLE_UNK) {
+      if (val->val.variable->type == SSAVAR_UNK) {
         mark_variable (val->val.variable, type, num);
       }
       phiel = element_next (phiel);
@@ -50,14 +50,14 @@ void extract_variables (struct subroutine *sub)
 
   varel = list_head (sub->variables);
   while (varel) {
-    struct variable *var = element_getvalue (varel);
-    if (var->type == VARIABLE_UNK) {
+    struct ssavar *var = element_getvalue (varel);
+    if (var->type == SSAVAR_UNK) {
       if (IS_BIT_SET (regmask_localvars, var->name.val.intval)) {
         if (var->def->type == OP_START) {
-          mark_variable (var, VARIABLE_ARGUMENT, var->name.val.intval);
+          mark_variable (var, SSAVAR_ARGUMENT, var->name.val.intval);
         } else if (var->def->type == OP_CALL && var->name.val.intval != REGISTER_GPR_V0 &&
                    var->name.val.intval != REGISTER_GPR_V1) {
-          var->type = VARIABLE_INVALID;
+          var->type = SSAVAR_INVALID;
         } else {
           int istemp = FALSE;
 
@@ -81,15 +81,15 @@ void extract_variables (struct subroutine *sub)
           }
 
           if (istemp) {
-            var->def->deferred = TRUE;
-            var->type = VARIABLE_TEMP;
+            var->def->status |= OPERATION_DEFERRED;
+            var->type = SSAVAR_TEMP;
             var->info = 0;
           } else {
-            mark_variable (var, VARIABLE_LOCAL, ++count);
+            mark_variable (var, SSAVAR_LOCAL, ++count);
           }
         }
       } else {
-        var->type = VARIABLE_ARGUMENT;
+        var->type = SSAVAR_ARGUMENT;
       }
     }
     varel = element_next (varel);

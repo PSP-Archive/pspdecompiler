@@ -46,13 +46,31 @@ void print_subroutine_name (FILE *out, struct subroutine *sub)
   }
 }
 
+void print_subroutine_declaration (FILE *out, struct subroutine *sub)
+{
+  int i;
+  if (sub->numregout > 0)
+    fprintf (out, "int ");
+  else
+    fprintf (out, "void ");
+
+  print_subroutine_name (out, sub);
+
+  fprintf (out, " (");
+  for (i = 0; i < sub->numregargs; i++) {
+    if (i != 0) fprintf (out, ", ");
+    fprintf (out, "int arg%d", i + 1);
+  }
+  fprintf (out, ")");
+}
+
 void print_value (FILE *out, struct value *val)
 {
   switch (val->type) {
   case VAL_CONSTANT: fprintf (out, "0x%08X", val->val.intval); break;
   case VAL_VARIABLE:
     switch (val->val.variable->type) {
-    case VARIABLE_ARGUMENT:
+    case SSAVAR_ARGUMENT:
       if (val->val.variable->name.val.intval >= REGISTER_GPR_A0 &&
           val->val.variable->name.val.intval <= REGISTER_GPR_T3) {
         fprintf (out, "arg%d", val->val.variable->name.val.intval - REGISTER_GPR_A0 + 1);
@@ -60,13 +78,13 @@ void print_value (FILE *out, struct value *val)
         print_value (out, &val->val.variable->name);
       }
       break;
-    case VARIABLE_LOCAL:
+    case SSAVAR_LOCAL:
       fprintf (out, "local%d", val->val.variable->info);
       break;
-    case VARIABLE_CONSTANT:
+    case SSAVAR_CONSTANT:
       fprintf (out, "0x%08X", val->val.variable->info);
       break;
-    case VARIABLE_TEMP:
+    case SSAVAR_TEMP:
       if (val->val.variable->def->type != OP_MOVE)
         fprintf (out, "(");
       print_operation (out, val->val.variable->def, 0, TRUE);
@@ -165,7 +183,7 @@ void print_complexop (FILE *out, struct operation *op, const char *opsymbol, int
     struct value *val;
     val = element_getvalue (el);
     if (val->type == VAL_VARIABLE) {
-      if (val->val.variable->type == VARIABLE_INVALID) break;
+      if (val->val.variable->type == SSAVAR_INVALID) break;
     }
     if (el != list_head (op->operands))
       fprintf (out, ", ");
@@ -202,7 +220,7 @@ void print_call (FILE *out, struct operation *op, int options)
     struct value *val;
     val = element_getvalue (el);
     if (val->type == VAL_VARIABLE) {
-      if (val->val.variable->type == VARIABLE_INVALID) break;
+      if (val->val.variable->type == SSAVAR_INVALID) break;
     }
     if (el != list_head (op->info.callop.arguments))
       fprintf (out, ", ");
@@ -382,7 +400,7 @@ void print_memory_address (FILE *out, struct operation *op, int size, int isunsi
 
   val = list_headvalue (op->operands);
   if (val->type == VAL_VARIABLE) {
-    if (val->val.variable->type == VARIABLE_CONSTANT) {
+    if (val->val.variable->type == SSAVAR_CONSTANT) {
       address = val->val.variable->type;
       val = list_tailvalue (op->operands);
       address += val->val.intval;

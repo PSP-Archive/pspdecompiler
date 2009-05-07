@@ -26,6 +26,7 @@ void print_value (FILE *out, struct value *val);
 void print_operation (FILE *out, struct operation *op, int identsize, int options);
 void print_complexop (FILE *out, struct operation *op, const char *opsymbol, int options);
 void print_subroutine_name (FILE *out, struct subroutine *sub);
+void print_subroutine_declaration (FILE *out, struct subroutine *sub);
 
 int print_code (struct code *c, char *filename, int verbosity);
 int print_graph (struct code *c, char *prxname, int options);

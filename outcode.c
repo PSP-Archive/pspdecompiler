@@ -17,7 +17,7 @@ void print_block (FILE *out, struct basicblock *block, int reversecond)
   opel = list_head (block->operations);
   while (opel) {
     struct operation *op = element_getvalue (opel);
-    if (!op->deferred) {
+    if (!(op->status & OPERATION_DEFERRED)) {
       if (op->type == OP_INSTRUCTION) {
         if (op->info.iop.loc->insn->flags & (INSN_JUMP | INSN_BRANCH))
           jumpop = op;
@@ -153,15 +153,9 @@ void print_block_recursive (FILE *out, struct basicblock *block, int verbosity)
 static
 void print_subroutine (FILE *out, struct subroutine *sub, int verbosity)
 {
-  if (sub->import) {
-    fprintf (out, "/* ");
-    print_subroutine_name (out, sub);
-    fprintf (out, " num args %d out %d */\n", sub->numregargs, sub->numregout);
-    return;
-  }
+  if (sub->import) { return; }
 
   fprintf (out, "/**\n * Subroutine at address 0x%08X\n", sub->begin->address);
-  fprintf (out, " * Numargs: %d Numout: %d\n", sub->numregargs, sub->numregout);
   if (verbosity > 1 && !sub->haserror) {
     struct location *loc = sub->begin;
     for (loc = sub->begin; ; loc++) {
@@ -170,9 +164,8 @@ void print_subroutine (FILE *out, struct subroutine *sub, int verbosity)
     }
   }
   fprintf (out, " */\n");
-  fprintf (out, "void ");
-  print_subroutine_name (out, sub);
-  fprintf (out, " (void)\n{\n");
+  print_subroutine_declaration (out, sub);
+  fprintf (out, "\n{\n");
 
   if (sub->haserror) {
     struct location *loc;
@@ -210,11 +203,10 @@ void print_source (FILE *out, struct code *c, char *headerfilename, int verbosit
     fprintf (out, "/*\n * Imports from library: %s\n */\n", imp->name);
     for (j = 0; j < imp->nfuncs; j++) {
       struct prx_function *func = &imp->funcs[j];
-      fprintf (out, "extern ");
-      if (func->name) {
-        fprintf (out, "void %s (void);\n",func->name);
-      } else {
-        fprintf (out, "void %s_%08X (void);\n", imp->name, func->nid);
+      if (func->pfunc) {
+        fprintf (out, "extern ");
+        print_subroutine_declaration (out, func->pfunc);
+        fprintf (out, ";\n");
       }
     }
     fprintf (out, "\n");

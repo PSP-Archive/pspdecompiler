@@ -158,6 +158,7 @@ void extract_from_exports (struct code *c)
 
       loc = &c->base[tgt];
       new_subroutine (c, loc, NULL, func);
+      func->pfunc = loc->sub;
     }
   }
 }
@@ -184,6 +185,7 @@ void extract_from_imports (struct code *c)
 
       loc = &c->base[tgt];
       new_subroutine (c, loc, func, NULL);
+      func->pfunc = loc->sub;
       loc->sub->numregargs = func->numargs;
     }
   }

@@ -498,19 +498,6 @@ void extract_operations (struct subroutine *sub)
 }
 
 
-void merge_block_operations (struct subroutine *sub)
-{
-  element el, ref;
-  el = list_head (sub->blocks);
-
-  while (el) {
-    struct basicblock *block = element_getvalue (el);
-    el = element_next (el);
-  }
-
-}
-
-
 void fixup_call_arguments (struct subroutine *sub)
 {
   struct operation *op;
