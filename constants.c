@@ -53,7 +53,8 @@ void propagate_constants (struct subroutine *sub)
     var->type = VARIABLE_CONSTANTUNK;
     if (var->def->type == OP_ASM ||
         var->def->type == OP_CALL ||
-        var->def->type == OP_START)
+        var->def->type == OP_START ||
+        !(IS_BIT_SET (regmask_localvars, var->name.val.intval)))
       var->type = VARIABLE_UNK;
     else
       list_inserttail (worklist, var);

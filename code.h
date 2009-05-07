@@ -73,6 +73,7 @@
 extern const uint32 regmask_call_gen[NUM_REGMASK];
 extern const uint32 regmask_call_kill[NUM_REGMASK];
 extern const uint32 regmask_subend_gen[NUM_REGMASK];
+extern const uint32 regmask_localvars[NUM_REGMASK];
 
 
 /* Possible reachable status */
@@ -348,16 +349,14 @@ void extract_subroutines (struct code *c);
 
 void extract_cfg (struct subroutine *sub);
 void cfg_traverse (struct subroutine *sub, int reverse);
-
 int dom_isancestor (struct basicblocknode *ancestor, struct basicblocknode *node);
 struct basicblocknode *dom_common (struct basicblocknode *n1, struct basicblocknode *n2);
 
-void reset_marks (struct subroutine *sub);
-void extract_structures (struct subroutine *sub);
 
 struct operation *operation_alloc (struct basicblock *block);
 struct value *value_append (struct subroutine *sub, list l, enum valuetype type, uint32 value);
 void extract_operations (struct subroutine *sub);
+void merge_block_operations (struct subroutine *sub);
 void fixup_call_arguments (struct subroutine *sub);
 void remove_call_arguments (struct subroutine *sub);
 
@@ -367,9 +366,13 @@ void live_registers_imports (struct code *c);
 void build_ssa (struct subroutine *sub);
 void unbuild_ssa (struct subroutine *sub);
 
+void abi_check (struct subroutine *sub);
+
 void propagate_constants (struct subroutine *sub);
 void extract_variables (struct subroutine *sub);
 
-void abi_check (struct subroutine *sub);
+
+void reset_marks (struct subroutine *sub);
+void extract_structures (struct subroutine *sub);
 
 #endif /* __CODE_H */

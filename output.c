@@ -53,7 +53,12 @@ void print_value (FILE *out, struct value *val)
   case VAL_VARIABLE:
     switch (val->val.variable->type) {
     case VARIABLE_ARGUMENT:
-      fprintf (out, "arg%d", val->val.variable->name.val.intval);
+      if (val->val.variable->name.val.intval >= REGISTER_GPR_A0 &&
+          val->val.variable->name.val.intval <= REGISTER_GPR_T3) {
+        fprintf (out, "arg%d", val->val.variable->name.val.intval - REGISTER_GPR_A0 + 1);
+      } else {
+        print_value (out, &val->val.variable->name);
+      }
       break;
     case VARIABLE_LOCAL:
       fprintf (out, "local%d", val->val.variable->info);

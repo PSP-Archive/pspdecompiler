@@ -2,6 +2,8 @@
 #include "code.h"
 #include "utils.h"
 
+const uint32 regmask_localvars[NUM_REGMASK] = { 0x43FFFFFE, 0x00000000 };
+
 static
 void mark_variable (struct variable *var, enum variabletype type, int num)
 {
@@ -50,40 +52,44 @@ void extract_variables (struct subroutine *sub)
   while (varel) {
     struct variable *var = element_getvalue (varel);
     if (var->type == VARIABLE_UNK) {
-      if (var->def->type == OP_START) {
-        mark_variable (var, VARIABLE_ARGUMENT, var->name.val.intval);
-      } else if (var->def->type == OP_CALL && var->name.val.intval != 2 &&
-                 var->name.val.intval != 3) {
-        var->type = VARIABLE_INVALID;
-      } else {
-        int istemp = FALSE;
+      if (IS_BIT_SET (regmask_localvars, var->name.val.intval)) {
+        if (var->def->type == OP_START) {
+          mark_variable (var, VARIABLE_ARGUMENT, var->name.val.intval);
+        } else if (var->def->type == OP_CALL && var->name.val.intval != REGISTER_GPR_V0 &&
+                   var->name.val.intval != REGISTER_GPR_V1) {
+          var->type = VARIABLE_INVALID;
+        } else {
+          int istemp = FALSE;
 
-        if (list_size (var->uses) <= 1) {
-          struct operation *op = list_headvalue (var->uses);
-          if (op) {
-            if (op->type != OP_PHI)
+          if (list_size (var->uses) <= 1) {
+            struct operation *op = list_headvalue (var->uses);
+            if (op) {
+              if (op->type != OP_PHI)
+                istemp = TRUE;
+            } else {
               istemp = TRUE;
+            }
+          }
+
+          if (var->def->type == OP_MOVE || var->def->type == OP_INSTRUCTION) {
+            if (var->def->type == OP_INSTRUCTION) {
+              if (var->def->info.iop.loc->insn->flags & (INSN_LOAD | INSN_STORE | INSN_BRANCH))
+                istemp = FALSE;
+            }
           } else {
-            istemp = TRUE;
+            istemp = FALSE;
+          }
+
+          if (istemp) {
+            var->def->deferred = TRUE;
+            var->type = VARIABLE_TEMP;
+            var->info = 0;
+          } else {
+            mark_variable (var, VARIABLE_LOCAL, ++count);
           }
         }
-
-        if (var->def->type == OP_MOVE || var->def->type == OP_INSTRUCTION) {
-          if (var->def->type == OP_INSTRUCTION) {
-            if (var->def->info.iop.loc->insn->flags & (INSN_LOAD | INSN_STORE | INSN_BRANCH))
-              istemp = FALSE;
-          }
-        } else {
-          istemp = FALSE;
-        }
-
-        if (istemp) {
-          var->def->deferred = TRUE;
-          var->type = VARIABLE_TEMP;
-          var->info = 0;
-        } else {
-          mark_variable (var, VARIABLE_LOCAL, ++count);
-        }
+      } else {
+        var->type = VARIABLE_ARGUMENT;
       }
     }
     varel = element_next (varel);
