@@ -68,7 +68,7 @@ void print_value (FILE *out, struct value *val)
 {
   switch (val->type) {
   case VAL_CONSTANT: fprintf (out, "0x%08X", val->val.intval); break;
-  case VAL_VARIABLE:
+  case VAL_SSAVAR:
     switch (val->val.variable->type) {
     case SSAVAR_ARGUMENT:
       if (val->val.variable->name.val.intval >= REGISTER_GPR_A0 &&
@@ -182,7 +182,7 @@ void print_complexop (FILE *out, struct operation *op, const char *opsymbol, int
   while (el) {
     struct value *val;
     val = element_getvalue (el);
-    if (val->type == VAL_VARIABLE) {
+    if (val->type == VAL_SSAVAR) {
       if (val->val.variable->type == SSAVAR_INVALID) break;
     }
     if (el != list_head (op->operands))
@@ -219,7 +219,7 @@ void print_call (FILE *out, struct operation *op, int options)
   while (el) {
     struct value *val;
     val = element_getvalue (el);
-    if (val->type == VAL_VARIABLE) {
+    if (val->type == VAL_SSAVAR) {
       if (val->val.variable->type == SSAVAR_INVALID) break;
     }
     if (el != list_head (op->info.callop.arguments))
@@ -399,7 +399,7 @@ void print_memory_address (FILE *out, struct operation *op, int size, int isunsi
   }
 
   val = list_headvalue (op->operands);
-  if (val->type == VAL_VARIABLE) {
+  if (val->type == VAL_SSAVAR) {
     if (val->val.variable->type == SSAVAR_CONSTANT) {
       address = val->val.variable->type;
       val = list_tailvalue (op->operands);

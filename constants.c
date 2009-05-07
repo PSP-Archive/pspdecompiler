@@ -6,7 +6,7 @@
 static
 uint32 get_constant_value (struct value *val)
 {
-  if (val->type == VAL_VARIABLE)
+  if (val->type == VAL_SSAVAR)
     return val->val.variable->info;
   else
     return val->val.intval;
@@ -23,7 +23,7 @@ void combine_constants (struct ssavar *out, struct value *val)
     return;
   }
 
-  if (val->type == VAL_VARIABLE) {
+  if (val->type == VAL_SSAVAR) {
     if (val->val.variable->type == SSAVAR_CONSTANTUNK)
       return;
     if (val->val.variable->type == SSAVAR_UNK) {
@@ -47,7 +47,7 @@ void propagate_constants (struct subroutine *sub)
   list worklist = list_alloc (sub->code->lstpool);
   element varel;
 
-  varel = list_head (sub->variables);
+  varel = list_head (sub->ssavars);
   while (varel) {
     struct ssavar *var = element_getvalue (varel);
     var->type = SSAVAR_CONSTANTUNK;
@@ -85,7 +85,7 @@ void propagate_constants (struct subroutine *sub)
       while (opel) {
         val = element_getvalue (opel);
         if (val->type == VAL_CONSTANT) {
-        } else if (val->type == VAL_VARIABLE) {
+        } else if (val->type == VAL_SSAVAR) {
           if (val->val.variable->type == SSAVAR_UNK)
             temp.type = SSAVAR_UNK;
           else if (val->val.variable->type == SSAVAR_CONSTANTUNK &&
@@ -133,7 +133,7 @@ void propagate_constants (struct subroutine *sub)
         varel = list_head (use->results);
         while (varel) {
           val = element_getvalue (varel);
-          if (val->type == VAL_VARIABLE)
+          if (val->type == VAL_SSAVAR)
             list_inserttail (worklist, val->val.variable);
           varel = element_next (varel);
         }

@@ -5,7 +5,7 @@
 const uint32 regmask_localvars[NUM_REGMASK] = { 0x43FFFFFE, 0x00000000 };
 
 static
-void mark_variable (struct ssavar *var, enum ssavartype type, int num)
+void mark_ssavar (struct ssavar *var, enum ssavartype type, int num)
 {
   element useel, phiel;
   struct value *val;
@@ -20,13 +20,13 @@ void mark_variable (struct ssavar *var, enum ssavartype type, int num)
       while (phiel) {
         struct value *val = element_getvalue (phiel);
         if (val->val.variable->type == SSAVAR_UNK) {
-          mark_variable (val->val.variable, type, num);
+          mark_ssavar (val->val.variable, type, num);
         }
         phiel = element_next (phiel);
       }
       val = list_headvalue (use->results);
       if (val->val.variable->type == SSAVAR_UNK)
-        mark_variable (val->val.variable, type, num);
+        mark_ssavar (val->val.variable, type, num);
     }
     useel = element_next (useel);
   }
@@ -36,7 +36,7 @@ void mark_variable (struct ssavar *var, enum ssavartype type, int num)
     while (phiel) {
       struct value *val = element_getvalue (phiel);
       if (val->val.variable->type == SSAVAR_UNK) {
-        mark_variable (val->val.variable, type, num);
+        mark_ssavar (val->val.variable, type, num);
       }
       phiel = element_next (phiel);
     }
@@ -48,13 +48,13 @@ void extract_variables (struct subroutine *sub)
   element varel;
   int count = 0;
 
-  varel = list_head (sub->variables);
+  varel = list_head (sub->ssavars);
   while (varel) {
     struct ssavar *var = element_getvalue (varel);
     if (var->type == SSAVAR_UNK) {
       if (IS_BIT_SET (regmask_localvars, var->name.val.intval)) {
         if (var->def->type == OP_START) {
-          mark_variable (var, SSAVAR_ARGUMENT, var->name.val.intval);
+          mark_ssavar (var, SSAVAR_ARGUMENT, var->name.val.intval);
         } else if (var->def->type == OP_CALL && var->name.val.intval != REGISTER_GPR_V0 &&
                    var->name.val.intval != REGISTER_GPR_V1) {
           var->type = SSAVAR_INVALID;
@@ -85,7 +85,7 @@ void extract_variables (struct subroutine *sub)
             var->type = SSAVAR_TEMP;
             var->info = 0;
           } else {
-            mark_variable (var, SSAVAR_LOCAL, ++count);
+            mark_ssavar (var, SSAVAR_LOCAL, ++count);
           }
         }
       } else {

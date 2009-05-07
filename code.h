@@ -145,7 +145,7 @@ struct subroutine {
 
   list   whereused;                 /* A list of basic blocks calling this subroutine */
   list   callblocks;                /* Inner blocks of type CALL */
-  list   variables;
+  list   ssavars;
 
   uint32 stacksize;
   int    numregargs, numregout;
@@ -232,7 +232,7 @@ struct basicedge {
 enum valuetype {
   VAL_CONSTANT = 0,
   VAL_REGISTER,
-  VAL_VARIABLE
+  VAL_SSAVAR
 };
 
 struct value {

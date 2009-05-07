@@ -88,7 +88,7 @@ void ssa_search (struct basicblock *block, list *vars)
         val = element_getvalue (opel);
         if (val->type == VAL_REGISTER) {
           var = list_headvalue (vars[val->val.intval]);
-          val->type = VAL_VARIABLE;
+          val->type = VAL_SSAVAR;
           val->val.variable = var;
           list_inserttail (var->uses, op);
         }
@@ -100,12 +100,12 @@ void ssa_search (struct basicblock *block, list *vars)
     while (rel) {
       val = element_getvalue (rel);
       if (val->type == VAL_REGISTER) {
-        val->type = VAL_VARIABLE;
+        val->type = VAL_SSAVAR;
         var = alloc_variable (block);
         var->name.type = VAL_REGISTER;
         var->name.val.intval = val->val.intval;
         var->def = op;
-        list_inserttail (block->sub->variables, var);
+        list_inserttail (block->sub->ssavars, var);
         if (!pushed[val->val.intval]) {
           pushed[val->val.intval] = TRUE;
           list_inserthead (vars[val->val.intval], var);
@@ -142,7 +142,7 @@ void ssa_search (struct basicblock *block, list *vars)
         opel = element_next (opel);
 
       val = element_getvalue (opel);
-      val->type = VAL_VARIABLE;
+      val->type = VAL_SSAVAR;
       val->val.variable = list_headvalue (vars[val->val.intval]);
       list_inserttail (val->val.variable->uses, op);
       phiel = element_next (phiel);
@@ -176,7 +176,7 @@ void build_ssa (struct subroutine *sub)
     reglist[regno] = list_alloc (sub->code->lstpool);
   }
 
-  sub->variables = list_alloc (sub->code->lstpool);
+  sub->ssavars = list_alloc (sub->code->lstpool);
 
   blockel = list_head (sub->blocks);
   while (blockel) {
@@ -226,7 +226,7 @@ void unbuild_ssa (struct subroutine *sub)
         valel = list_head (op->operands);
         while (valel) {
           struct value *val = element_getvalue (valel);
-          if (val->type == VAL_VARIABLE) {
+          if (val->type == VAL_SSAVAR) {
             val->type = VAL_REGISTER;
             val->val.intval = val->val.variable->name.val.intval;
           }
@@ -236,7 +236,7 @@ void unbuild_ssa (struct subroutine *sub)
         valel = list_head (op->results);
         while (valel) {
           struct value *val = element_getvalue (valel);
-          if (val->type == VAL_VARIABLE) {
+          if (val->type == VAL_SSAVAR) {
             val->type = VAL_REGISTER;
             val->val.intval = val->val.variable->name.val.intval;
           }
@@ -249,16 +249,16 @@ void unbuild_ssa (struct subroutine *sub)
     blockel = element_next (blockel);
   }
 
-  varel = list_head (sub->variables);
+  varel = list_head (sub->ssavars);
   while (varel) {
     struct ssavar *var = element_getvalue (varel);
     list_free (var->uses);
     fixedpool_free (sub->code->ssavarspool, var);
     varel = element_next (varel);
   }
-  list_free (sub->variables);
+  list_free (sub->ssavars);
 
-  sub->variables = NULL;
+  sub->ssavars = NULL;
 }
 
 
