@@ -497,7 +497,7 @@ void extract_operations (struct subroutine *sub)
   }
 }
 
-void fix_call_operations (struct subroutine *sub)
+void fixup_call_arguments (struct subroutine *sub)
 {
   struct operation *op;
   struct basicblock *block;
@@ -513,8 +513,10 @@ void fix_call_operations (struct subroutine *sub)
       op = list_tailvalue (block->operations);
       target = block->info.call.calltarget;
 
-      if (target) regend = REGISTER_GPR_A0 + target->numregargs;
-      else regend = REGISTER_GPR_T4;
+      regend = REGISTER_GPR_T4;
+      if (target)
+        if (target->numregargs != -1)
+          regend = REGISTER_GPR_A0 + target->numregargs;
 
       for (regno = REGISTER_GPR_A0; regno < regend; regno++) {
         val = value_append (sub, op->operands, VAL_REGISTER, regno);
@@ -527,6 +529,33 @@ void fix_call_operations (struct subroutine *sub)
       for (regno = REGISTER_GPR_V0; regno < regend; regno++) {
         val = value_append (sub, op->results, VAL_REGISTER, regno);
         list_inserttail (op->info.callop.retvalues, val);
+      }
+    }
+    el = element_next (el);
+  }
+}
+
+void remove_call_arguments (struct subroutine *sub)
+{
+  struct operation *op;
+  struct basicblock *block;
+  struct value *val;
+  element el;
+
+  el = list_head (sub->blocks);
+  while (el) {
+    block = element_getvalue (el);
+    if (block->type == BLOCK_CALL) {
+      op = list_tailvalue (block->operations);
+      while (list_size (op->info.callop.arguments) != 0) {
+        val = list_removetail (op->info.callop.arguments);
+        list_removetail (op->operands);
+        fixedpool_free (sub->code->valspool, val);
+      }
+      while (list_size (op->info.callop.retvalues) != 0) {
+        val = list_removetail (op->info.callop.retvalues);
+        list_removetail (op->results);
+        fixedpool_free (sub->code->valspool, val);
       }
     }
     el = element_next (el);

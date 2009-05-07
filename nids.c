@@ -112,7 +112,7 @@ void end_hndl (void *data, const char *el)
     }
     d->currnid.name = NULL;
     d->currnid.nid = 0;
-    d->currnid.numargs = 0;
+    d->currnid.numargs = -1;
   }
 }
 
@@ -161,7 +161,7 @@ void char_hndl (void *data, const char *txt, int txtlen)
           sscanf (buffer, "0x%X", &d->currnid.nid);
         }
       } else {
-        d->currnid.numargs = 0;
+        d->currnid.numargs = -1;
         sscanf (buffer, "%d", &d->currnid.numargs);
       }
     }

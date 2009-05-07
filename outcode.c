@@ -153,7 +153,12 @@ void print_block_recursive (FILE *out, struct basicblock *block, int verbosity)
 static
 void print_subroutine (FILE *out, struct subroutine *sub, int verbosity)
 {
-  if (sub->import) return;
+  if (sub->import) {
+    fprintf (out, "/* ");
+    print_subroutine_name (out, sub);
+    fprintf (out, " num args %d out %d */\n", sub->numregargs, sub->numregout);
+    return;
+  }
 
   fprintf (out, "/**\n * Subroutine at address 0x%08X\n", sub->begin->address);
   fprintf (out, " * Numargs: %d Numout: %d\n", sub->numregargs, sub->numregout);

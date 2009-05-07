@@ -152,6 +152,7 @@ int load_module_import (struct prx *p, struct prx_import *imp)
       f->vaddr = imp->funcsvaddr + 8 * i;
       f->libname = imp->name;
       f->name = NULL;
+      f->numargs = -1;
     }
   }
 
@@ -234,6 +235,7 @@ int load_module_export (struct prx *p, struct prx_export *exp)
       f->nid = read_uint32_le (&p->data[offset]);
       f->name = NULL;
       f->libname = exp->name;
+      f->numargs = -1;
       offset += 4;
       if (exp->namevaddr == 0) {
         f->name = resolve_syslib_nid (f->nid);

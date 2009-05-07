@@ -169,11 +169,11 @@ void build_ssa (struct subroutine *sub)
 {
   list reglist[NUM_REGISTERS];
   element blockel;
-  int i;
+  int regno;
 
   reglist[0] = NULL;
-  for (i = 1; i < NUM_REGISTERS; i++) {
-    reglist[i] = list_alloc (sub->code->lstpool);
+  for (regno = 1; regno < NUM_REGISTERS; regno++) {
+    reglist[regno] = list_alloc (sub->code->lstpool);
   }
 
   sub->variables = list_alloc (sub->code->lstpool);
@@ -181,9 +181,9 @@ void build_ssa (struct subroutine *sub)
   blockel = list_head (sub->blocks);
   while (blockel) {
     struct basicblock *block = element_getvalue (blockel);
-    for (i = 0; i < NUM_REGISTERS; i++) {
-      if (IS_BIT_SET (block->reg_kill, i))
-        list_inserttail (reglist[i], block);
+    for (regno = 0; regno < NUM_REGISTERS; regno++) {
+      if (IS_BIT_SET (block->reg_kill, regno))
+        list_inserttail (reglist[regno], block);
     }
     blockel = element_next (blockel);
   }
@@ -191,9 +191,76 @@ void build_ssa (struct subroutine *sub)
   ssa_place_phis (sub, reglist);
   ssa_search (sub->startblock, reglist);
 
-  for (i = 1; i < NUM_REGISTERS; i++) {
-    list_free (reglist[i]);
+  for (regno = 1; regno < NUM_REGISTERS; regno++) {
+    list_free (reglist[regno]);
   }
 }
+
+void unbuild_ssa (struct subroutine *sub)
+{
+  element varel, valel, blockel, opel;
+
+  blockel = list_head (sub->blocks);
+  while (blockel) {
+    struct basicblock *block = element_getvalue (blockel);
+    opel = list_head (block->operations);
+    while (opel) {
+      struct operation *op = element_getvalue (opel);
+      element nextopel;
+
+      nextopel = element_next (opel);
+      if (op->type == OP_PHI) {
+        element_remove (opel);
+
+        valel = list_head (op->operands);
+        while (valel) {
+          struct value *val = element_getvalue (valel);
+          fixedpool_free (sub->code->valspool, val);
+          valel = element_next (valel);
+        }
+        list_free (op->operands);
+
+        fixedpool_free (sub->code->valspool, list_headvalue (op->results));
+        list_free (op->results);
+      } else {
+        valel = list_head (op->operands);
+        while (valel) {
+          struct value *val = element_getvalue (valel);
+          if (val->type == VAL_VARIABLE) {
+            val->type = VAL_REGISTER;
+            val->val.intval = val->val.variable->name.val.intval;
+          }
+          valel = element_next (valel);
+        }
+
+        valel = list_head (op->results);
+        while (valel) {
+          struct value *val = element_getvalue (valel);
+          if (val->type == VAL_VARIABLE) {
+            val->type = VAL_REGISTER;
+            val->val.intval = val->val.variable->name.val.intval;
+          }
+          valel = element_next (valel);
+        }
+
+      }
+      opel = nextopel;
+    }
+    blockel = element_next (blockel);
+  }
+
+  varel = list_head (sub->variables);
+  while (varel) {
+    struct variable *var = element_getvalue (varel);
+    list_free (var->uses);
+    fixedpool_free (sub->code->varspool, var);
+    varel = element_next (varel);
+  }
+  list_free (sub->variables);
+
+  sub->variables = NULL;
+}
+
+
 
 

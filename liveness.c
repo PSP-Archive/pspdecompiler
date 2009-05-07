@@ -110,3 +110,64 @@ void live_registers (struct code *c)
   live_analysis (worklist);
   list_free (worklist);
 }
+
+void live_registers_imports (struct code *c)
+{
+  element el = list_head (c->subroutines);
+
+  while (el) {
+    struct subroutine *sub = element_getvalue (el);
+    if (sub->import && sub->numregargs == -1) {
+      element ref;
+
+      ref = list_head (sub->whereused);
+      while (ref) {
+        struct basicblock *block = element_getvalue (ref);
+        struct operation *op = list_tailvalue (block->operations);
+        int count = 0, maxcount = 0;
+        element opel;
+
+        opel = list_head (op->info.callop.arguments);
+        while (opel) {
+          struct value *val = element_getvalue (opel);
+          count++;
+
+          if (list_size (val->val.variable->uses) == 1 &&
+              val->val.variable->def->type != OP_START &&
+              val->val.variable->def->type != OP_CALL) {
+            if (maxcount < count) maxcount = count;
+          }
+          opel = element_next (opel);
+        }
+
+        if (sub->numregargs < maxcount)
+          sub->numregargs = maxcount;
+
+        ref = element_next (ref);
+      }
+
+      ref = list_head (sub->whereused);
+      while (ref) {
+        struct basicblock *block = element_getvalue (ref);
+        struct subroutine *target = block->sub;
+
+        target->status &= ~(SUBROUTINE_SSA | SUBROUTINE_FIXUP_CALL_ARGS);
+        ref = element_next (ref);
+      }
+    }
+    el = element_next (el);
+  }
+
+  el = list_head (c->subroutines);
+
+  while (el) {
+    struct subroutine *sub = element_getvalue (el);
+    if (!sub->import && !sub->haserror &&
+        !(sub->status & SUBROUTINE_SSA)) {
+      unbuild_ssa (sub);
+      remove_call_arguments (sub);
+    }
+    el = element_next (el);
+  }
+
+}

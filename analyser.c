@@ -13,15 +13,15 @@ struct code *code_alloc (void)
   memset (c, 0, sizeof (struct code));
 
   c->lstpool = listpool_create (8192, 4096);
-  c->switchpool = fixedpool_create (sizeof (struct codeswitch), 64, 1);
-  c->subspool = fixedpool_create (sizeof (struct subroutine), 1024, 1);
-  c->blockspool = fixedpool_create (sizeof (struct basicblock), 4096, 1);
-  c->edgespool = fixedpool_create (sizeof (struct basicedge), 8192, 1);
-  c->varspool = fixedpool_create (sizeof (struct variable), 4096, 1);
-  c->opspool = fixedpool_create (sizeof (struct operation), 8192, 1);
-  c->valspool = fixedpool_create (sizeof (struct value), 8192, 1);
-  c->loopspool = fixedpool_create (sizeof (struct loopstructure), 256, 1);
-  c->ifspool = fixedpool_create (sizeof (struct ifstructure), 1024, 1);
+  c->switchpool = fixedpool_create (sizeof (struct codeswitch), 64, TRUE);
+  c->subspool = fixedpool_create (sizeof (struct subroutine), 1024, TRUE);
+  c->blockspool = fixedpool_create (sizeof (struct basicblock), 4096, TRUE);
+  c->edgespool = fixedpool_create (sizeof (struct basicedge), 8192, TRUE);
+  c->varspool = fixedpool_create (sizeof (struct variable), 4096, TRUE);
+  c->opspool = fixedpool_create (sizeof (struct operation), 8192, TRUE);
+  c->valspool = fixedpool_create (sizeof (struct value), 8192, TRUE);
+  c->loopspool = fixedpool_create (sizeof (struct loopstructure), 256, TRUE);
+  c->ifspool = fixedpool_create (sizeof (struct ifstructure), 1024, TRUE);
 
   return c;
 }
@@ -41,6 +41,7 @@ struct code* code_analyse (struct prx *p)
 
   extract_switches (c);
   extract_subroutines (c);
+
   live_registers (c);
 
   el = list_head (c->subroutines);
@@ -55,8 +56,33 @@ struct code* code_analyse (struct prx *p)
 
       if (!sub->haserror) {
         sub->status |= SUBROUTINE_CFG_TRAVERSE_REV;
-        fix_call_operations (sub);
+        fixup_call_arguments (sub);
+      }
+
+      if (!sub->haserror) {
+        sub->status |= SUBROUTINE_FIXUP_CALL_ARGS;
         build_ssa (sub);
+      }
+
+      if (!sub->haserror) {
+        sub->status |= SUBROUTINE_SSA;
+      }
+    }
+    el = element_next (el);
+  }
+
+  live_registers_imports (c);
+
+  el = list_head (c->subroutines);
+  while (el) {
+    sub = element_getvalue (el);
+    if (!sub->import && !sub->haserror) {
+      if (!(sub->status & SUBROUTINE_FIXUP_CALL_ARGS)) {
+        fixup_call_arguments (sub);
+        if (!sub->haserror) {
+          sub->status |= SUBROUTINE_FIXUP_CALL_ARGS;
+          build_ssa (sub);
+        }
       }
 
       if (!sub->haserror) {

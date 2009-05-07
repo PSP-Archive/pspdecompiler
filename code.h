@@ -16,16 +16,17 @@
 #define IMMU(op) ((unsigned short) (op & 0xFFFF))
 
 /* Subroutine decompilation status */
-#define SUBROUTINE_EXTRACTED               1
-#define SUBROUTINE_CFG_EXTRACTED           2
-#define SUBROUTINE_OPERATIONS_EXTRACTED    4
-#define SUBROUTINE_LIVE_REGISTERS          8
-#define SUBROUTINE_CFG_TRAVERSE           16
-#define SUBROUTINE_CFG_TRAVERSE_REV       32
-#define SUBROUTINE_SSA                    64
-#define SUBROUTINE_CONSTANTS_EXTRACTED   128
-#define SUBROUTINE_VARIABLES_EXTRACTED   256
-#define SUBROUTINE_STRUCTURES_EXTRACTED  512
+#define SUBROUTINE_EXTRACTED                 1
+#define SUBROUTINE_CFG_EXTRACTED             2
+#define SUBROUTINE_OPERATIONS_EXTRACTED      4
+#define SUBROUTINE_LIVE_REGISTERS            8
+#define SUBROUTINE_CFG_TRAVERSE             16
+#define SUBROUTINE_CFG_TRAVERSE_REV         32
+#define SUBROUTINE_FIXUP_CALL_ARGS          64
+#define SUBROUTINE_SSA                     128
+#define SUBROUTINE_CONSTANTS_EXTRACTED     256
+#define SUBROUTINE_VARIABLES_EXTRACTED     512
+#define SUBROUTINE_STRUCTURES_EXTRACTED   1024
 
 /* Register values */
 #define REGISTER_GPR_ZERO  0
@@ -357,13 +358,18 @@ void extract_structures (struct subroutine *sub);
 struct operation *operation_alloc (struct basicblock *block);
 struct value *value_append (struct subroutine *sub, list l, enum valuetype type, uint32 value);
 void extract_operations (struct subroutine *sub);
+void fixup_call_arguments (struct subroutine *sub);
+void remove_call_arguments (struct subroutine *sub);
 
 void live_registers (struct code *c);
+void live_registers_imports (struct code *c);
 
-void fix_call_operations (struct subroutine *sub);
 void build_ssa (struct subroutine *sub);
+void unbuild_ssa (struct subroutine *sub);
+
 void propagate_constants (struct subroutine *sub);
 void extract_variables (struct subroutine *sub);
 
+void abi_check (struct subroutine *sub);
 
 #endif /* __CODE_H */

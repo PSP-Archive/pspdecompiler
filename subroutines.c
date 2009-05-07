@@ -146,17 +146,18 @@ void extract_from_exports (struct code *c)
 
     exp = &c->file->modinfo->exports[i];
     for (j = 0; j < exp->nfuncs; j++) {
+      struct prx_function *func = &exp->funcs[j];
       struct location *loc;
 
-      tgt = (exp->funcs[j].vaddr - c->baddr) >> 2;
-      if (exp->funcs[j].vaddr < c->baddr ||
+      tgt = (func->vaddr - c->baddr) >> 2;
+      if (func->vaddr < c->baddr ||
           tgt >= c->numopc) {
         error (__FILE__ ": invalid exported function");
         continue;
       }
 
       loc = &c->base[tgt];
-      new_subroutine (c, loc, NULL, &exp->funcs[j]);
+      new_subroutine (c, loc, NULL, func);
     }
   }
 }
@@ -171,17 +172,19 @@ void extract_from_imports (struct code *c)
 
     imp = &c->file->modinfo->imports[i];
     for (j = 0; j < imp->nfuncs; j++) {
+      struct prx_function *func = &imp->funcs[j];
       struct location *loc;
 
-      tgt = (imp->funcs[j].vaddr - c->baddr) >> 2;
-      if (imp->funcs[j].vaddr < c->baddr ||
+      tgt = (func->vaddr - c->baddr) >> 2;
+      if (func->vaddr < c->baddr ||
           tgt >= c->numopc) {
         error (__FILE__ ": invalid imported function");
         continue;
       }
 
       loc = &c->base[tgt];
-      new_subroutine (c, loc, &imp->funcs[j], NULL);
+      new_subroutine (c, loc, func, NULL);
+      loc->sub->numregargs = func->numargs;
     }
   }
 }
