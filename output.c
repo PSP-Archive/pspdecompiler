@@ -62,9 +62,11 @@ void print_value (FILE *out, struct value *val)
       fprintf (out, "0x%08X", val->val.variable->info);
       break;
     case VARIABLE_TEMP:
-      fprintf (out, "(");
+      if (val->val.variable->def->type != OP_MOVE)
+        fprintf (out, "(");
       print_operation (out, val->val.variable->def, 0, TRUE);
-      fprintf (out, ")");
+      if (val->val.variable->def->type != OP_MOVE)
+        fprintf (out, ")");
       break;
     default:
       print_value (out, &val->val.variable->name);
@@ -112,14 +114,14 @@ void print_asm (FILE *out, struct operation *op, int identsize, int options)
 
   ident_line (out, identsize);
   fprintf (out, "__asm__ (");
-  for (loc = op->begin; ; loc++) {
-    if (loc != op->begin) {
+  for (loc = op->info.asmop.begin; ; loc++) {
+    if (loc != op->info.asmop.begin) {
       fprintf (out, "\n");
       ident_line (out, identsize);
       fprintf (out, "         ");
     }
     fprintf (out, "\"%s\"", allegrex_disassemble (loc->opc, loc->address, FALSE));
-    if (loc == op->end) break;
+    if (loc == op->info.asmop.end) break;
   }
   if (list_size (op->results) != 0 || list_size (op->operands) != 0) {
     print_asm_reglist (out, op->results, identsize, options);
@@ -161,6 +163,43 @@ void print_complexop (FILE *out, struct operation *op, const char *opsymbol, int
       if (val->val.variable->type == VARIABLE_INVALID) break;
     }
     if (el != list_head (op->operands))
+      fprintf (out, ", ");
+    print_value (out, val);
+    el = element_next (el);
+  }
+  fprintf (out, ")");
+}
+
+void print_call (FILE *out, struct operation *op, int options)
+{
+  element el;
+
+  if (list_size (op->info.callop.retvalues) != 0 && !(options & OPTS_DEFERRED)) {
+    el = list_head (op->info.callop.retvalues);
+    while (el) {
+      print_value (out, list_tailvalue (op->results));
+      fprintf (out, " ");
+      el = element_next (el);
+    }
+    fprintf (out, "= ");
+  }
+
+  if (op->block->info.call.calltarget) {
+    print_subroutine_name (out, op->block->info.call.calltarget);
+  } else {
+    fprintf (out, "CALL");
+  }
+
+  fprintf (out, " (");
+
+  el = list_head (op->info.callop.arguments);
+  while (el) {
+    struct value *val;
+    val = element_getvalue (el);
+    if (val->type == VAL_VARIABLE) {
+      if (val->val.variable->type == VARIABLE_INVALID) break;
+    }
+    if (el != list_head (op->info.callop.arguments))
       fprintf (out, ", ");
     print_value (out, val);
     el = element_next (el);
@@ -378,7 +417,7 @@ void print_condition (FILE *out, struct operation *op, int options)
   fprintf (out, "if (");
   if (options & OPTS_REVERSECOND) fprintf (out, "!(");
   print_value (out, list_headvalue (op->operands));
-  switch (op->insn) {
+  switch (op->info.iop.insn) {
   case I_BNE:
     fprintf (out, " != ");
     break;
@@ -421,7 +460,7 @@ void print_operation (FILE *out, struct operation *op, int identsize, int option
   }
 
   if (op->type == OP_INSTRUCTION) {
-    if (op->begin->insn->flags & (INSN_JUMP))
+    if (op->info.iop.loc->insn->flags & (INSN_JUMP))
       return;
   } else if (op->type == OP_NOP || op->type == OP_START ||
              op->type == OP_END || op->type == OP_PHI) {
@@ -430,7 +469,7 @@ void print_operation (FILE *out, struct operation *op, int identsize, int option
 
   ident_line (out, identsize);
   if (op->type == OP_INSTRUCTION) {
-    switch (op->insn) {
+    switch (op->info.iop.insn) {
     case I_ADD:  print_binaryop (out, op, "+", options);     break;
     case I_ADDU: print_binaryop (out, op, "+", options);     break;
     case I_SUB:  print_binaryop (out, op, "-", options);     break;
@@ -470,7 +509,7 @@ void print_operation (FILE *out, struct operation *op, int identsize, int option
     case I_SEB:  print_signextend (out, op, TRUE, options);  break;
     case I_SEH:  print_signextend (out, op, TRUE, options);  break;
     default:
-      if (op->begin->insn->flags & INSN_BRANCH) {
+      if (op->info.iop.loc->insn->flags & INSN_BRANCH) {
         print_condition (out, op, options);
         nosemicolon = TRUE;
       }
@@ -483,12 +522,7 @@ void print_operation (FILE *out, struct operation *op, int identsize, int option
     }
     print_value (out, list_headvalue (op->operands));
   } else if (op->type == OP_CALL) {
-    if (op->block->info.call.calltarget) {
-      print_subroutine_name (out, op->block->info.call.calltarget);
-    } else {
-      fprintf (out, "CALL");
-    }
-    fprintf (out, " ()");
+    print_call (out, op, options);
   }
 
   if (!(options & OPTS_DEFERRED)) {

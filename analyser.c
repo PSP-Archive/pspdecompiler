@@ -52,8 +52,10 @@ struct code* code_analyse (struct prx *p)
         sub->status |= SUBROUTINE_CFG_TRAVERSE;
         cfg_traverse (sub, TRUE);
       }
+
       if (!sub->haserror) {
         sub->status |= SUBROUTINE_CFG_TRAVERSE_REV;
+        fix_call_operations (sub);
         build_ssa (sub);
       }
 

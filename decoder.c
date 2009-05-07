@@ -48,10 +48,12 @@ int decode_instructions (struct code *c)
       continue;
     }
 
+    /*
     if (INSN_TYPE (loc->insn->flags) != INSN_ALLEGREX) {
       slot = FALSE;
       continue;
     }
+    */
 
     if (loc->insn->flags & (INSN_BRANCH | INSN_JUMP)) {
       if (slot) c->base[i - 1].error = ERROR_DELAY_SLOT;

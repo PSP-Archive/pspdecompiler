@@ -101,7 +101,7 @@ void propagate_constants (struct subroutine *sub)
           var->def->deferred = TRUE;
         } else if (var->def->type == OP_INSTRUCTION) {
           uint32 val1, val2;
-          switch (var->def->insn) {
+          switch (var->def->info.iop.insn) {
           case I_ADD:
           case I_ADDU:
             val1 = get_constant_value (list_headvalue (var->def->operands));

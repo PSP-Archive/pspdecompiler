@@ -246,8 +246,9 @@ enum variabletype {
 };
 
 struct variable {
-  struct value name;
   enum variabletype type;
+
+  struct value name;
   uint32 info;
 
   struct operation *def;
@@ -267,10 +268,21 @@ enum operationtype {
 
 struct operation {
   enum operationtype type;
-  enum allegrex_insn insn;
-  struct location *begin;
-  struct location *end;
   struct basicblock *block;
+
+  union {
+    struct {
+      enum allegrex_insn insn;
+      struct location *loc;
+    } iop;
+    struct {
+      struct location *begin, *end;
+    } asmop;
+    struct {
+      list arguments;
+      list retvalues;
+    } callop;
+  } info;
 
   int  deferred;
 
@@ -343,11 +355,12 @@ void reset_marks (struct subroutine *sub);
 void extract_structures (struct subroutine *sub);
 
 struct operation *operation_alloc (struct basicblock *block);
-void value_append (struct subroutine *sub, list l, enum valuetype type, uint32 value);
+struct value *value_append (struct subroutine *sub, list l, enum valuetype type, uint32 value);
 void extract_operations (struct subroutine *sub);
 
 void live_registers (struct code *c);
 
+void fix_call_operations (struct subroutine *sub);
 void build_ssa (struct subroutine *sub);
 void propagate_constants (struct subroutine *sub);
 void extract_variables (struct subroutine *sub);

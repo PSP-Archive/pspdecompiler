@@ -17,7 +17,7 @@ void ssa_place_phis (struct subroutine *sub, list *defblocks)
   struct basicblock *block, *bref;
   struct basicblocknode *brefnode;
   element el, ref;
-  int i, j;
+  int regno, i;
 
   el = list_head (sub->blocks);
   while (el) {
@@ -27,12 +27,12 @@ void ssa_place_phis (struct subroutine *sub, list *defblocks)
     el = element_next (el);
   }
 
-  for (i = 1; i < NUM_REGISTERS; i++) {
-    list worklist = defblocks[i];
+  for (regno = 1; regno < NUM_REGISTERS; regno++) {
+    list worklist = defblocks[regno];
     el = list_head (worklist);
     while (el) {
       block = element_getvalue (el);
-      block->mark1 = i;
+      block->mark1 = regno;
       el = element_next (el);
     }
 
@@ -42,19 +42,19 @@ void ssa_place_phis (struct subroutine *sub, list *defblocks)
       while (ref) {
         brefnode = element_getvalue (ref);
         bref = element_getvalue (brefnode->blockel);
-        if (bref->mark2 != i && IS_BIT_SET (bref->reg_live_out, i)) {
+        if (bref->mark2 != regno && IS_BIT_SET (bref->reg_live_out, regno)) {
           struct operation *op;
 
-          bref->mark2 = i;
+          bref->mark2 = regno;
           op = operation_alloc (bref);
           op->type = OP_PHI;
-          value_append (sub, op->results, VAL_REGISTER, i);
-          for (j = list_size (bref->inrefs); j > 0; j--)
-            value_append (sub, op->operands, VAL_REGISTER, i);
+          value_append (sub, op->results, VAL_REGISTER, regno);
+          for (i = list_size (bref->inrefs); i > 0; i--)
+            value_append (sub, op->operands, VAL_REGISTER, regno);
           list_inserthead (bref->operations, op);
 
-          if (bref->mark1 != i) {
-            bref->mark1 = i;
+          if (bref->mark1 != regno) {
+            bref->mark1 = regno;
             list_inserttail (worklist, bref);
           }
         }
@@ -68,10 +68,10 @@ static
 void ssa_search (struct basicblock *block, list *vars)
 {
   element el;
-  int i, pushed[NUM_REGISTERS];
+  int regno, pushed[NUM_REGISTERS];
 
-  for (i = 1; i < NUM_REGISTERS; i++)
-    pushed[i] = FALSE;
+  for (regno = 1; regno < NUM_REGISTERS; regno++)
+    pushed[regno] = FALSE;
 
   el = list_head (block->operations);
   while (el) {
@@ -138,7 +138,7 @@ void ssa_search (struct basicblock *block, list *vars)
       if (op->type != OP_PHI) break;
 
       opel = list_head (op->operands);
-      for (i = edge->tonum; i > 0; i--)
+      for (regno = edge->tonum; regno > 0; regno--)
         opel = element_next (opel);
 
       val = element_getvalue (opel);
@@ -161,8 +161,8 @@ void ssa_search (struct basicblock *block, list *vars)
     el = element_next (el);
   }
 
-  for (i = 1; i < NUM_REGISTERS; i++)
-    if (pushed[i]) list_removehead (vars[i]);
+  for (regno = 1; regno < NUM_REGISTERS; regno++)
+    if (pushed[regno]) list_removehead (vars[regno]);
 }
 
 void build_ssa (struct subroutine *sub)

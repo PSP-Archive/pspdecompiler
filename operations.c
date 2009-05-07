@@ -88,7 +88,7 @@ void simplify_operation (struct operation *op)
 
   if (op->type != OP_INSTRUCTION) return;
 
-  if (list_size (op->results) == 1 && !(op->begin->insn->flags & (INSN_LOAD | INSN_JUMP))) {
+  if (list_size (op->results) == 1 && !(op->info.iop.loc->insn->flags & (INSN_LOAD | INSN_JUMP))) {
     val = list_headvalue (op->results);
     if (val->val.intval == 0) {
       reset_operation (op);
@@ -99,7 +99,7 @@ void simplify_operation (struct operation *op)
   simplify_reg_zero (op->results);
   simplify_reg_zero (op->operands);
 
-  switch (op->insn) {
+  switch (op->info.iop.insn) {
   case I_ADDU:
   case I_ADD:
   case I_OR:
@@ -180,47 +180,50 @@ void simplify_operation (struct operation *op)
   return;
 }
 
-void value_append (struct subroutine *sub, list l, enum valuetype type, uint32 value)
+struct value *value_append (struct subroutine *sub, list l, enum valuetype type, uint32 value)
 {
   struct value *val;
   val = fixedpool_alloc (sub->code->valspool);
   val->type = type;
   val->val.intval = value;
   list_inserttail (l, val);
+  return val;
 }
 
 void extract_operations (struct subroutine *sub)
 {
   struct operation *op;
   struct basicblock *block;
+  struct location *loc;
+  uint32 asm_gen[NUM_REGMASK], asm_kill[NUM_REGMASK];
+  int i, regno, lastasm;
   element el;
-  int regno;
 
   el = list_head (sub->blocks);
   while (el) {
     block = element_getvalue (el);
     block->operations = list_alloc (sub->code->lstpool);
-    block->reg_gen[0] = block->reg_gen[1] = 0;
-    block->reg_kill[0] = block->reg_kill[1] = 0;
 
-    if (block->type == BLOCK_SIMPLE) {
-      uint32 asm_gen[NUM_REGMASK], asm_kill[NUM_REGMASK];
-      struct location *loc;
-      int lastasm = FALSE;
+    for (i = 0; i < NUM_REGMASK; i++)
+      block->reg_gen[i] = block->reg_kill[i] = 0;
 
-      asm_gen[0] = asm_gen[1] = 0;
-      asm_kill[0] = asm_kill[1] = 0;
+    switch (block->type) {
+    case BLOCK_SIMPLE:
+      lastasm = FALSE;
+      for (i = 0; i < NUM_REGMASK; i++)
+        asm_gen[i] = asm_kill[i] = 0;
 
       for (loc = block->info.simple.begin; ; loc++) {
         if (INSN_TYPE (loc->insn->flags) == INSN_ALLEGREX) {
           enum allegrex_insn insn;
 
-          if (lastasm) list_inserttail (block->operations, op);
+          if (lastasm)
+            list_inserttail (block->operations, op);
           lastasm = FALSE;
 
           op = operation_alloc (block);
           op->type = OP_INSTRUCTION;
-          op->begin = op->end = loc;
+          op->info.iop.loc = loc;
 
           if (loc->insn->flags & INSN_READ_GPR_S) {
             regno = RS (loc->opc);
@@ -339,7 +342,7 @@ void extract_operations (struct subroutine *sub)
           default:
             insn = loc->insn->insn;
           }
-          op->insn = insn;
+          op->info.iop.insn = insn;
 
           if (loc->insn->flags & INSN_WRITE_GPR_T) {
             regno = RT (loc->opc);
@@ -373,15 +376,16 @@ void extract_operations (struct subroutine *sub)
 
           simplify_operation (op);
           list_inserttail (block->operations, op);
+
         } else {
           if (!lastasm) {
             op = operation_alloc (block);
-            op->begin = op->end = loc;
+            op->info.asmop.begin = op->info.asmop.end = loc;
             op->type = OP_ASM;
-            asm_gen[0] = asm_gen[1] = 0;
-            asm_kill[0] = asm_kill[1] = 0;
+            for (i = 0; i < NUM_REGMASK; i++)
+              asm_gen[i] = asm_kill[i] = 0;
           } else {
-            op->end = loc;
+            op->info.asmop.end = loc;
           }
           lastasm = TRUE;
 
@@ -437,49 +441,94 @@ void extract_operations (struct subroutine *sub)
         }
 
         if (loc == block->info.simple.end) {
-          if (lastasm) list_inserttail (block->operations, op);
+          if (lastasm)
+            list_inserttail (block->operations, op);
           break;
         }
       }
-    } else if (block->type == BLOCK_CALL) {
+      break;
+
+    case BLOCK_CALL:
       op = operation_alloc (block);
       op->type = OP_CALL;
+      op->info.callop.arguments = list_alloc (sub->code->lstpool);
+      op->info.callop.retvalues = list_alloc (sub->code->lstpool);
       list_inserttail (block->operations, op);
 
       for (regno = 1; regno <= NUM_REGISTERS; regno++) {
         if (IS_BIT_SET (regmask_call_gen, regno)) {
           BLOCK_GPR_GEN ()
+          value_append (sub, op->operands, VAL_REGISTER, regno);
         }
         if (IS_BIT_SET (regmask_call_kill, regno)) {
           BLOCK_GPR_KILL ()
+          value_append (sub, op->results, VAL_REGISTER, regno);
         }
       }
+      break;
+
+    case BLOCK_START:
+      op = operation_alloc (block);
+      op->type = OP_START;
+
+      for (regno = 1; regno < NUM_REGISTERS; regno++) {
+        BLOCK_GPR_KILL ()
+        value_append (sub, op->results, VAL_REGISTER, regno);
+      }
+      list_inserttail (block->operations, op);
+      break;
+
+    case BLOCK_END:
+      op = operation_alloc (block);
+      op->type = OP_END;
+
+      for (regno = 1; regno < NUM_REGISTERS; regno++) {
+        if (IS_BIT_SET (regmask_subend_gen, regno)) {
+          BLOCK_GPR_GEN ()
+          value_append (sub, op->operands, VAL_REGISTER, regno);
+        }
+      }
+
+      list_inserttail (block->operations, op);
+      break;
     }
 
     el = element_next (el);
   }
+}
 
-  block = sub->startblock;
-  op = operation_alloc (block);
-  op->type = OP_START;
+void fix_call_operations (struct subroutine *sub)
+{
+  struct operation *op;
+  struct basicblock *block;
+  struct value *val;
+  element el;
+  int regno, regend;
 
-  for (regno = 1; regno < NUM_REGISTERS; regno++) {
-    BLOCK_GPR_KILL ()
-    value_append (sub, op->results, VAL_REGISTER, regno);
-  }
-  list_inserttail (block->operations, op);
+  el = list_head (sub->blocks);
+  while (el) {
+    block = element_getvalue (el);
+    if (block->type == BLOCK_CALL) {
+      struct subroutine *target;
+      op = list_tailvalue (block->operations);
+      target = block->info.call.calltarget;
 
-  block = sub->endblock;
-  op = operation_alloc (block);
-  op->type = OP_END;
+      if (target) regend = REGISTER_GPR_A0 + target->numregargs;
+      else regend = REGISTER_GPR_T4;
 
-  for (regno = 1; regno < NUM_REGISTERS; regno++) {
-    if (IS_BIT_SET (regmask_subend_gen, regno)) {
-      BLOCK_GPR_GEN ()
-      value_append (sub, op->operands, VAL_REGISTER, regno);
+      for (regno = REGISTER_GPR_A0; regno < regend; regno++) {
+        val = value_append (sub, op->operands, VAL_REGISTER, regno);
+        list_inserttail (op->info.callop.arguments, val);
+      }
+
+      if (target) regend = REGISTER_GPR_V0 + target->numregout;
+      else regend = REGISTER_GPR_A0;
+
+      for (regno = REGISTER_GPR_V0; regno < regend; regno++) {
+        val = value_append (sub, op->results, VAL_REGISTER, regno);
+        list_inserttail (op->info.callop.retvalues, val);
+      }
     }
+    el = element_next (el);
   }
-
-  list_inserttail (block->operations, op);
-
 }

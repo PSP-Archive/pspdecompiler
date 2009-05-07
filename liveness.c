@@ -40,12 +40,18 @@ void live_analysis (list worklist)
 
     sub = block->info.call.calltarget;
     if (block->type == BLOCK_CALL && sub) {
+
+      for (regno = REGISTER_GPR_V0; regno <= REGISTER_GPR_V1; regno++) {
+        if (IS_BIT_SET (block->reg_live_in, regno)) {
+          sub->numregout = MAX (sub->numregout, regno - REGISTER_GPR_V0 + 1);
+        }
+      }
+
       if (sub->status & SUBROUTINE_OPERATIONS_EXTRACTED) {
         changed = FALSE;
         for (regno = REGISTER_GPR_V0; regno <= REGISTER_GPR_V1; regno++) {
           if (IS_BIT_SET (block->reg_live_in, regno)) {
             changed = changed || !IS_BIT_SET (sub->endblock->reg_gen, regno);
-            sub->numregout = MAX (sub->numregout, regno - REGISTER_GPR_V0 + 1);
             BIT_SET (sub->endblock->reg_gen, regno);
           }
         }

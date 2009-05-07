@@ -19,7 +19,7 @@ void print_block (FILE *out, struct basicblock *block, int reversecond)
     struct operation *op = element_getvalue (opel);
     if (!op->deferred) {
       if (op->type == OP_INSTRUCTION) {
-        if (op->begin->insn->flags & (INSN_JUMP | INSN_BRANCH))
+        if (op->info.iop.loc->insn->flags & (INSN_JUMP | INSN_BRANCH))
           jumpop = op;
       }
       if (op != jumpop)
@@ -59,9 +59,6 @@ void print_block_recursive (FILE *out, struct basicblock *block, int verbosity)
     if (block->type == BLOCK_SIMPLE) {
       fprintf (out, "Address 0x%08X ", block->info.simple.begin->address);
     }
-    fprintf (out, "REGIN: 0x%08X REGOUT: 0x%08X REGGEN: 0x%08X REGKILL: 0x%08X ",
-        block->reg_live_in[0], block->reg_live_out[0],
-        block->reg_gen[0], block->reg_kill[0]);
     fprintf (out, "*/\n");
   }
 

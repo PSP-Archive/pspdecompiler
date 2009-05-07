@@ -70,7 +70,7 @@ void extract_variables (struct subroutine *sub)
 
         if (var->def->type == OP_MOVE || var->def->type == OP_INSTRUCTION) {
           if (var->def->type == OP_INSTRUCTION) {
-            if (var->def->begin->insn->flags & (INSN_LOAD | INSN_STORE | INSN_BRANCH))
+            if (var->def->info.iop.loc->insn->flags & (INSN_LOAD | INSN_STORE | INSN_BRANCH))
               istemp = FALSE;
           }
         } else {
