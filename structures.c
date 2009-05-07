@@ -49,8 +49,11 @@ void mark_forward (struct subroutine *sub, struct basicblock *block,
         struct basicedge *edge = element_getvalue (ref);
         struct basicblock *next = edge->to;
         if (next->node.dfsnum > block->node.dfsnum) {
-          if (next->mark1 == num) next->mark2 = num;
-          else {
+          if (next->mark1 == num || dom_isancestor (&block->revnode, &next->revnode)) {
+            next->mark2 = num;
+            if (end < next->node.dfsnum)
+              end = next->node.dfsnum;
+          } else {
             if (!loop->end) loop->end = next;
             if (list_size (loop->end->inrefs) < list_size (next->inrefs))
               loop->end = next;
@@ -124,8 +127,7 @@ void extract_loops (struct subroutine *sub)
           error (__FILE__ ": graph of sub 0x%08X is not reducible (using goto)", sub->begin->address);
           edge->type = EDGE_GOTO;
           edge->to->haslabel = TRUE;
-        } else if (block->loopst == edge->from->loopst ||
-            dom_isancestor (&block->revnode, &edge->from->revnode)) {
+        } else if (block->loopst == edge->from->loopst) {
           if (!loop) {
             loop = fixedpool_alloc (sub->code->loopspool);
             loop->start = block;

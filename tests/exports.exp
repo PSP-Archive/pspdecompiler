@@ -9,7 +9,7 @@ PSP_EXPORT_FUNC(module_stop)
 PSP_EXPORT_VAR(module_info)
 PSP_EXPORT_END
 
-PSP_EXPORT_START (test, 0, 0x4001)
+PSP_EXPORT_START (testprx, 0, 0x4001)
 PSP_EXPORT_FUNC_HASH (cfg_branches)
 PSP_EXPORT_FUNC_HASH (cfg_branches_likely)
 PSP_EXPORT_FUNC_HASH (cfg_branches_noswap)
@@ -22,6 +22,7 @@ PSP_EXPORT_FUNC_HASH (cfg_callnoswap)
 PSP_EXPORT_FUNC_HASH (cfg_switch)
 PSP_EXPORT_FUNC_HASH (graph_double_break)
 PSP_EXPORT_FUNC_HASH (graph_nested_ifs)
+PSP_EXPORT_FUNC_HASH (graph_nested_loops)
 PSP_EXPORT_FUNC_HASH (graph_for_inside_if)
 PSP_EXPORT_END
 

@@ -475,6 +475,7 @@ void print_condition (FILE *out, struct operation *op, int options)
 
 void print_operation (FILE *out, struct operation *op, int identsize, int options)
 {
+  struct location *loc;
   int nosemicolon = FALSE;
 
   if (op->type == OP_ASM) {
@@ -488,6 +489,11 @@ void print_operation (FILE *out, struct operation *op, int identsize, int option
   } else if (op->type == OP_NOP || op->type == OP_START ||
              op->type == OP_END || op->type == OP_PHI) {
     return;
+  }
+
+  loc = op->info.iop.loc;
+  if (op->type == OP_INSTRUCTION) {
+    if (loc->branchalways) return;
   }
 
   ident_line (out, identsize);
@@ -532,10 +538,10 @@ void print_operation (FILE *out, struct operation *op, int identsize, int option
     case I_SEB:  print_signextend (out, op, TRUE, options);  break;
     case I_SEH:  print_signextend (out, op, TRUE, options);  break;
     default:
-      if (op->info.iop.loc->insn->flags & INSN_BRANCH) {
+      if (loc->insn->flags & INSN_BRANCH) {
         print_condition (out, op, options);
         nosemicolon = TRUE;
-      }
+      };
       break;
     }
   } else if (op->type == OP_MOVE) {

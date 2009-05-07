@@ -386,6 +386,26 @@ graph_nested_ifs:
 
         .end    graph_nested_ifs
 
+        .global graph_nested_loops
+        .ent    graph_nested_loops
+graph_nested_loops:
+        move    $v0, $a0
+1:      beq     $a1, $0, 4f
+        nop
+2:      beq     $a2, $0, 3f
+        nop
+        addu    $v0, $v0, $a1
+        j       2b
+        addiu   $a2, $a2, -1
+3:      addu    $v0, $v0, $a1
+        j       1b
+        addiu   $a1, $a1, -1
+4:      jr      $ra
+        nop
+
+        .end    graph_nested_loops
+
+
         .global graph_for_inside_if
         .ent    graph_for_inside_if
 graph_for_inside_if:

@@ -28,7 +28,8 @@ void print_help (char *prgname)
     "  -e    print edge types\n"
     "  -c    output code\n"
     "  -v    increase verbosity\n"
-    "  -n    specify nids xml file\n",
+    "  -n    specify nids xml file\n"
+    "  -i    print prx info\n",
     prgname
   );
 }
@@ -40,8 +41,9 @@ int main (int argc, char **argv)
 
   int i, j, verbosity = 0;
   int printgraph = FALSE;
-  int graphoptions = 0;
   int printcode = FALSE;
+  int printinfo = FALSE;
+  int graphoptions = 0;
 
   struct nidstable *nids = NULL;
   struct prx *p = NULL;
@@ -58,6 +60,7 @@ int main (int argc, char **argv)
         case 'v': verbosity++; break;
         case 'g': printgraph = TRUE; break;
         case 'c': printcode = TRUE; break;
+        case 'i': printinfo = TRUE; break;
         case 't': graphoptions |= OUT_PRINT_DFS; break;
         case 'r': graphoptions |= OUT_PRINT_RDFS; break;
         case 'd': graphoptions |= OUT_PRINT_DOMINATOR; break;
@@ -96,10 +99,11 @@ int main (int argc, char **argv)
   if (nids)
     prx_resolve_nids (p, nids);
 
-  if (verbosity > 2 && nids)
+  if (verbosity > 2 && nids && printinfo)
     nids_print (nids);
 
-  if (verbosity > 0) prx_print (p, (verbosity > 1));
+  if (verbosity > 0 && printinfo)
+    prx_print (p, (verbosity > 1));
 
   c = code_analyse (p);
   if (!c)

@@ -1,6 +1,6 @@
 #include <pspkernel.h>
 
-PSP_MODULE_INFO ("test", 0x0, 1, 2);
+PSP_MODULE_INFO ("testprx", 0x0, 1, 2);
 
 extern void cfg_branches (void);
 extern void cfg_branches_likely (void);
@@ -15,6 +15,7 @@ extern void cfg_switch (void);
 extern void graph_double_break (void);
 extern void graph_nested_ifs (void);
 extern void graph_for_inside_if (void);
+extern void graph_nested_loops (void);
 
 
 int module_start (SceUInt argc, void *arg)
@@ -32,6 +33,7 @@ int module_start (SceUInt argc, void *arg)
   graph_double_break ();
   graph_nested_ifs ();
   graph_for_inside_if ();
+  graph_nested_loops ();
 
   sceKernelSleepThread ();
   return 0;

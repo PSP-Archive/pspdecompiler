@@ -1,4 +1,4 @@
-TARGET = test
+TARGET = testprx
 OBJS = test.o test_asm.o
 
 INCDIR = 
