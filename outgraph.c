@@ -14,10 +14,10 @@ void print_structures (FILE *out, struct basicblock *block)
     fprintf (out, "\\l");
   }
 
-  if (block->ifst) {
+  if (block->st) {
     fprintf (out, "IF");
-    if (block->ifst->end)
-      fprintf (out, " end %d", block->ifst->end->node.dfsnum);
+    if (block->st->end)
+      fprintf (out, " end %d", block->st->end->node.dfsnum);
     fprintf (out, "\\l");
   }
 }

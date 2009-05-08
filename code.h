@@ -205,9 +205,7 @@ struct basicblock {
 
   list   inrefs, outrefs;                  /* A list of in- and out-edges of this block */
 
-  struct loopstructure *loopst;
-  struct ifstructure *ifst;
-
+  struct ctrlstruct *st, *loopst;
   int    haslabel, identsize;
 
   int    mark1, mark2;
@@ -299,24 +297,32 @@ struct operation {
   list operands;
 };
 
+enum ctrltype {
+  CONTROL_LOOP,
+  CONTROL_SWITCH,
+  CONTROL_IF
+};
+
 enum looptype {
   LOOP_WHILE,
   LOOP_REPEAT,
   LOOP_FOR
 };
 
-struct loopstructure {
-  enum looptype type;
+struct ctrlstruct {
+  enum ctrltype type;
   struct basicblock *start;
   struct basicblock *end;
   int    hasendgoto;
-  list  edges;
-};
-
-struct ifstructure {
-  struct basicblock *end;
-  int    outermost;
-  int    hasendgoto;
+  union {
+    struct {
+      int isoutermost;
+    } ifctrl;
+    struct {
+      enum looptype type;
+      list  edges;
+    } loopctrl;
+  } info;
 };
 
 
@@ -338,8 +344,7 @@ struct code {
   fixedpool ssavarspool;
   fixedpool opspool;
   fixedpool valspool;
-  fixedpool loopspool;
-  fixedpool ifspool;
+  fixedpool ctrlspool;
 };
 
 
