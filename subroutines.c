@@ -380,17 +380,17 @@ void extract_subroutines (struct code *c)
       check_subroutine (sub);
 
       if (!sub->haserror) {
-        sub->status |= SUBROUTINE_EXTRACTED;
+        sub->status |= SUB_STAT_EXTRACTED;
         extract_cfg (sub);
       }
 
       if (!sub->haserror) {
-        sub->status |= SUBROUTINE_CFG_EXTRACTED;
+        sub->status |= SUB_STAT_CFG_EXTRACTED;
         extract_operations (sub);
       }
 
       if (!sub->haserror) {
-        sub->status |= SUBROUTINE_OPERATIONS_EXTRACTED;
+        sub->status |= SUB_STAT_OPERATIONS_EXTRACTED;
       }
     }
     el = element_next (el);

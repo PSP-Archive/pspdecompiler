@@ -207,10 +207,12 @@ void link_blocks (struct subroutine *sub)
           } else {
             element ref;
             if (loc->cswitch && loc->cswitch->jumplocation == loc) {
+              block->status |= BLOCK_STAT_ISSWITCH;
               ref = list_head (loc->cswitch->references);
               while (ref) {
                 struct location *switchtarget = element_getvalue (ref);
                 make_link (block, switchtarget->block);
+                switchtarget->block->status |= BLOCK_STAT_ISSWITCHTARGET;
                 ref = element_next (ref);
               }
             } else

@@ -114,7 +114,7 @@ int main (int argc, char **argv)
     print_graph (c, prxfilename, graphoptions);
 
   if (printcode)
-    print_code (c, prxfilename, verbosity);
+    print_code (c, prxfilename);
 
   code_free (c);
 

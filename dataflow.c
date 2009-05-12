@@ -81,7 +81,7 @@ void extract_variables (struct subroutine *sub)
           }
 
           if (istemp) {
-            var->def->status |= OPERATION_DEFERRED;
+            var->def->status |= OP_STAT_DEFERRED;
             var->type = SSAVAR_TEMP;
             var->info = 0;
           } else {

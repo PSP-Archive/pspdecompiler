@@ -195,10 +195,12 @@ void extract_operations (struct subroutine *sub)
   struct operation *op;
   struct basicblock *block;
   struct location *loc;
+  struct prx *file;
   uint32 asm_gen[NUM_REGMASK], asm_kill[NUM_REGMASK];
-  int i, regno, lastasm;
+  int i, regno, lastasm, relocnum;
   element el;
 
+  file = sub->code->file;
   el = list_head (sub->blocks);
   while (el) {
     block = element_getvalue (el);
@@ -210,10 +212,21 @@ void extract_operations (struct subroutine *sub)
     switch (block->type) {
     case BLOCK_SIMPLE:
       lastasm = FALSE;
+      relocnum = prx_findrelocbyaddr (file, block->info.simple.begin->address);
+
       for (i = 0; i < NUM_REGMASK; i++)
         asm_gen[i] = asm_kill[i] = 0;
 
       for (loc = block->info.simple.begin; ; loc++) {
+        int hasreloc = FALSE;
+
+        if (relocnum < file->relocnum) {
+          if (file->relocsbyaddr[relocnum].vaddr == loc->address) {
+            hasreloc = TRUE;
+            relocnum++;
+          }
+        }
+
         if (INSN_TYPE (loc->insn->flags) == INSN_ALLEGREX) {
           enum allegrex_insn insn;
 
@@ -223,6 +236,8 @@ void extract_operations (struct subroutine *sub)
 
           op = operation_alloc (block);
           op->type = OP_INSTRUCTION;
+          if (hasreloc)
+            op->status |= OP_STAT_HASRELOC;
           op->info.iop.loc = loc;
 
           if (loc->insn->flags & INSN_READ_GPR_S) {

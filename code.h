@@ -16,20 +16,28 @@
 #define IMMU(op) ((unsigned short) (op & 0xFFFF))
 
 /* Subroutine decompilation status */
-#define SUBROUTINE_EXTRACTED                 1
-#define SUBROUTINE_CFG_EXTRACTED             2
-#define SUBROUTINE_OPERATIONS_EXTRACTED      4
-#define SUBROUTINE_LIVE_REGISTERS            8
-#define SUBROUTINE_CFG_TRAVERSE             16
-#define SUBROUTINE_CFG_TRAVERSE_REV         32
-#define SUBROUTINE_FIXUP_CALL_ARGS          64
-#define SUBROUTINE_SSA                     128
-#define SUBROUTINE_CONSTANTS_EXTRACTED     256
-#define SUBROUTINE_VARIABLES_EXTRACTED     512
-#define SUBROUTINE_STRUCTURES_EXTRACTED   1024
+#define SUB_STAT_EXTRACTED                 1
+#define SUB_STAT_CFG_EXTRACTED             2
+#define SUB_STAT_OPERATIONS_EXTRACTED      4
+#define SUB_STAT_LIVE_REGISTERS            8
+#define SUB_STAT_CFG_TRAVERSE             16
+#define SUB_STAT_CFG_TRAVERSE_REV         32
+#define SUB_STAT_FIXUP_CALL_ARGS          64
+#define SUB_STAT_SSA                     128
+#define SUB_STAT_CONSTANTS_EXTRACTED     256
+#define SUB_STAT_VARIABLES_EXTRACTED     512
+#define SUB_STAT_STRUCTURES_EXTRACTED   1024
 
 /* Operation status */
-#define OPERATION_DEFERRED            1
+#define OP_STAT_DEFERRED            1
+#define OP_STAT_HASRELOC            2
+
+/* Block status */
+#define BLOCK_STAT_HASLABEL         1
+#define BLOCK_STAT_ISSWITCH         2
+#define BLOCK_STAT_ISSWITCHTARGET   4
+#define BLOCK_STAT_REVCOND          8
+#define BLOCK_STAT_HASELSE         16
 
 
 /* Register values */
@@ -73,9 +81,9 @@
 
 #define MAX_SUB_ARGS  8
 
-
 #define IS_BIT_SET(flags, bit) ((1 << ((bit) & 31)) & ((flags)[(bit) >> 5]))
 #define BIT_SET(flags, bit) ((flags)[(bit) >> 5]) |= 1 << ((bit) & 31)
+
 
 extern const uint32 regmask_call_gen[NUM_REGMASK];
 extern const uint32 regmask_call_kill[NUM_REGMASK];
@@ -197,7 +205,9 @@ struct basicblock {
 
   uint32 reg_gen[NUM_REGMASK], reg_kill[NUM_REGMASK];
   uint32 reg_live_in[NUM_REGMASK], reg_live_out[NUM_REGMASK];
+
   list   operations;
+
   struct subroutine *sub;                  /* The owner subroutine */
 
   struct basicblocknode node;              /* Node info for DFS and DOM trees */
@@ -205,8 +215,8 @@ struct basicblock {
 
   list   inrefs, outrefs;                  /* A list of in- and out-edges of this block */
 
-  struct ctrlstruct *st, *loopst;
-  int    haslabel, identsize;
+  struct ctrlstruct *st, *ifst, *loopst;
+  int    blockcond, status;
 
   int    mark1, mark2;
 };
@@ -214,9 +224,12 @@ struct basicblock {
 enum edgetype {
   EDGE_UNKNOWN = 0,
   EDGE_GOTO,
+  EDGE_INVALID,
   EDGE_CONTINUE,
   EDGE_BREAK,
-  EDGE_FOLLOW,
+  EDGE_CASE,
+  EDGE_NEXT,
+  EDGE_IFENTER,
   EDGE_IFEXIT
 };
 
@@ -300,7 +313,8 @@ struct operation {
 enum ctrltype {
   CONTROL_LOOP,
   CONTROL_SWITCH,
-  CONTROL_IF
+  CONTROL_IF,
+  CONTROL_MAIN
 };
 
 enum looptype {
@@ -313,13 +327,15 @@ struct ctrlstruct {
   enum ctrltype type;
   struct basicblock *start;
   struct basicblock *end;
+  struct ctrlstruct *parent;
   int    hasendgoto;
+  int    identsize;
+
   union {
     struct {
-      int isoutermost;
+      int endfollow;
     } ifctrl;
     struct {
-      enum looptype type;
       list  edges;
     } loopctrl;
   } info;

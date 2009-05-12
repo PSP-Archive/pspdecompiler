@@ -47,7 +47,7 @@ void live_analysis (list worklist)
         }
       }
 
-      if (sub->status & SUBROUTINE_OPERATIONS_EXTRACTED) {
+      if (sub->status & SUB_STAT_OPERATIONS_EXTRACTED) {
         changed = FALSE;
         for (regno = REGISTER_GPR_V0; regno <= REGISTER_GPR_V1; regno++) {
           if (IS_BIT_SET (block->reg_live_in, regno)) {
@@ -100,7 +100,7 @@ void live_registers (struct code *c)
     struct subroutine *sub = element_getvalue (el);
     if (!sub->import && !sub->haserror) {
       reset_marks (sub);
-      sub->status |= SUBROUTINE_LIVE_REGISTERS;
+      sub->status |= SUB_STAT_LIVE_REGISTERS;
       sub->endblock->mark1 = 1;
       list_inserthead (worklist, sub->endblock);
     }
@@ -151,7 +151,7 @@ void live_registers_imports (struct code *c)
         struct basicblock *block = element_getvalue (ref);
         struct subroutine *target = block->sub;
 
-        target->status &= ~(SUBROUTINE_SSA | SUBROUTINE_FIXUP_CALL_ARGS);
+        target->status &= ~(SUB_STAT_SSA | SUB_STAT_FIXUP_CALL_ARGS);
         ref = element_next (ref);
       }
     }
@@ -163,7 +163,7 @@ void live_registers_imports (struct code *c)
   while (el) {
     struct subroutine *sub = element_getvalue (el);
     if (!sub->import && !sub->haserror &&
-        !(sub->status & SUBROUTINE_SSA)) {
+        !(sub->status & SUB_STAT_SSA)) {
       unbuild_ssa (sub);
       remove_call_arguments (sub);
     }

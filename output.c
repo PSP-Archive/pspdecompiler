@@ -64,38 +64,96 @@ void print_subroutine_declaration (FILE *out, struct subroutine *sub)
   fprintf (out, ")");
 }
 
+#define ISSPACE(x) ((x) == '\t' || (x) == '\r' || (x) == '\n' || (x) == '\v' || (x) == '\f')
+
+static
+int valid_string (struct prx *file, uint32 vaddr)
+{
+  uint32 off = prx_translate (file, vaddr);
+  int len = 0;
+  if (off) {
+    for (; off < file->size; off++) {
+      uint8 ch = file->data[off];
+      if (ch == '\t' || ch == '\r' || ch == '\n' || ch == '\v' ||
+          ch == '\f' || (ch >= 32 && ch < 127))
+        len++;
+      else
+        break;
+    }
+  }
+  return len > 3;
+}
+
+static
+void print_string (FILE *out, struct prx *file, uint32 vaddr)
+{
+  uint32 off = prx_translate (file, vaddr);
+
+  fprintf (out, "\"");
+  for (; off < file->size; off++) {
+    uint8 ch = file->data[off];
+    if (ch >= 32 && ch < 127) {
+      fprintf (out, "%c", ch);
+    } else {
+      switch (ch) {
+      case '\t': fprintf (out, "\\t"); break;
+      case '\r': fprintf (out, "\\r"); break;
+      case '\n': fprintf (out, "\\n"); break;
+      case '\v': fprintf (out, "\\v"); break;
+      case '\f': fprintf (out, "\\f"); break;
+      default:
+        fprintf (out, "\"");
+        return;
+      }
+    }
+  }
+}
+
+
 void print_value (FILE *out, struct value *val)
 {
+  struct ssavar *var;
+  struct prx *file;
+  int isstring = FALSE;
+
   switch (val->type) {
   case VAL_CONSTANT: fprintf (out, "0x%08X", val->val.intval); break;
   case VAL_SSAVAR:
-    switch (val->val.variable->type) {
+    var = val->val.variable;
+    switch (var->type) {
     case SSAVAR_ARGUMENT:
-      if (val->val.variable->name.val.intval >= REGISTER_GPR_A0 &&
-          val->val.variable->name.val.intval <= REGISTER_GPR_T3) {
-        fprintf (out, "arg%d", val->val.variable->name.val.intval - REGISTER_GPR_A0 + 1);
+      if (var->name.val.intval >= REGISTER_GPR_A0 &&
+          var->name.val.intval <= REGISTER_GPR_T3) {
+        fprintf (out, "arg%d", var->name.val.intval - REGISTER_GPR_A0 + 1);
       } else {
-        print_value (out, &val->val.variable->name);
+        print_value (out, &var->name);
       }
       break;
     case SSAVAR_LOCAL:
-      fprintf (out, "local%d", val->val.variable->info);
+      fprintf (out, "var%d", var->info);
       break;
     case SSAVAR_CONSTANT:
-      fprintf (out, "0x%08X", val->val.variable->info);
+      file = var->def->block->sub->code->file;
+      if (var->def->status & OP_STAT_HASRELOC) {
+        isstring = valid_string (file, var->info);
+      }
+      if (isstring)
+        print_string (out, file, var->info);
+      else
+        fprintf (out, "0x%08X", var->info);
       break;
     case SSAVAR_TEMP:
-      if (val->val.variable->def->type != OP_MOVE)
+      if (var->def->type != OP_MOVE)
         fprintf (out, "(");
-      print_operation (out, val->val.variable->def, 0, TRUE);
-      if (val->val.variable->def->type != OP_MOVE)
+      print_operation (out, var->def, 0, TRUE);
+      if (var->def->type != OP_MOVE)
         fprintf (out, ")");
       break;
     default:
-      print_value (out, &val->val.variable->name);
+      print_value (out, &var->name);
       fprintf (out, "/* Invalid block %d %d */",
-          val->val.variable->def->block->node.dfsnum,
-          val->val.variable->def->type);
+          var->def->block->node.dfsnum,
+          var->def->type);
       break;
     }
     break;

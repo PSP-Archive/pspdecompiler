@@ -99,7 +99,7 @@ void propagate_constants (struct subroutine *sub)
         if (var->def->type == OP_MOVE) {
           val = list_headvalue (var->def->operands);
           temp.info = get_constant_value (val);
-          var->def->status |= OPERATION_DEFERRED;
+          var->def->status |= OP_STAT_DEFERRED;
         } else if (var->def->type == OP_INSTRUCTION) {
           uint32 val1, val2;
           switch (var->def->info.iop.insn) {
@@ -108,13 +108,13 @@ void propagate_constants (struct subroutine *sub)
             val1 = get_constant_value (list_headvalue (var->def->operands));
             val2 = get_constant_value (list_tailvalue (var->def->operands));
             temp.info = val1 + val2;
-            var->def->status |= OPERATION_DEFERRED;
+            var->def->status |= OP_STAT_DEFERRED;
             break;
           case I_OR:
             val1 = get_constant_value (list_headvalue (var->def->operands));
             val2 = get_constant_value (list_tailvalue (var->def->operands));
             temp.info = val1 | val2;
-            var->def->status |= OPERATION_DEFERRED;
+            var->def->status |= OP_STAT_DEFERRED;
             break;
           default:
             temp.type = SSAVAR_UNK;

@@ -7,18 +7,28 @@
 static
 void print_structures (FILE *out, struct basicblock *block)
 {
-  if (block->loopst) {
-    fprintf (out, "LOOP start %d", block->loopst->start->node.dfsnum);
-    if (block->loopst->end)
-      fprintf (out, " end %d", block->loopst->end->node.dfsnum);
-    fprintf (out, "\\l");
-  }
+  struct ctrlstruct *st = block->st;
+  int count = 0;
 
-  if (block->st) {
-    fprintf (out, "IF");
-    if (block->st->end)
-      fprintf (out, " end %d", block->st->end->node.dfsnum);
-    fprintf (out, "\\l");
+  while (st) {
+    switch (st->type) {
+    case CONTROL_IF:
+      fprintf (out, "IF start %d end %d %s\\l", st->start->node.dfsnum,
+          st->end->node.dfsnum, block->blockcond ? "TRUE" : "FALSE");
+      break;
+    case CONTROL_MAIN:
+      fprintf (out, "MAIN\\l");
+      break;
+    case CONTROL_LOOP:
+      fprintf (out, "LOOP start %d\\l", st->start->node.dfsnum);
+      break;
+    case CONTROL_SWITCH:
+      fprintf (out, "SWITCH start %d end %d %d\\l", st->start->node.dfsnum,
+          st->end->node.dfsnum, block->blockcond);
+      break;
+    }
+    st = st->parent;
+    if (++count > 100) break;
   }
 }
 
@@ -147,7 +157,7 @@ void print_subroutine_graph (FILE *out, struct code *c, struct subroutine *sub, 
     case BLOCK_SIMPLE: fprintf (out, "0x%08X-0x%08X",
         block->info.simple.begin->address, block->info.simple.end->address);
     }
-    if (block->haslabel) fprintf (out, "(*)");
+    if (block->status & BLOCK_STAT_HASLABEL) fprintf (out, "(*)");
     fprintf (out, "\\l");
 
     if (options & OUT_PRINT_PHIS)
@@ -194,8 +204,11 @@ void print_subroutine_graph (FILE *out, struct code *c, struct subroutine *sub, 
           case EDGE_UNKNOWN:  fprintf (out, "UNK");      break;
           case EDGE_CONTINUE: fprintf (out, "CONTINUE"); break;
           case EDGE_BREAK:    fprintf (out, "BREAK");    break;
-          case EDGE_FOLLOW:   fprintf (out, "FOLLOW");   break;
+          case EDGE_NEXT:     fprintf (out, "NEXT");     break;
+          case EDGE_INVALID:  fprintf (out, "INVALID");  break;
           case EDGE_GOTO:     fprintf (out, "GOTO");     break;
+          case EDGE_CASE:     fprintf (out, "CASE");     break;
+          case EDGE_IFENTER:  fprintf (out, "IFENTER");  break;
           case EDGE_IFEXIT:   fprintf (out, "IFEXIT");   break;
           }
           fprintf (out, "\"]");

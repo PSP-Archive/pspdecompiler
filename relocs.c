@@ -559,7 +559,7 @@ uint32 prx_findreloc (struct prx *p, uint32 target)
   uint32 first, last, i;
 
   first = 0;
-  last = p->relocnum - 1;
+  last = p->relocnum;
   while (first < last) {
     i = (first + last) / 2;
     if (p->relocs[i].target < target) {
@@ -577,7 +577,7 @@ uint32 prx_findrelocbyaddr (struct prx *p, uint32 vaddr)
   uint32 first, last, i;
 
   first = 0;
-  last = p->relocnum - 1;
+  last = p->relocnum;
   while (first < last) {
     i = (first + last) / 2;
     if (p->relocsbyaddr[i].vaddr < vaddr) {

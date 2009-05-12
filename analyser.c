@@ -49,22 +49,22 @@ struct code* code_analyse (struct prx *p)
     if (!sub->import && !sub->haserror) {
       cfg_traverse (sub, FALSE);
       if (!sub->haserror) {
-        sub->status |= SUBROUTINE_CFG_TRAVERSE;
+        sub->status |= SUB_STAT_CFG_TRAVERSE;
         cfg_traverse (sub, TRUE);
       }
 
       if (!sub->haserror) {
-        sub->status |= SUBROUTINE_CFG_TRAVERSE_REV;
+        sub->status |= SUB_STAT_CFG_TRAVERSE_REV;
         fixup_call_arguments (sub);
       }
 
       if (!sub->haserror) {
-        sub->status |= SUBROUTINE_FIXUP_CALL_ARGS;
+        sub->status |= SUB_STAT_FIXUP_CALL_ARGS;
         build_ssa (sub);
       }
 
       if (!sub->haserror) {
-        sub->status |= SUBROUTINE_SSA;
+        sub->status |= SUB_STAT_SSA;
       }
     }
     el = element_next (el);
@@ -76,31 +76,31 @@ struct code* code_analyse (struct prx *p)
   while (el) {
     sub = element_getvalue (el);
     if (!sub->import && !sub->haserror) {
-      if (!(sub->status & SUBROUTINE_FIXUP_CALL_ARGS)) {
+      if (!(sub->status & SUB_STAT_FIXUP_CALL_ARGS)) {
         fixup_call_arguments (sub);
         if (!sub->haserror) {
-          sub->status |= SUBROUTINE_FIXUP_CALL_ARGS;
+          sub->status |= SUB_STAT_FIXUP_CALL_ARGS;
           build_ssa (sub);
         }
       }
 
       if (!sub->haserror) {
-        sub->status |= SUBROUTINE_SSA;
+        sub->status |= SUB_STAT_SSA;
         propagate_constants (sub);
       }
 
       if (!sub->haserror) {
-        sub->status |= SUBROUTINE_CONSTANTS_EXTRACTED;
+        sub->status |= SUB_STAT_CONSTANTS_EXTRACTED;
         extract_variables (sub);
       }
 
       if (!sub->haserror) {
-        sub->status |= SUBROUTINE_VARIABLES_EXTRACTED;
+        sub->status |= SUB_STAT_VARIABLES_EXTRACTED;
         extract_structures (sub);
       }
 
       if (!sub->haserror) {
-        sub->status |= SUBROUTINE_STRUCTURES_EXTRACTED;
+        sub->status |= SUB_STAT_STRUCTURES_EXTRACTED;
       }
     }
     el = element_next (el);

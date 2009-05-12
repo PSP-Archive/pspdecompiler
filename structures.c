@@ -2,46 +2,53 @@
 #include "code.h"
 #include "utils.h"
 
-
 static
-void mark_backward (struct subroutine *sub, struct basicblock *start,
-                    struct basicblock *block, int num, int *count)
+struct ctrlstruct *alloc_ctrlstruct (struct basicblock *block, enum ctrltype type)
 {
-  element el, ref;
-  int remaining = 1;
-
-  block->mark1 = num;
-  el = block->node.blockel;
-  while (el && remaining) {
-    struct basicblock *block = element_getvalue (el);
-    if (block == start) break;
-    if (block->mark1 == num) {
-      remaining--;
-      ref = list_head (block->inrefs);
-      while (ref) {
-        struct basicedge *edge = element_getvalue (ref);
-        struct basicblock *next = edge->from;
-        ref = element_next (ref);
-
-        if (next->node.dfsnum >= block->node.dfsnum)
-          if (!dom_isancestor (&block->node, &next->node) ||
-              !dom_isancestor (&block->revnode, &next->revnode))
-            continue;
-        if (next->mark1 != num) {
-          remaining++;
-          (*count)++;
-        }
-        next->mark1 = num;
-      }
-    }
-
-    el = element_previous (el);
-  }
+  struct ctrlstruct *st = fixedpool_alloc (block->sub->code->ctrlspool);
+  st->start = block;
+  st->type = type;
+  return st;
 }
 
 static
-void mark_forward (struct subroutine *sub, struct basicblock *start,
-                   struct ctrlstruct *loop, int num, int count)
+int mark_backward (struct basicblock *start, list worklist, int num)
+{
+  struct basicblock *block;
+  element ref;
+  int count = 0;
+
+  while (list_size (worklist) != 0) {
+    block = list_removetail (worklist);
+    if (block->mark1 == num) continue;
+    block->mark1 = num;
+    count++;
+
+    ref = list_head (block->inrefs);
+    while (ref) {
+      struct basicedge *edge = element_getvalue (ref);
+      struct basicblock *next = edge->from;
+      ref = element_next (ref);
+
+      if (next->node.dfsnum < start->node.dfsnum)
+        continue;
+
+      if (next->node.dfsnum >= block->node.dfsnum)
+        if (!dom_isancestor (&block->node, &next->node) ||
+            !dom_isancestor (&block->revnode, &next->revnode))
+          continue;
+
+      if (next->mark1 != num) {
+        list_inserthead (worklist, next);
+      }
+    }
+  }
+
+  return count;
+}
+
+static
+void mark_forward (struct basicblock *start, struct ctrlstruct *loop, int num, int count)
 {
   element el, ref;
 
@@ -55,8 +62,8 @@ void mark_forward (struct subroutine *sub, struct basicblock *start,
         struct basicedge *edge = element_getvalue (ref);
         struct basicblock *next = edge->to;
         if (next->mark1 != num) {
-          edge->type = EDGE_GOTO;
-          next->haslabel = TRUE;
+          /* edge->type = EDGE_GOTO;
+          next->status |= BLOCK_STAT_HASLABEL; */
           if (!loop->end) loop->end = next;
           if (list_size (loop->end->inrefs) < list_size (next->inrefs))
             loop->end = next;
@@ -69,37 +76,37 @@ void mark_forward (struct subroutine *sub, struct basicblock *start,
   }
 }
 
-
 static
-void mark_loop (struct subroutine *sub, struct ctrlstruct *loop)
+void mark_loop (struct ctrlstruct *loop, int num)
 {
   element el;
-  int num = ++sub->temp;
-  int count = 0;
+  list worklist;
+  int count;
 
+  worklist = list_alloc (loop->start->sub->code->lstpool);
   el = list_head (loop->info.loopctrl.edges);
   while (el) {
     struct basicedge *edge = element_getvalue (el);
     struct basicblock *block = edge->from;
 
-    if (block->mark1 != num) {
-      mark_backward (sub, loop->start, block, num, &count);
-    }
+    list_inserttail (worklist, block);
     el = element_next (el);
   }
+  count = mark_backward (loop->start, worklist, num);
 
-  mark_forward (sub, loop->start, loop, num, count);
-
+  mark_forward (loop->start, loop, num, count);
   if (loop->end) {
-    loop->end->haslabel = FALSE;
+    /* loop->end->status &= ~BLOCK_STAT_HASLABEL; */
     el = list_head (loop->end->inrefs);
     while (el) {
       struct basicedge *edge = element_getvalue (el);
-      struct basicblock *block = edge->from;
-      if (block->loopst == loop) edge->type = EDGE_BREAK;
+      if (edge->from->loopst == loop)
+        edge->type = EDGE_BREAK;
       el = element_next (el);
     }
   }
+
+  list_free (worklist);
 }
 
 static
@@ -109,6 +116,7 @@ void extract_loops (struct subroutine *sub)
   struct basicedge *edge;
   struct ctrlstruct *loop;
   element el, ref;
+  int num = 0;
 
   el = list_head (sub->dfsblocks);
   while (el) {
@@ -122,177 +130,206 @@ void extract_loops (struct subroutine *sub)
         edge->type = EDGE_CONTINUE;
         if (!dom_isancestor (&block->node, &edge->from->node)) {
           error (__FILE__ ": graph of sub 0x%08X is not reducible (using goto)", sub->begin->address);
-          edge->type = EDGE_GOTO;
-          edge->to->haslabel = TRUE;
+          edge->type = EDGE_INVALID;
+          edge->to->status |= BLOCK_STAT_HASLABEL;
         } else if (block->loopst == edge->from->loopst) {
           if (!loop) {
-            loop = fixedpool_alloc (sub->code->ctrlspool);
-            loop->start = block;
-            loop->type = CONTROL_LOOP;
+            loop = alloc_ctrlstruct (block, CONTROL_LOOP);
             loop->info.loopctrl.edges = list_alloc (sub->code->lstpool);
           }
           list_inserttail (loop->info.loopctrl.edges, edge);
-        } else {
+        }/* else {
           edge->type = EDGE_GOTO;
-          edge->to->haslabel = TRUE;
-        }
+          edge->to->status |= BLOCK_STAT_HASLABEL;
+        }*/
       }
       ref = element_next (ref);
     }
-    if (loop) mark_loop (sub, loop);
+    if (loop)
+      mark_loop (loop, ++num);
     el = element_next (el);
   }
 }
 
 static
-void extract_branches (struct subroutine *sub)
+void extract_returns (struct subroutine *sub)
 {
-  struct basicblock *block;
-  struct ctrlstruct *st;
-  list unresolvedifs;
-  element el;
 
-  unresolvedifs = list_alloc (sub->code->lstpool);
-
-  el = list_tail (sub->dfsblocks);
-  while (el) {
-    int hasswitch = FALSE;
-    block = element_getvalue (el);
-
-    if (block->type == BLOCK_SIMPLE)
-      if (block->info.simple.jumploc)
-        if (block->info.simple.jumploc->cswitch)
-          hasswitch = TRUE;
-
-    if (hasswitch) {
-      st = fixedpool_alloc (sub->code->ctrlspool);
-      st->type = CONTROL_SWITCH;
-      block->st = st;
-
-    } else if (list_size (block->outrefs) == 2) {
-      struct basicedge *edge1, *edge2;
-
-      st = fixedpool_alloc (sub->code->ctrlspool);
-      st->type = CONTROL_IF;
-      block->st = st;
-
-      edge1 = list_headvalue (block->outrefs);
-      edge2 = list_tailvalue (block->outrefs);
-      if (edge1->type == EDGE_UNKNOWN && edge2->type == EDGE_UNKNOWN) {
-        element domel;
-
-        list_inserthead (unresolvedifs, block);
-        domel = list_head (block->node.domchildren);
-        while (domel) {
-          struct basicblocknode *dom = element_getvalue (domel);
-          struct basicblock *domblock = element_getvalue (dom->blockel);
-
-          if (list_size (domblock->inrefs) > 1) {
-            block->st->info.ifctrl.isoutermost = TRUE;
-            while (list_size (unresolvedifs) != 0) {
-              struct basicblock *ifblock = list_removehead (unresolvedifs);
-              ifblock->st->end = domblock;
-            }
-            break;
-          }
-          domel = element_next (domel);
-        }
-      } else if (edge1->type == EDGE_UNKNOWN || edge2->type == EDGE_UNKNOWN) {
-        if (edge1->type == EDGE_UNKNOWN) {
-          edge1->type = EDGE_IFEXIT;
-          st->end = edge1->to;
-        } else {
-          edge2->type = EDGE_IFEXIT;
-          st->end = edge2->to;
-        }
-
-      }
-    }
-
-    el = element_previous (el);
-  }
-
-  list_free (unresolvedifs);
 }
 
 static
-void structure_search (struct basicblock *block, int identsize, struct ctrlstruct *ifst)
+int struct_isancestor (struct ctrlstruct *ancestor, struct ctrlstruct *st)
 {
-  struct basicedge *edge;
-  struct basicblock *ifend = NULL;
-  element ref;
+  while (st) {
+    if (st == ancestor) return TRUE;
+    st = st->parent;
+  }
+  return FALSE;
+}
 
-  if (ifst)
-    ifend = ifst->end;
-
-  if (block->st)
-    if (block->st->end)
-      ifend = block->st->end;
-
+static
+void structure_search (struct basicblock *block, struct ctrlstruct *parentst, int blockcond)
+{
+  block->st = parentst;
   block->mark1 = 1;
+  block->blockcond = blockcond;
 
   if (block->loopst) {
     if (block->loopst->start == block) {
-      identsize++;
-      if (block->loopst->end) {
-        if (!block->loopst->end->mark1)
-          structure_search (block->loopst->end, identsize - 1, ifst);
-        else {
-          block->loopst->end->haslabel = TRUE;
-          block->loopst->hasendgoto = TRUE;
-        }
-      }
+      block->st = block->loopst;
+      block->st->parent = parentst;
+      block->st->identsize = parentst->identsize + 1;
     }
   }
 
-  if (block->st) {
-    if (block->st->end && block->st->info.ifctrl.isoutermost) {
-      if (!block->st->end->mark1)
-        structure_search (block->st->end, identsize, ifst);
-      else {
-        block->st->end->haslabel = TRUE;
-        block->st->hasendgoto = TRUE;
-      }
-    }
-  }
+  if (block->status & BLOCK_STAT_ISSWITCH) {
+    struct ctrlstruct *nst;
+    element ref;
 
-  block->identsize = identsize;
+    nst = alloc_ctrlstruct (block, CONTROL_SWITCH);
+    nst->end = element_getvalue (block->revnode.dominator->blockel);
+    nst->parent = block->st;
+    nst->identsize = block->st->identsize + 1;
+    block->ifst = nst;
 
-  ref = list_head (block->outrefs);
-  while (ref) {
-    edge = element_getvalue (ref);
-    if (edge->type == EDGE_UNKNOWN) {
-      if (edge->to->loopst != block->loopst) {
-        if (edge->to->loopst) {
-          if (edge->to->loopst->start != edge->to) {
-            edge->type = EDGE_GOTO;
-            edge->to->haslabel = TRUE;
-          }
+    ref = list_head (block->outrefs);
+    while (ref) {
+      struct basicedge *edge = element_getvalue (ref);
+
+      if (edge->type == EDGE_UNKNOWN) {
+        edge->type = EDGE_CASE;
+        if (!edge->to->mark1) {
+          structure_search (edge->to, nst, edge->fromnum);
         } else {
-          edge->type = EDGE_GOTO;
-          edge->to->haslabel = TRUE;
+          if (edge->to->st != nst) {
+            edge->type = EDGE_GOTO;
+            edge->to->status |= BLOCK_STAT_HASLABEL;
+          }
         }
+      }
+      ref = element_next (ref);
+    }
+  } else if (list_size (block->outrefs) == 2) {
+    struct basicblock *end;
+    struct basicedge *edge1, *edge2;
+
+    end = element_getvalue (block->revnode.dominator->blockel);
+    edge1 = list_tailvalue (block->outrefs);
+    edge2 = list_headvalue (block->outrefs);
+
+    if (edge1->to != end) {
+      if (edge1->to->mark1) {
+        edge1->type = EDGE_GOTO;
+        edge1->to->status |= BLOCK_STAT_HASLABEL;
       }
     }
 
-    if (edge->type == EDGE_UNKNOWN) {
-      if (edge->to == ifend) {
+    if (edge2->to != end) {
+      if (edge2->to->mark1) {
+        edge2->type = EDGE_GOTO;
+        edge2->to->status |= BLOCK_STAT_HASLABEL;
+      }
+    }
+
+    if (edge1->type == EDGE_UNKNOWN && edge2->type == EDGE_UNKNOWN) {
+      struct ctrlstruct *nst = alloc_ctrlstruct (block, CONTROL_IF);
+      nst->end = end;
+      nst->parent = block->st;
+      nst->identsize = block->st->identsize + 1;
+      block->ifst = nst;
+
+      if (!end->mark1) {
+        nst->info.ifctrl.endfollow = TRUE;
+        end->mark1 = TRUE;
+      } else {
+        if (!struct_isancestor (end->st, block->st)) {
+          nst->hasendgoto = TRUE;
+          end->status |= BLOCK_STAT_HASLABEL;
+        }
+      }
+
+      if (edge1->to == end) {
+        edge1->type = EDGE_IFEXIT;
+      } else {
+        edge1->type = EDGE_IFENTER;
+        structure_search (edge1->to, nst, TRUE);
+      }
+
+      if (edge2->to == end) {
+        edge2->type = EDGE_IFEXIT;
+      } else {
+        if (edge2->to->mark1) {
+          edge2->type = EDGE_GOTO;
+          edge2->to->status |= BLOCK_STAT_HASLABEL;
+        } else {
+          edge2->type = EDGE_IFENTER;
+          structure_search (edge2->to, nst, FALSE);
+        }
+      }
+
+      if (edge2->type != EDGE_IFEXIT) {
+        if (edge1->type == EDGE_IFEXIT)
+          block->status |= BLOCK_STAT_REVCOND;
+        else
+          block->status |= BLOCK_STAT_HASELSE;
+      }
+
+      if (nst->info.ifctrl.endfollow) {
+        end->mark1 = 0;
+        structure_search (end, block->st, blockcond);
+      }
+
+    } else if (edge1->type == EDGE_UNKNOWN || edge2->type == EDGE_UNKNOWN) {
+      struct basicedge *edge;
+
+      if (edge1->type == EDGE_UNKNOWN) {
+        block->status |= BLOCK_STAT_REVCOND;
+        edge = edge1;
+      } else {
+        edge = edge2;
+      }
+
+      if (edge->to == block->st->end && block->st->type == CONTROL_IF) {
         edge->type = EDGE_IFEXIT;
       } else {
         if (edge->to->mark1) {
           edge->type = EDGE_GOTO;
-          edge->to->haslabel = TRUE;
+          edge->to->status |= BLOCK_STAT_HASLABEL;
         } else {
-          edge->type = EDGE_FOLLOW;
-          if (block->st) {
-            structure_search (edge->to, identsize + 1, block->st);
+          edge->type = EDGE_NEXT;
+          structure_search (edge->to, block->st, blockcond);
+        }
+      }
+    }
+  } else {
+    struct basicedge *edge;
+    edge = list_headvalue (block->outrefs);
+    if (edge) {
+      if (edge->type == EDGE_UNKNOWN) {
+        if (edge->to == block->st->end && block->st->type == CONTROL_IF) {
+          edge->type = EDGE_IFEXIT;
+        } else {
+          if (edge->to->mark1) {
+            edge->type = EDGE_GOTO;
+            edge->to->status |= BLOCK_STAT_HASLABEL;
           } else {
-            structure_search (edge->to, identsize, ifst);
+            edge->type = EDGE_NEXT;
+            structure_search (edge->to, block->st, blockcond);
           }
         }
       }
     }
-    ref = element_next (ref);
+  }
+
+  if (block->loopst) {
+    if (block->loopst->start == block && block->loopst->end) {
+      if (block->loopst->end->mark1) {
+        block->loopst->hasendgoto = TRUE;
+        block->loopst->end->status |= BLOCK_STAT_HASLABEL;
+      } else {
+        structure_search (block->loopst->end, parentst, blockcond);
+      }
+    }
   }
 }
 
@@ -309,18 +346,23 @@ void reset_marks (struct subroutine *sub)
 void extract_structures (struct subroutine *sub)
 {
   element el;
-  sub->temp = 0;
-  reset_marks (sub);
+  struct ctrlstruct *st = fixedpool_alloc (sub->code->ctrlspool);
 
+  st->type = CONTROL_MAIN;
+  st->start = sub->startblock;
+  st->end = sub->endblock;
+
+  reset_marks (sub);
   extract_loops (sub);
-  extract_branches (sub);
+
+  extract_returns (sub);
 
   reset_marks (sub);
   el = list_head (sub->blocks);
   while (el) {
     struct basicblock *block = element_getvalue (el);
     if (!block->mark1)
-      structure_search (block, 0, NULL);
+      structure_search (block, st, 0);
     el = element_next (el);
   }
 }
