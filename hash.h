@@ -1,3 +1,7 @@
+/**
+ * Author: Humberto Naves (hsnaves@gmail.com)
+ */
+
 #ifndef __HASH_H
 #define __HASH_H
 

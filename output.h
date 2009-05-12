@@ -1,3 +1,6 @@
+/**
+ * Author: Humberto Naves (hsnaves@gmail.com)
+ */
 
 #ifndef __OUTPUT_H
 #define __OUTPUT_H

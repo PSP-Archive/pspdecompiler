@@ -1,3 +1,7 @@
+/**
+ * Author: Humberto Naves (hsnaves@gmail.com)
+ */
+
 #ifndef __PRX_H
 #define __PRX_H
 

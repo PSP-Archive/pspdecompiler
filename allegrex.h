@@ -1,3 +1,7 @@
+/**
+ * Author: Humberto Naves (hsnaves@gmail.com)
+ */
+
 #ifndef __ALLEGREX_H
 #define __ALLEGREX_H
 

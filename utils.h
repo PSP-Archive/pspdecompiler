@@ -1,3 +1,7 @@
+/**
+ * Author: Humberto Naves (hsnaves@gmail.com)
+ */
+
 #ifndef __UTILS_H
 #define __UTILS_H
 

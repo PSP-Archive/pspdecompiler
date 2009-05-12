@@ -1,3 +1,7 @@
+/**
+ * Author: Humberto Naves (hsnaves@gmail.com)
+ * Special thanks to Tyranid for the prxtool "disasm.C"
+ */
 #include <stdio.h>
 #include <ctype.h>
 

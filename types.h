@@ -1,3 +1,7 @@
+/**
+ * Author: Humberto Naves (hsnaves@gmail.com)
+ */
+
 #ifndef __TYPES_H
 #define __TYPES_H
 

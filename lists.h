@@ -1,3 +1,6 @@
+/**
+ * Author: Humberto Naves (hsnaves@gmail.com)
+ */
 
 #ifndef __LISTS_H
 #define __LISTS_H

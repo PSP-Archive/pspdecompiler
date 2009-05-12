@@ -1,3 +1,6 @@
+/**
+ * Author: Humberto Naves (hsnaves@gmail.com)
+ */
 
 #include <stdlib.h>
 #include <string.h>

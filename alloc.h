@@ -1,3 +1,6 @@
+/**
+ * Author: Humberto Naves (hsnaves@gmail.com)
+ */
 
 #ifndef __ALLOC_H
 #define __ALLOC_H
