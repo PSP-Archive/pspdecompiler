@@ -123,7 +123,7 @@ void print_value (FILE *out, struct value *val, int options)
   case VAL_SSAVAR:
     var = val->val.variable;
     if (CONST_TYPE (var->status) != VAR_STAT_NOTCONSTANT &&
-        !(options & OPTS_DONTPRINTCONSTANTS)) {
+        !(options & OPTS_RESULT)) {
       struct prx *file;
       file = var->def->block->sub->code->file;
       if (var->def->status & OP_STAT_HASRELOC) {
@@ -223,8 +223,8 @@ void print_asm (FILE *out, struct operation *op, int identsize, int options)
 static
 void print_binaryop (FILE *out, struct operation *op, const char *opsymbol, int options)
 {
-  if (!(options & OPTS_DEFERRED)) {
-    print_value (out, list_headvalue (op->results), OPTS_DONTPRINTCONSTANTS);
+  if (!(options & OPTS_NORESULT)) {
+    print_value (out, list_headvalue (op->results), OPTS_RESULT);
     fprintf (out, " = ");
   }
   print_value (out, list_headvalue (op->operands), 0);
@@ -237,8 +237,8 @@ void print_complexop (FILE *out, struct operation *op, const char *opsymbol, int
 {
   element el;
 
-  if (list_size (op->results) != 0 && !(options & OPTS_DEFERRED)) {
-    print_value (out, list_headvalue (op->results), OPTS_DONTPRINTCONSTANTS);
+  if (list_size (op->results) != 0 && !(options & OPTS_NORESULT)) {
+    print_value (out, list_headvalue (op->results), OPTS_RESULT);
     fprintf (out, " = ");
   }
 
@@ -263,10 +263,10 @@ void print_call (FILE *out, struct operation *op, int options)
 {
   element el;
 
-  if (list_size (op->info.callop.retvalues) != 0 && !(options & OPTS_DEFERRED)) {
+  if (list_size (op->info.callop.retvalues) != 0 && !(options & OPTS_NORESULT)) {
     el = list_head (op->info.callop.retvalues);
     while (el) {
-      print_value (out, element_getvalue (el), OPTS_DONTPRINTCONSTANTS);
+      print_value (out, element_getvalue (el), OPTS_RESULT);
       fprintf (out, " ");
       el = element_next (el);
     }
@@ -328,8 +328,8 @@ void print_ext (FILE *out, struct operation *op, int options)
   val3 = element_getvalue (el);
 
   mask = 0xFFFFFFFF >> (32 - val3->val.intval);
-  if (!(options & OPTS_DEFERRED)) {
-    print_value (out, list_headvalue (op->results), OPTS_DONTPRINTCONSTANTS);
+  if (!(options & OPTS_NORESULT)) {
+    print_value (out, list_headvalue (op->results), OPTS_RESULT);
     fprintf (out, " = ");
   }
 
@@ -353,8 +353,8 @@ void print_ins (FILE *out, struct operation *op, int options)
   val4 = element_getvalue (el);
 
   mask = 0xFFFFFFFF >> (32 - val4->val.intval);
-  if (!(options & OPTS_DEFERRED)) {
-    print_value (out, list_headvalue (op->results), OPTS_DONTPRINTCONSTANTS);
+  if (!(options & OPTS_NORESULT)) {
+    print_value (out, list_headvalue (op->results), OPTS_RESULT);
     fprintf (out, " = ");
   }
 
@@ -379,8 +379,8 @@ void print_nor (FILE *out, struct operation *op, int options)
     if (val1->val.intval == 0) val1 = val2;
   }
 
-  if (!(options & OPTS_DEFERRED)) {
-    print_value (out, list_headvalue (op->results), OPTS_DONTPRINTCONSTANTS);
+  if (!(options & OPTS_NORESULT)) {
+    print_value (out, list_headvalue (op->results), OPTS_RESULT);
     fprintf (out, " = ");
   }
 
@@ -409,8 +409,8 @@ void print_movnz (FILE *out, struct operation *op, int ismovn, int options)
   val3 = element_getvalue (el);
   result = list_headvalue (op->results);
 
-  if (!(options & OPTS_DEFERRED)) {
-    print_value (out, result, OPTS_DONTPRINTCONSTANTS);
+  if (!(options & OPTS_NORESULT)) {
+    print_value (out, result, OPTS_RESULT);
     fprintf (out, " = ");
   }
 
@@ -437,8 +437,8 @@ void print_slt (FILE *out, struct operation *op, int isunsigned, int options)
   val2 = element_getvalue (el);
   result = list_headvalue (op->results);
 
-  if (!(options & OPTS_DEFERRED)) {
-    print_value (out, result, OPTS_DONTPRINTCONSTANTS);
+  if (!(options & OPTS_NORESULT)) {
+    print_value (out, result, OPTS_RESULT);
     fprintf (out, " = ");
   }
 
@@ -453,8 +453,8 @@ void print_slt (FILE *out, struct operation *op, int isunsigned, int options)
 static
 void print_signextend (FILE *out, struct operation *op, int isbyte, int options)
 {
-  if (!(options & OPTS_DEFERRED)) {
-    print_value (out, list_headvalue (op->results), OPTS_DONTPRINTCONSTANTS);
+  if (!(options & OPTS_NORESULT)) {
+    print_value (out, list_headvalue (op->results), OPTS_RESULT);
     fprintf (out, " = ");
   }
 
@@ -503,8 +503,8 @@ void print_memory_address (FILE *out, struct operation *op, int size, int isunsi
 static
 void print_load (FILE *out, struct operation *op, int size, int isunsigned, int options)
 {
-  if (!(options & OPTS_DEFERRED)) {
-    print_value (out, list_headvalue (op->results), OPTS_DONTPRINTCONSTANTS);
+  if (!(options & OPTS_NORESULT)) {
+    print_value (out, list_headvalue (op->results), OPTS_RESULT);
     fprintf (out, " = ");
   }
   print_memory_address (out, op, size, isunsigned, options);
@@ -573,75 +573,83 @@ void print_operation (FILE *out, struct operation *op, int identsize, int option
     if (op->info.iop.loc->insn->flags & (INSN_JUMP))
       return;
     if (loc->branchalways) return;
-  } else if (op->type == OP_NOP || op->type == OP_START/* ||
-             op->type == OP_PHI*/) {
+  } else if (op->type == OP_NOP || op->type == OP_START || op->type == OP_PHI) {
     return;
   }
 
   ident_line (out, identsize);
-  if (op->type == OP_INSTRUCTION) {
-    switch (op->info.iop.insn) {
-    case I_ADD:  print_binaryop (out, op, "+", options);     break;
-    case I_ADDU: print_binaryop (out, op, "+", options);     break;
-    case I_SUB:  print_binaryop (out, op, "-", options);     break;
-    case I_SUBU: print_binaryop (out, op, "-", options);     break;
-    case I_XOR:  print_binaryop (out, op, "^", options);     break;
-    case I_AND:  print_binaryop (out, op, "&", options);     break;
-    case I_OR:   print_binaryop (out, op, "|", options);     break;
-    case I_SRAV: print_binaryop (out, op, ">>", options);    break;
-    case I_SRLV: print_binaryop (out, op, ">>", options);    break;
-    case I_SLLV: print_binaryop (out, op, "<<", options);    break;
-    case I_INS:  print_ins (out, op, options);               break;
-    case I_EXT:  print_ext (out, op, options);               break;
-    case I_MIN:  print_complexop (out, op, "MIN", options);  break;
-    case I_MAX:  print_complexop (out, op, "MAX", options);  break;
-    case I_BITREV: print_complexop (out, op, "BITREV", options); break;
-    case I_CLZ:  print_complexop (out, op, "CLZ", options);  break;
-    case I_CLO:  print_complexop (out, op, "CLO", options);  break;
-    case I_NOR:  print_nor (out, op, options);               break;
-    case I_MOVN: print_movnz (out, op, TRUE, options);       break;
-    case I_MOVZ: print_movnz (out, op, FALSE, options);      break;
-    case I_SLT:  print_slt (out, op, FALSE, options);        break;
-    case I_SLTU: print_slt (out, op, TRUE, options);         break;
-    case I_LW:   print_load (out, op, 2, FALSE, options);    break;
-    case I_LB:   print_load (out, op, 0, FALSE, options);    break;
-    case I_LBU:  print_load (out, op, 0, TRUE, options);     break;
-    case I_LH:   print_load (out, op, 1, FALSE, options);    break;
-    case I_LHU:  print_load (out, op, 1, TRUE, options);     break;
-    case I_LL:   print_complexop (out, op, "LL", options);   break;
-    case I_LWL:  print_complexop (out, op, "LWL", options);  break;
-    case I_LWR:  print_complexop (out, op, "LWR", options);  break;
-    case I_SW:   print_store (out, op, 2, FALSE, options);   break;
-    case I_SH:   print_store (out, op, 1, FALSE, options);   break;
-    case I_SB:   print_store (out, op, 0, FALSE, options);   break;
-    case I_SC:   print_complexop (out, op, "SC", options);   break;
-    case I_SWL:  print_complexop (out, op, "SWL", options);  break;
-    case I_SWR:  print_complexop (out, op, "SWR", options);  break;
-    case I_SEB:  print_signextend (out, op, TRUE, options);  break;
-    case I_SEH:  print_signextend (out, op, TRUE, options);  break;
-    default:
-      if (loc->insn->flags & INSN_BRANCH) {
-        print_condition (out, op, options);
-        nosemicolon = TRUE;
-      };
-      break;
-    }
-  } else if (op->type == OP_MOVE) {
-    if (!options) {
-      print_value (out, list_headvalue (op->results), OPTS_DONTPRINTCONSTANTS);
+
+  if ((op->status & (OP_STAT_CONSTANT | OP_STAT_DEFERRED)) == OP_STAT_CONSTANT) {
+    struct value *val = list_headvalue (op->results);
+    if (!(options & OPTS_NORESULT)) {
+      print_value (out, val, OPTS_RESULT);
       fprintf (out, " = ");
     }
-    print_value (out, list_headvalue (op->operands), 0);
-  } else if (op->type == OP_CALL) {
-    print_call (out, op, options);
-  } else if (op->type == OP_END) {
-    print_return (out, op, options);
-  } else if (op->type == OP_PHI) {
-    print_complexop (out, op, "PHI", options);
+    print_value (out, val, 0);
+  } else {
+    if (op->type == OP_INSTRUCTION) {
+      switch (op->info.iop.insn) {
+      case I_ADD:  print_binaryop (out, op, "+", options);     break;
+      case I_ADDU: print_binaryop (out, op, "+", options);     break;
+      case I_SUB:  print_binaryop (out, op, "-", options);     break;
+      case I_SUBU: print_binaryop (out, op, "-", options);     break;
+      case I_XOR:  print_binaryop (out, op, "^", options);     break;
+      case I_AND:  print_binaryop (out, op, "&", options);     break;
+      case I_OR:   print_binaryop (out, op, "|", options);     break;
+      case I_SRAV: print_binaryop (out, op, ">>", options);    break;
+      case I_SRLV: print_binaryop (out, op, ">>", options);    break;
+      case I_SLLV: print_binaryop (out, op, "<<", options);    break;
+      case I_INS:  print_ins (out, op, options);               break;
+      case I_EXT:  print_ext (out, op, options);               break;
+      case I_MIN:  print_complexop (out, op, "MIN", options);  break;
+      case I_MAX:  print_complexop (out, op, "MAX", options);  break;
+      case I_BITREV: print_complexop (out, op, "BITREV", options); break;
+      case I_CLZ:  print_complexop (out, op, "CLZ", options);  break;
+      case I_CLO:  print_complexop (out, op, "CLO", options);  break;
+      case I_NOR:  print_nor (out, op, options);               break;
+      case I_MOVN: print_movnz (out, op, TRUE, options);       break;
+      case I_MOVZ: print_movnz (out, op, FALSE, options);      break;
+      case I_SLT:  print_slt (out, op, FALSE, options);        break;
+      case I_SLTU: print_slt (out, op, TRUE, options);         break;
+      case I_LW:   print_load (out, op, 2, FALSE, options);    break;
+      case I_LB:   print_load (out, op, 0, FALSE, options);    break;
+      case I_LBU:  print_load (out, op, 0, TRUE, options);     break;
+      case I_LH:   print_load (out, op, 1, FALSE, options);    break;
+      case I_LHU:  print_load (out, op, 1, TRUE, options);     break;
+      case I_LL:   print_complexop (out, op, "LL", options);   break;
+      case I_LWL:  print_complexop (out, op, "LWL", options);  break;
+      case I_LWR:  print_complexop (out, op, "LWR", options);  break;
+      case I_SW:   print_store (out, op, 2, FALSE, options);   break;
+      case I_SH:   print_store (out, op, 1, FALSE, options);   break;
+      case I_SB:   print_store (out, op, 0, FALSE, options);   break;
+      case I_SC:   print_complexop (out, op, "SC", options);   break;
+      case I_SWL:  print_complexop (out, op, "SWL", options);  break;
+      case I_SWR:  print_complexop (out, op, "SWR", options);  break;
+      case I_SEB:  print_signextend (out, op, TRUE, options);  break;
+      case I_SEH:  print_signextend (out, op, TRUE, options);  break;
+      default:
+        if (loc->insn->flags & INSN_BRANCH) {
+          print_condition (out, op, options);
+          nosemicolon = TRUE;
+        };
+        break;
+      }
+    } else if (op->type == OP_MOVE) {
+      if (!(options & OPTS_NORESULT)) {
+        print_value (out, list_headvalue (op->results), OPTS_RESULT);
+        fprintf (out, " = ");
+      }
+      print_value (out, list_headvalue (op->operands), 0);
+    } else if (op->type == OP_CALL) {
+      print_call (out, op, options);
+    } else if (op->type == OP_END) {
+      print_return (out, op, options);
+  /*} else if (op->type == OP_PHI) {
+      print_complexop (out, op, "PHI", options);*/
+    }
   }
 
-
-  if (!(options & OPTS_DEFERRED)) {
+  if (!(options & OPTS_NORESULT)) {
     if (nosemicolon) fprintf (out, "\n");
     else fprintf (out, ";\n");
   }

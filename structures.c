@@ -161,13 +161,16 @@ void extract_returns (struct subroutine *sub)
 }
 
 static
-int struct_isancestor (struct ctrlstruct *ancestor, struct ctrlstruct *st)
+int check_nestedifs (struct basicblock *ifb, struct basicblock *end)
 {
-  while (st) {
-    if (st == ancestor) return TRUE;
-    st = st->parent;
-  }
-  return FALSE;
+  struct ctrlstruct *st = ifb->st;
+  struct ctrlstruct *ancestor = end->st;
+
+  if (st == end->st) return TRUE;
+  if (st->type != CONTROL_IF) return FALSE;
+  if (st->end != end) return FALSE;
+
+  return TRUE;
 }
 
 static
@@ -241,7 +244,7 @@ void structure_search (struct basicblock *block, struct ctrlstruct *parentst, in
         nst->info.ifctrl.endfollow = TRUE;
         end->mark1 = TRUE;
       } else {
-        if (!struct_isancestor (end->st, block->st)) {
+        if (!check_nestedifs (block, end)) {
           nst->hasendgoto = TRUE;
           end->status |= BLOCK_STAT_HASLABEL;
         }

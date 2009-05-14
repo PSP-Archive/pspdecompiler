@@ -38,15 +38,18 @@ void print_block_recursive (FILE *out, struct basicblock *block)
   int revcond = block->status & BLOCK_STAT_REVCOND;
   int first = TRUE, isloop = FALSE;
 
-  fprintf (out, "block%d:\n", block->node.dfsnum);
-  if (block->type == BLOCK_SIMPLE){
-    struct location *loc;
-    loc = block->info.simple.begin;
-    while (1) {
-      fprintf (out, " %s\n", allegrex_disassemble (loc->opc, loc->address, TRUE));
-      if (loc++ == block->info.simple.end) break;
+  if (g_verbosity > 1) {
+    fprintf (out, "block%d:\n", block->node.dfsnum);
+    if (block->type == BLOCK_SIMPLE){
+      struct location *loc;
+      loc = block->info.simple.begin;
+      while (1) {
+        fprintf (out, " %s\n", allegrex_disassemble (loc->opc, loc->address, TRUE));
+        if (loc++ == block->info.simple.end) break;
+      }
     }
   }
+
   if (block->status & BLOCK_STAT_ISSWITCHTARGET) {
     ref = list_head (block->inrefs);
     while (ref) {

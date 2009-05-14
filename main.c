@@ -12,6 +12,10 @@
 #include "hash.h"
 #include "utils.h"
 
+
+int g_verbosity;
+int g_printoptions;
+
 static
 void print_help (char *prgname)
 {
@@ -26,7 +30,6 @@ void print_help (char *prgname)
     "  -x    print the reverse dominator\n"
     "  -f    print the frontier\n"
     "  -z    print the reverse frontier\n"
-    "  -p    print phi functions\n"
     "  -q    print code into nodes\n"
     "  -s    print structures\n"
     "  -e    print edge types\n"
@@ -43,15 +46,16 @@ int main (int argc, char **argv)
   char *prxfilename = NULL;
   char *nidsfilename = NULL;
 
-  int i, j, verbosity = 0;
+  int i, j;
   int printgraph = FALSE;
   int printcode = FALSE;
   int printinfo = FALSE;
-  int graphoptions = 0;
 
   struct nidstable *nids = NULL;
   struct prx *p = NULL;
   struct code *c;
+
+  g_verbosity = 0;
 
   for (i = 1; i < argc; i++) {
     if (strcmp ("--help", argv[i]) == 0) {
@@ -61,20 +65,19 @@ int main (int argc, char **argv)
       char *s = argv[i];
       for (j = 0; s[j]; j++) {
         switch (s[j]) {
-        case 'v': verbosity++; break;
+        case 'v': g_verbosity++; break;
         case 'g': printgraph = TRUE; break;
         case 'c': printcode = TRUE; break;
         case 'i': printinfo = TRUE; break;
-        case 't': graphoptions |= OUT_PRINT_DFS; break;
-        case 'r': graphoptions |= OUT_PRINT_RDFS; break;
-        case 'd': graphoptions |= OUT_PRINT_DOMINATOR; break;
-        case 'x': graphoptions |= OUT_PRINT_RDOMINATOR; break;
-        case 'f': graphoptions |= OUT_PRINT_FRONTIER; break;
-        case 'z': graphoptions |= OUT_PRINT_RFRONTIER; break;
-        case 'p': graphoptions |= OUT_PRINT_PHIS; break;
-        case 'q': graphoptions |= OUT_PRINT_CODE; break;
-        case 's': graphoptions |= OUT_PRINT_STRUCTURES; break;
-        case 'e': graphoptions |= OUT_PRINT_EDGE_TYPES; break;
+        case 't': g_printoptions |= OUT_PRINT_DFS; break;
+        case 'r': g_printoptions |= OUT_PRINT_RDFS; break;
+        case 'd': g_printoptions |= OUT_PRINT_DOMINATOR; break;
+        case 'x': g_printoptions |= OUT_PRINT_RDOMINATOR; break;
+        case 'f': g_printoptions |= OUT_PRINT_FRONTIER; break;
+        case 'z': g_printoptions |= OUT_PRINT_RFRONTIER; break;
+        case 'q': g_printoptions |= OUT_PRINT_CODE; break;
+        case 's': g_printoptions |= OUT_PRINT_STRUCTURES; break;
+        case 'e': g_printoptions |= OUT_PRINT_EDGE_TYPES; break;
         case 'n':
           if (i == (argc - 1))
             fatal (__FILE__ ": missing nids file");
@@ -103,11 +106,11 @@ int main (int argc, char **argv)
   if (nids)
     prx_resolve_nids (p, nids);
 
-  if (verbosity > 2 && nids && printinfo)
+  if (g_verbosity > 2 && nids && printinfo)
     nids_print (nids);
 
-  if (verbosity > 0 && printinfo)
-    prx_print (p, (verbosity > 1));
+  if (g_verbosity > 0 && printinfo)
+    prx_print (p, (g_verbosity > 1));
 
   c = code_analyse (p);
   if (!c)
@@ -115,7 +118,7 @@ int main (int argc, char **argv)
 
 
   if (printgraph)
-    print_graph (c, prxfilename, graphoptions);
+    print_graph (c, prxfilename);
 
   if (printcode)
     print_code (c, prxfilename);

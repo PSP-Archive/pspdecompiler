@@ -14,14 +14,16 @@
 #define OUT_PRINT_RDOMINATOR   8
 #define OUT_PRINT_FRONTIER    16
 #define OUT_PRINT_RFRONTIER   32
-#define OUT_PRINT_PHIS        64
-#define OUT_PRINT_CODE       128
-#define OUT_PRINT_STRUCTURES 256
-#define OUT_PRINT_EDGE_TYPES 512
+#define OUT_PRINT_CODE        64
+#define OUT_PRINT_STRUCTURES 128
+#define OUT_PRINT_EDGE_TYPES 256
 
-#define OPTS_DEFERRED           1
+#define OPTS_NORESULT           1
 #define OPTS_REVERSECOND        2
-#define OPTS_DONTPRINTCONSTANTS 4
+#define OPTS_RESULT             4
+
+extern int g_verbosity;
+extern int g_printoptions;
 
 
 void ident_line (FILE *out, int size);
@@ -32,6 +34,6 @@ void print_subroutine_name (FILE *out, struct subroutine *sub);
 void print_subroutine_declaration (FILE *out, struct subroutine *sub);
 
 int print_code (struct code *c, char *filename);
-int print_graph (struct code *c, char *prxname, int options);
+int print_graph (struct code *c, char *prxname);
 
 #endif /* __OUTPUT_H */

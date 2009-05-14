@@ -54,32 +54,33 @@ void extract_variables (struct subroutine *sub)
   varel = list_head (sub->ssavars);
   while (varel) {
     struct ssavar *var = element_getvalue (varel);
+    struct operation *op = var->def;
+
     if (var->type == SSAVAR_UNK) {
       if (IS_BIT_SET (regmask_localvars, var->name.val.intval)) {
-        if (var->def->type == OP_START) {
+        if (op->type == OP_START) {
           mark_ssavar (var, SSAVAR_ARGUMENT, var->name.val.intval);
-        } else if (var->def->type == OP_CALL && var->name.val.intval != REGISTER_GPR_V0 &&
+        } else if (op->type == OP_CALL && var->name.val.intval != REGISTER_GPR_V0 &&
                    var->name.val.intval != REGISTER_GPR_V1) {
           mark_ssavar (var, SSAVAR_INVALID, 0);
         } else {
-          int istemp = FALSE;
 
-          if (list_size (var->uses) <= 1 &&
-              !(var->status & VAR_STAT_PHIARG)) {
-            istemp = FALSE;
-          }
-
-          if (var->def->type == OP_MOVE || var->def->type == OP_INSTRUCTION) {
-            if (var->def->type == OP_INSTRUCTION) {
-              if (var->def->info.iop.loc->insn->flags & (INSN_LOAD | INSN_STORE | INSN_BRANCH))
-                istemp = FALSE;
+          if (op->type == OP_MOVE || op->type == OP_INSTRUCTION) {
+            if (!(var->status & (VAR_STAT_PHIARG | VAR_STAT_ASMARG))) {
+              if (list_size (var->uses) <= 1)
+                op->status |= OP_STAT_DEFERRED;
             }
-          } else {
-            istemp = FALSE;
+
+            if (op->type == OP_INSTRUCTION) {
+              if (op->info.iop.loc->insn->flags & (INSN_LOAD | INSN_STORE))
+                op->status &= ~OP_STAT_DEFERRED;
+              else if ((op->info.iop.loc->insn->flags & (INSN_BRANCH)) &&
+                       !op->info.iop.loc->branchalways)
+                op->status &= ~OP_STAT_DEFERRED;
+            }
           }
 
-          if (istemp) {
-            var->def->status |= OP_STAT_DEFERRED;
+          if (op->status & OP_STAT_DEFERRED) {
             var->type = SSAVAR_TEMP;
             var->info = 0;
           } else {

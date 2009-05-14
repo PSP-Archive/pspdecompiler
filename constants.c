@@ -107,7 +107,7 @@ void propagate_constants (struct subroutine *sub)
         if (op->type == OP_MOVE) {
           val = list_headvalue (op->operands);
           temp.value = get_constant_value (val);
-          op->status |=  OP_STAT_CONSTANT;
+          op->status |= OP_STAT_CONSTANT;
         } else if (op->type == OP_INSTRUCTION) {
           uint32 val1, val2;
           switch (op->info.iop.insn) {
@@ -115,14 +115,14 @@ void propagate_constants (struct subroutine *sub)
           case I_ADDU:
             val1 = get_constant_value (list_headvalue (op->operands));
             val2 = get_constant_value (list_tailvalue (op->operands));
+            op->status |= OP_STAT_CONSTANT;
             temp.value = val1 + val2;
-            op->status |=  OP_STAT_CONSTANT;
             break;
           case I_OR:
             val1 = get_constant_value (list_headvalue (op->operands));
             val2 = get_constant_value (list_tailvalue (op->operands));
+            op->status |= OP_STAT_CONSTANT;
             temp.value = val1 | val2;
-            op->status |=  OP_STAT_CONSTANT;
             break;
           default:
             temp.status = VAR_STAT_NOTCONSTANT;
@@ -138,8 +138,7 @@ void propagate_constants (struct subroutine *sub)
       useel = list_head (var->uses);
       while (useel) {
         struct operation *use = element_getvalue (useel);
-        if (use->type == OP_INSTRUCTION || use->type == OP_MOVE ||
-            use->type == OP_PHI) {
+        if (use->type == OP_INSTRUCTION || use->type == OP_MOVE || use->type == OP_PHI) {
           varel = list_head (use->results);
           while (varel) {
             val = element_getvalue (varel);
@@ -161,6 +160,35 @@ void propagate_constants (struct subroutine *sub)
   }
 
   list_free (worklist);
+
+
+  varel = list_head (sub->ssavars);
+  while (varel) {
+    struct ssavar *var = element_getvalue (varel);
+    struct operation *op = var->def;
+    element useel;
+
+    if (CONST_TYPE (var->status) == VAR_STAT_CONSTANT) {
+      op->status |= OP_STAT_DEFERRED;
+      useel = list_head (var->uses);
+      while (useel) {
+        struct operation *use = element_getvalue (useel);
+        if (use->type == OP_PHI) {
+          struct value *val = list_headvalue (use->results);
+          if (val->type != VAL_SSAVAR) break;
+          if (CONST_TYPE (val->val.variable->status) != VAR_STAT_CONSTANT)
+            break;
+        } else if (use->type == OP_ASM) break;
+        useel = element_next (useel);
+      }
+      if (useel) {
+        op->status &= ~OP_STAT_DEFERRED;
+      }
+    }
+
+    varel = element_next (varel);
+  }
+
 }
 
 
