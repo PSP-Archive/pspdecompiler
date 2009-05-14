@@ -129,13 +129,14 @@ struct basicblock *make_link_and_insert (struct basicblock *from, struct basicbl
 }
 
 static
-void make_call (struct basicblock *block, struct location *loc)
+void make_call (struct basicblock *call, struct basicblock *from, struct location *loc)
 {
-  block->type = BLOCK_CALL;
-  list_inserttail (block->sub->callblocks, block);
+  call->type = BLOCK_CALL;
+  list_inserttail (call->sub->callblocks, call);
+  call->info.call.from = from;
   if (loc->target) {
-    block->info.call.calltarget = loc->target->sub;
-    list_inserttail (loc->target->sub->whereused, block);
+    call->info.call.calltarget = loc->target->sub;
+    list_inserttail (loc->target->sub->whereused, call);
   }
 }
 
@@ -187,10 +188,10 @@ void link_blocks (struct subroutine *sub)
 
         if (loc->insn->flags & INSN_LINK) {
           target = make_link_and_insert (block, loc[2].block, el);
-          make_call (target, loc);
+          make_call (target, block, loc);
         } else if (loc->target->sub->begin == loc->target) {
           target = make_link_and_insert (block, sub->endblock, el);
-          make_call (target, loc);
+          make_call (target, block, loc);
         } else {
           make_link (block, loc->target->block);
         }
@@ -198,12 +199,12 @@ void link_blocks (struct subroutine *sub)
       } else {
         if (loc->insn->flags & (INSN_LINK | INSN_WRITE_GPR_D)) {
           target = make_link_and_insert (block, next, el);
-          make_call (target, loc);
+          make_call (target, block, loc);
         } else {
           if (loc->target) {
             if (loc->target->sub->begin == loc->target) {
               target = make_link_and_insert (block, sub->endblock, el);
-              make_call (target, loc);
+              make_call (target, block, loc);
             } else {
               make_link (block, loc->target->block);
             }

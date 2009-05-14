@@ -35,6 +35,7 @@
 /* Operation status */
 #define OP_STAT_DEFERRED            1
 #define OP_STAT_HASRELOC            2
+#define OP_STAT_CONSTANT            4
 
 /* Block status */
 #define BLOCK_STAT_HASLABEL         1
@@ -42,6 +43,16 @@
 #define BLOCK_STAT_ISSWITCHTARGET   4
 #define BLOCK_STAT_REVCOND          8
 #define BLOCK_STAT_HASELSE         16
+
+/* Variable status */
+#define VAR_STAT_NOTCONSTANT       0
+#define VAR_STAT_UNKCONSTANT       1
+#define VAR_STAT_CONSTANT          2
+#define VAR_STAT_PHIARG            4
+#define VAR_STAT_ASMARG            8
+
+#define CONST_TYPE(status) ((status) & 3)
+#define CONST_SETTYPE(status, type) (status) = ((status) & (~3)) | (type)
 
 
 /* Register values */
@@ -204,6 +215,7 @@ struct basicblock {
     } simple;
     struct {
       struct subroutine *calltarget;       /* The target of the call */
+      struct basicblock *from;
     } call;
   } info;
 
@@ -211,6 +223,7 @@ struct basicblock {
   uint32 reg_live_in[NUM_REGMASK], reg_live_out[NUM_REGMASK];
 
   list   operations;
+  struct operation *jumpop;
 
   struct subroutine *sub;                  /* The owner subroutine */
 
@@ -264,16 +277,16 @@ enum ssavartype {
   SSAVAR_LOCAL,
   SSAVAR_ARGUMENT,
   SSAVAR_TEMP,
-  SSAVAR_CONSTANT,
-  SSAVAR_CONSTANTUNK,
   SSAVAR_INVALID
 };
 
 struct ssavar {
   enum ssavartype type;
+  int status;
+  int mark;
 
   struct value name;
-  uint32 info;
+  uint32 info, value;
 
   struct operation *def;
   list   uses;
@@ -306,6 +319,9 @@ struct operation {
       list arguments;
       list retvalues;
     } callop;
+    struct {
+      list arguments;
+    } endop;
   } info;
 
   int  status;

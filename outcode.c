@@ -13,7 +13,6 @@ static
 void print_block (FILE *out, struct basicblock *block, int identsize, int reversecond)
 {
   element opel;
-  struct operation *jumpop = NULL;
   int options = 0;
 
   if (reversecond) options |= OPTS_REVERSECOND;
@@ -21,17 +20,13 @@ void print_block (FILE *out, struct basicblock *block, int identsize, int revers
   while (opel) {
     struct operation *op = element_getvalue (opel);
     if (!(op->status & OP_STAT_DEFERRED)) {
-      if (op->type == OP_INSTRUCTION) {
-        if (op->info.iop.loc->insn->flags & (INSN_JUMP | INSN_BRANCH))
-          jumpop = op;
-      }
-      if (op != jumpop)
+      if (op != block->jumpop)
         print_operation (out, op, identsize, options);
     }
     opel = element_next (opel);
   }
-  if (jumpop)
-    print_operation (out, jumpop, identsize, options);
+  if (block->jumpop)
+    print_operation (out, block->jumpop, identsize, options);
 }
 
 static
@@ -43,6 +38,15 @@ void print_block_recursive (FILE *out, struct basicblock *block)
   int revcond = block->status & BLOCK_STAT_REVCOND;
   int first = TRUE, isloop = FALSE;
 
+  fprintf (out, "block%d:\n", block->node.dfsnum);
+  if (block->type == BLOCK_SIMPLE){
+    struct location *loc;
+    loc = block->info.simple.begin;
+    while (1) {
+      fprintf (out, " %s\n", allegrex_disassemble (loc->opc, loc->address, TRUE));
+      if (loc++ == block->info.simple.end) break;
+    }
+  }
   if (block->status & BLOCK_STAT_ISSWITCHTARGET) {
     ref = list_head (block->inrefs);
     while (ref) {

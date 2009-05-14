@@ -10,7 +10,7 @@ static
 uint32 get_constant_value (struct value *val)
 {
   if (val->type == VAL_SSAVAR)
-    return val->val.variable->info;
+    return val->val.variable->value;
   else
     return val->val.intval;
 }
@@ -19,29 +19,28 @@ static
 void combine_constants (struct ssavar *out, struct value *val)
 {
   uint32 constant;
-  if (out->type == SSAVAR_UNK) return;
+  if (CONST_TYPE (out->status) == VAR_STAT_NOTCONSTANT) return;
 
   if (val->type == VAL_REGISTER) {
-    out->type = SSAVAR_UNK;
-    return;
+    CONST_SETTYPE (out->status, VAR_STAT_NOTCONSTANT);
   }
 
   if (val->type == VAL_SSAVAR) {
-    if (val->val.variable->type == SSAVAR_CONSTANTUNK)
+    if (CONST_TYPE (val->val.variable->status) == VAR_STAT_UNKCONSTANT)
       return;
-    if (val->val.variable->type == SSAVAR_UNK) {
-      out->type = SSAVAR_UNK;
+    if (CONST_TYPE (val->val.variable->status) == VAR_STAT_NOTCONSTANT) {
+      CONST_SETTYPE (out->status, VAR_STAT_NOTCONSTANT);
       return;
     }
   }
 
   constant = get_constant_value (val);
-  if (out->type == SSAVAR_CONSTANTUNK) {
-    out->type = SSAVAR_CONSTANT;
-    out->info = constant;
+  if (CONST_TYPE (out->status) == VAR_STAT_UNKCONSTANT) {
+    CONST_SETTYPE (out->status, VAR_STAT_CONSTANT);
+    out->value = constant;
   } else {
-    if (out->info != constant)
-      out->type = SSAVAR_UNK;
+    if (out->value != constant)
+      CONST_SETTYPE (out->status, VAR_STAT_NOTCONSTANT);
   }
 }
 
@@ -53,74 +52,80 @@ void propagate_constants (struct subroutine *sub)
   varel = list_head (sub->ssavars);
   while (varel) {
     struct ssavar *var = element_getvalue (varel);
-    var->type = SSAVAR_CONSTANTUNK;
-    if (var->def->type == OP_ASM ||
-        var->def->type == OP_CALL ||
-        var->def->type == OP_START ||
+    struct operation *op = var->def;
+    var->status = VAR_STAT_UNKCONSTANT;
+    if (op->type == OP_ASM ||
+        op->type == OP_CALL ||
+        op->type == OP_START ||
         !(IS_BIT_SET (regmask_localvars, var->name.val.intval)))
-      var->type = SSAVAR_UNK;
-    else
+      var->status = VAR_STAT_NOTCONSTANT;
+    else {
+      var->mark = 1;
       list_inserttail (worklist, var);
+    }
     varel = element_next (varel);
   }
 
   while (list_size (worklist) != 0) {
-    struct ssavar *var = list_removehead (worklist);
+    struct ssavar *aux, *var = list_removehead (worklist);
     struct ssavar temp;
     struct value *val;
+    struct operation *op;
     element opel;
 
-    if (var->type == SSAVAR_UNK) continue;
+    var->mark = 0;
+    if (CONST_TYPE (var->status) == VAR_STAT_NOTCONSTANT) continue;
 
-    if (var->def->type == OP_PHI) {
-      temp.type = SSAVAR_CONSTANTUNK;
+    op =  var->def;
+    if (op->type == OP_PHI) {
+      temp.status = VAR_STAT_UNKCONSTANT;
 
-      opel = list_head (var->def->operands);
+      opel = list_head (op->operands);
       while (opel) {
         val = element_getvalue (opel);
         combine_constants (&temp, val);
         opel = element_next (opel);
       }
     } else {
-      temp.type = SSAVAR_CONSTANT;
+      temp.status = VAR_STAT_CONSTANT;
 
-      opel = list_head (var->def->operands);
+      opel = list_head (op->operands);
       while (opel) {
         val = element_getvalue (opel);
-        if (val->type == VAL_CONSTANT) {
-        } else if (val->type == VAL_SSAVAR) {
-          if (val->val.variable->type == SSAVAR_UNK)
-            temp.type = SSAVAR_UNK;
-          else if (val->val.variable->type == SSAVAR_CONSTANTUNK &&
-                   temp.type != SSAVAR_UNK)
-            temp.type = SSAVAR_CONSTANTUNK;
+        if (val->type == VAL_SSAVAR) {
+          aux = val->val.variable;
+          if (CONST_TYPE (aux->status) == VAR_STAT_NOTCONSTANT) {
+            temp.status = VAR_STAT_NOTCONSTANT;
+            break;
+          } else if (CONST_TYPE (aux->status) == VAR_STAT_UNKCONSTANT)
+            temp.status = VAR_STAT_UNKCONSTANT;
         }
         opel = element_next (opel);
       }
 
-      if (temp.type == SSAVAR_CONSTANT) {
-        if (var->def->type == OP_MOVE) {
-          val = list_headvalue (var->def->operands);
-          temp.info = get_constant_value (val);
-          var->def->status |= OP_STAT_DEFERRED;
-        } else if (var->def->type == OP_INSTRUCTION) {
+      if (temp.status == VAR_STAT_CONSTANT) {
+        if (op->type == OP_MOVE) {
+          val = list_headvalue (op->operands);
+          temp.value = get_constant_value (val);
+          op->status |=  OP_STAT_CONSTANT;
+        } else if (op->type == OP_INSTRUCTION) {
           uint32 val1, val2;
-          switch (var->def->info.iop.insn) {
+          switch (op->info.iop.insn) {
           case I_ADD:
           case I_ADDU:
-            val1 = get_constant_value (list_headvalue (var->def->operands));
-            val2 = get_constant_value (list_tailvalue (var->def->operands));
-            temp.info = val1 + val2;
-            var->def->status |= OP_STAT_DEFERRED;
+            val1 = get_constant_value (list_headvalue (op->operands));
+            val2 = get_constant_value (list_tailvalue (op->operands));
+            temp.value = val1 + val2;
+            op->status |=  OP_STAT_CONSTANT;
             break;
           case I_OR:
-            val1 = get_constant_value (list_headvalue (var->def->operands));
-            val2 = get_constant_value (list_tailvalue (var->def->operands));
-            temp.info = val1 | val2;
-            var->def->status |= OP_STAT_DEFERRED;
+            val1 = get_constant_value (list_headvalue (op->operands));
+            val2 = get_constant_value (list_tailvalue (op->operands));
+            temp.value = val1 | val2;
+            op->status |=  OP_STAT_CONSTANT;
             break;
           default:
-            temp.type = SSAVAR_UNK;
+            temp.status = VAR_STAT_NOTCONSTANT;
             break;
           }
         }
@@ -128,24 +133,31 @@ void propagate_constants (struct subroutine *sub)
 
     }
 
-    if (temp.type != var->type) {
+    if (temp.status != CONST_TYPE (var->status)) {
       element useel;
       useel = list_head (var->uses);
       while (useel) {
         struct operation *use = element_getvalue (useel);
-        varel = list_head (use->results);
-        while (varel) {
-          val = element_getvalue (varel);
-          if (val->type == VAL_SSAVAR)
-            list_inserttail (worklist, val->val.variable);
-          varel = element_next (varel);
+        if (use->type == OP_INSTRUCTION || use->type == OP_MOVE ||
+            use->type == OP_PHI) {
+          varel = list_head (use->results);
+          while (varel) {
+            val = element_getvalue (varel);
+            if (val->type == VAL_SSAVAR) {
+              aux = val->val.variable;
+              if (!(aux->mark)) {
+                aux->mark = 1;
+                list_inserttail (worklist, aux);
+              }
+            }
+            varel = element_next (varel);
+          }
         }
         useel = element_next (useel);
       }
     }
-    var->type = temp.type;
-    var->info = temp.info;
-
+    CONST_SETTYPE (var->status, temp.status);
+    var->value = temp.value;
   }
 
   list_free (worklist);

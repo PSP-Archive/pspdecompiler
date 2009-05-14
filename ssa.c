@@ -147,6 +147,7 @@ void ssa_search (struct basicblock *block, list *vars)
       val = element_getvalue (opel);
       val->type = VAL_SSAVAR;
       val->val.variable = list_headvalue (vars[val->val.intval]);
+      val->val.variable->status |= VAR_STAT_PHIARG;
       list_inserttail (val->val.variable->uses, op);
       phiel = element_next (phiel);
     }

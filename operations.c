@@ -393,6 +393,8 @@ void extract_operations (struct subroutine *sub)
           }
 
           simplify_operation (op);
+          if (op->info.iop.loc->insn->flags & (INSN_JUMP | INSN_BRANCH))
+            block->jumpop = op;
           list_inserttail (block->operations, op);
 
         } else {
@@ -499,6 +501,7 @@ void extract_operations (struct subroutine *sub)
     case BLOCK_END:
       op = operation_alloc (block);
       op->type = OP_END;
+      op->info.endop.arguments = list_alloc (sub->code->lstpool);
 
       for (regno = 1; regno < NUM_REGISTERS; regno++) {
         if (IS_BIT_SET (regmask_subend_gen, regno)) {
@@ -549,6 +552,14 @@ void fixup_call_arguments (struct subroutine *sub)
         val = value_append (sub, op->results, VAL_REGISTER, regno);
         list_inserttail (op->info.callop.retvalues, val);
       }
+    } else if (block->type == BLOCK_END) {
+      op = list_tailvalue (block->operations);
+      regend = REGISTER_GPR_V0 + sub->numregout;
+
+      for (regno = REGISTER_GPR_V0; regno < regend; regno++) {
+        val = value_append (sub, op->operands, VAL_REGISTER, regno);
+        list_inserttail (op->info.endop.arguments, val);
+      }
     }
     el = element_next (el);
   }
@@ -574,6 +585,13 @@ void remove_call_arguments (struct subroutine *sub)
       while (list_size (op->info.callop.retvalues) != 0) {
         val = list_removetail (op->info.callop.retvalues);
         list_removetail (op->results);
+        fixedpool_free (sub->code->valspool, val);
+      }
+    } else if (block->type == BLOCK_END) {
+      op = list_tailvalue (block->operations);
+      while (list_size (op->info.endop.arguments) != 0) {
+        val = list_removetail (op->info.endop.arguments);
+        list_removetail (op->operands);
         fixedpool_free (sub->code->valspool, val);
       }
     }

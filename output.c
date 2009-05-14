@@ -113,51 +113,54 @@ void print_string (FILE *out, struct prx *file, uint32 vaddr)
 }
 
 
-void print_value (FILE *out, struct value *val)
+void print_value (FILE *out, struct value *val, int options)
 {
   struct ssavar *var;
-  struct prx *file;
   int isstring = FALSE;
 
   switch (val->type) {
   case VAL_CONSTANT: fprintf (out, "0x%08X", val->val.intval); break;
   case VAL_SSAVAR:
     var = val->val.variable;
-    switch (var->type) {
-    case SSAVAR_ARGUMENT:
-      if (var->name.val.intval >= REGISTER_GPR_A0 &&
-          var->name.val.intval <= REGISTER_GPR_T3) {
-        fprintf (out, "arg%d", var->name.val.intval - REGISTER_GPR_A0 + 1);
-      } else {
-        print_value (out, &var->name);
-      }
-      break;
-    case SSAVAR_LOCAL:
-      fprintf (out, "var%d", var->info);
-      break;
-    case SSAVAR_CONSTANT:
+    if (CONST_TYPE (var->status) != VAR_STAT_NOTCONSTANT &&
+        !(options & OPTS_DONTPRINTCONSTANTS)) {
+      struct prx *file;
       file = var->def->block->sub->code->file;
       if (var->def->status & OP_STAT_HASRELOC) {
-        isstring = valid_string (file, var->info);
+        isstring = valid_string (file, var->value);
       }
       if (isstring)
-        print_string (out, file, var->info);
+        print_string (out, file, var->value);
       else
-        fprintf (out, "0x%08X", var->info);
-      break;
-    case SSAVAR_TEMP:
-      if (var->def->type != OP_MOVE)
-        fprintf (out, "(");
-      print_operation (out, var->def, 0, TRUE);
-      if (var->def->type != OP_MOVE)
-        fprintf (out, ")");
-      break;
-    default:
-      print_value (out, &var->name);
-      fprintf (out, "/* Invalid block %d %d */",
-          var->def->block->node.dfsnum,
-          var->def->type);
-      break;
+        fprintf (out, "0x%08X", var->value);
+
+    } else {
+      switch (var->type) {
+      case SSAVAR_ARGUMENT:
+        if (var->name.val.intval >= REGISTER_GPR_A0 &&
+            var->name.val.intval <= REGISTER_GPR_T3) {
+          fprintf (out, "arg%d", var->name.val.intval - REGISTER_GPR_A0 + 1);
+        } else {
+          print_value (out, &var->name, options);
+        }
+        break;
+      case SSAVAR_LOCAL:
+        fprintf (out, "var%d", var->info);
+        break;
+      case SSAVAR_TEMP:
+        if (var->def->type != OP_MOVE)
+          fprintf (out, "(");
+        print_operation (out, var->def, 0, TRUE);
+        if (var->def->type != OP_MOVE)
+          fprintf (out, ")");
+        break;
+      default:
+        print_value (out, &var->name, options);
+        fprintf (out, "/* Invalid block %d %d */",
+            var->def->block->node.dfsnum,
+            var->def->type);
+        break;
+      }
     }
     break;
   case VAL_REGISTER:
@@ -185,7 +188,7 @@ void print_asm_reglist (FILE *out, list regs, int identsize, int options)
     if (el != list_head (regs))
       fprintf (out, ", ");
     fprintf (out, "\"=r\"(");
-    print_value (out, val);
+    print_value (out, val, 0);
     fprintf (out, ")");
     el = element_next (el);
   }
@@ -221,20 +224,21 @@ static
 void print_binaryop (FILE *out, struct operation *op, const char *opsymbol, int options)
 {
   if (!(options & OPTS_DEFERRED)) {
-    print_value (out, list_headvalue (op->results));
+    print_value (out, list_headvalue (op->results), OPTS_DONTPRINTCONSTANTS);
     fprintf (out, " = ");
   }
-  print_value (out, list_headvalue (op->operands));
+  print_value (out, list_headvalue (op->operands), 0);
   fprintf (out, " %s ", opsymbol);
-  print_value (out, list_tailvalue (op->operands));
+  print_value (out, list_tailvalue (op->operands), 0);
 }
 
+static
 void print_complexop (FILE *out, struct operation *op, const char *opsymbol, int options)
 {
   element el;
 
   if (list_size (op->results) != 0 && !(options & OPTS_DEFERRED)) {
-    print_value (out, list_headvalue (op->results));
+    print_value (out, list_headvalue (op->results), OPTS_DONTPRINTCONSTANTS);
     fprintf (out, " = ");
   }
 
@@ -248,12 +252,13 @@ void print_complexop (FILE *out, struct operation *op, const char *opsymbol, int
     }
     if (el != list_head (op->operands))
       fprintf (out, ", ");
-    print_value (out, val);
+    print_value (out, val, 0);
     el = element_next (el);
   }
   fprintf (out, ")");
 }
 
+static
 void print_call (FILE *out, struct operation *op, int options)
 {
   element el;
@@ -261,7 +266,7 @@ void print_call (FILE *out, struct operation *op, int options)
   if (list_size (op->info.callop.retvalues) != 0 && !(options & OPTS_DEFERRED)) {
     el = list_head (op->info.callop.retvalues);
     while (el) {
-      print_value (out, list_tailvalue (op->results));
+      print_value (out, element_getvalue (el), OPTS_DONTPRINTCONSTANTS);
       fprintf (out, " ");
       el = element_next (el);
     }
@@ -271,7 +276,9 @@ void print_call (FILE *out, struct operation *op, int options)
   if (op->block->info.call.calltarget) {
     print_subroutine_name (out, op->block->info.call.calltarget);
   } else {
-    fprintf (out, "CALL");
+    fprintf (out, "(*");
+    print_value (out, list_headvalue (op->block->info.call.from->jumpop->operands), 0);
+    fprintf (out, ")");
   }
 
   fprintf (out, " (");
@@ -285,10 +292,27 @@ void print_call (FILE *out, struct operation *op, int options)
     }
     if (el != list_head (op->info.callop.arguments))
       fprintf (out, ", ");
-    print_value (out, val);
+    print_value (out, val, 0);
     el = element_next (el);
   }
   fprintf (out, ")");
+}
+
+static
+void print_return (FILE *out, struct operation *op, int options)
+{
+  element el;
+
+  fprintf (out, "return");
+  el = list_head (op->info.endop.arguments);
+  while (el) {
+    struct value *val;
+    val = element_getvalue (el);
+    fprintf (out, " ");
+    print_value (out, val, 0);
+    fprintf (out, "/* %d */", val->val.variable->def->block->node.dfsnum);
+    el = element_next (el);
+  }
 }
 
 static
@@ -305,12 +329,12 @@ void print_ext (FILE *out, struct operation *op, int options)
 
   mask = 0xFFFFFFFF >> (32 - val3->val.intval);
   if (!(options & OPTS_DEFERRED)) {
-    print_value (out, list_headvalue (op->results));
+    print_value (out, list_headvalue (op->results), OPTS_DONTPRINTCONSTANTS);
     fprintf (out, " = ");
   }
 
   fprintf (out, "(");
-  print_value (out, val1);
+  print_value (out, val1, 0);
   fprintf (out, " >> %d)", val2->val.intval);
   fprintf (out, " & 0x%08X", mask);
 }
@@ -330,14 +354,14 @@ void print_ins (FILE *out, struct operation *op, int options)
 
   mask = 0xFFFFFFFF >> (32 - val4->val.intval);
   if (!(options & OPTS_DEFERRED)) {
-    print_value (out, list_headvalue (op->results));
+    print_value (out, list_headvalue (op->results), OPTS_DONTPRINTCONSTANTS);
     fprintf (out, " = ");
   }
 
   fprintf (out, "(");
-  print_value (out, val2);
+  print_value (out, val2, 0);
   fprintf (out, " & 0x%08X) | (", ~(mask << val3->val.intval));
-  print_value (out, val1);
+  print_value (out, val1, 0);
   fprintf (out, " & 0x%08X)", mask);
 }
 
@@ -356,19 +380,19 @@ void print_nor (FILE *out, struct operation *op, int options)
   }
 
   if (!(options & OPTS_DEFERRED)) {
-    print_value (out, list_headvalue (op->results));
+    print_value (out, list_headvalue (op->results), OPTS_DONTPRINTCONSTANTS);
     fprintf (out, " = ");
   }
 
   if (!simple) {
     fprintf (out, "!(");
-    print_value (out, val1);
+    print_value (out, val1, 0);
     fprintf (out, " | ");
-    print_value (out, val2);
+    print_value (out, val2, 0);
     fprintf (out, ")");
   } else {
     fprintf (out, "!");
-    print_value (out, val1);
+    print_value (out, val1, 0);
   }
 }
 
@@ -386,7 +410,7 @@ void print_movnz (FILE *out, struct operation *op, int ismovn, int options)
   result = list_headvalue (op->results);
 
   if (!(options & OPTS_DEFERRED)) {
-    print_value (out, result);
+    print_value (out, result, OPTS_DONTPRINTCONSTANTS);
     fprintf (out, " = ");
   }
 
@@ -394,11 +418,11 @@ void print_movnz (FILE *out, struct operation *op, int ismovn, int options)
     fprintf (out, "(");
   else
     fprintf (out, "!(");
-  print_value (out, val2);
+  print_value (out, val2, 0);
   fprintf (out, ") ? ");
-  print_value (out, val1);
+  print_value (out, val1, 0);
   fprintf (out, " : ");
-  print_value (out, val3);
+  print_value (out, val3, 0);
 }
 
 static
@@ -414,15 +438,15 @@ void print_slt (FILE *out, struct operation *op, int isunsigned, int options)
   result = list_headvalue (op->results);
 
   if (!(options & OPTS_DEFERRED)) {
-    print_value (out, result);
+    print_value (out, result, OPTS_DONTPRINTCONSTANTS);
     fprintf (out, " = ");
   }
 
   fprintf (out, "(");
 
-  print_value (out, val1);
+  print_value (out, val1, 0);
   fprintf (out, " < ");
-  print_value (out, val2);
+  print_value (out, val2, 0);
   fprintf (out, ")");
 }
 
@@ -430,7 +454,7 @@ static
 void print_signextend (FILE *out, struct operation *op, int isbyte, int options)
 {
   if (!(options & OPTS_DEFERRED)) {
-    print_value (out, list_headvalue (op->results));
+    print_value (out, list_headvalue (op->results), OPTS_DONTPRINTCONSTANTS);
     fprintf (out, " = ");
   }
 
@@ -439,7 +463,7 @@ void print_signextend (FILE *out, struct operation *op, int isbyte, int options)
   else
     fprintf (out, "(short) ");
 
-  print_value (out, list_headvalue (op->operands));
+  print_value (out, list_headvalue (op->operands), 0);
 }
 
 static
@@ -461,8 +485,8 @@ void print_memory_address (FILE *out, struct operation *op, int size, int isunsi
 
   val = list_headvalue (op->operands);
   if (val->type == VAL_SSAVAR) {
-    if (val->val.variable->type == SSAVAR_CONSTANT) {
-      address = val->val.variable->type;
+    if (CONST_TYPE (val->val.variable->status) != VAR_STAT_NOTCONSTANT) {
+      address = val->val.variable->value;
       val = list_tailvalue (op->operands);
       address += val->val.intval;
       fprintf (out, "*((%s) 0x%08X)", type, address);
@@ -471,7 +495,7 @@ void print_memory_address (FILE *out, struct operation *op, int size, int isunsi
   }
 
   fprintf (out, "((%s) ", type);
-  print_value (out, val);
+  print_value (out, val, 0);
   val = list_tailvalue (op->operands);
   fprintf (out, ")[%d]", val->val.intval >> size);
 }
@@ -480,7 +504,7 @@ static
 void print_load (FILE *out, struct operation *op, int size, int isunsigned, int options)
 {
   if (!(options & OPTS_DEFERRED)) {
-    print_value (out, list_headvalue (op->results));
+    print_value (out, list_headvalue (op->results), OPTS_DONTPRINTCONSTANTS);
     fprintf (out, " = ");
   }
   print_memory_address (out, op, size, isunsigned, options);
@@ -492,7 +516,7 @@ void print_store (FILE *out, struct operation *op, int size, int isunsigned, int
   struct value *val = element_getvalue (element_next (list_head (op->operands)));
   print_memory_address (out, op, size, isunsigned, options);
   fprintf (out, " = ");
-  print_value (out, val);
+  print_value (out, val, 0);
 }
 
 static
@@ -500,7 +524,7 @@ void print_condition (FILE *out, struct operation *op, int options)
 {
   fprintf (out, "if (");
   if (options & OPTS_REVERSECOND) fprintf (out, "!(");
-  print_value (out, list_headvalue (op->operands));
+  print_value (out, list_headvalue (op->operands), 0);
   switch (op->info.iop.insn) {
   case I_BNE:
     fprintf (out, " != ");
@@ -526,7 +550,7 @@ void print_condition (FILE *out, struct operation *op, int options)
     break;
   }
   if (list_size (op->operands) == 2)
-    print_value (out, list_tailvalue (op->operands));
+    print_value (out, list_tailvalue (op->operands), 0);
 
   if (options & OPTS_REVERSECOND) fprintf (out, ")");
   fprintf (out, ")");
@@ -544,17 +568,14 @@ void print_operation (FILE *out, struct operation *op, int identsize, int option
     return;
   }
 
+  loc = op->info.iop.loc;
   if (op->type == OP_INSTRUCTION) {
     if (op->info.iop.loc->insn->flags & (INSN_JUMP))
       return;
-  } else if (op->type == OP_NOP || op->type == OP_START ||
-             op->type == OP_END || op->type == OP_PHI) {
-    return;
-  }
-
-  loc = op->info.iop.loc;
-  if (op->type == OP_INSTRUCTION) {
     if (loc->branchalways) return;
+  } else if (op->type == OP_NOP || op->type == OP_START/* ||
+             op->type == OP_PHI*/) {
+    return;
   }
 
   ident_line (out, identsize);
@@ -607,13 +628,18 @@ void print_operation (FILE *out, struct operation *op, int identsize, int option
     }
   } else if (op->type == OP_MOVE) {
     if (!options) {
-      print_value (out, list_headvalue (op->results));
+      print_value (out, list_headvalue (op->results), OPTS_DONTPRINTCONSTANTS);
       fprintf (out, " = ");
     }
-    print_value (out, list_headvalue (op->operands));
+    print_value (out, list_headvalue (op->operands), 0);
   } else if (op->type == OP_CALL) {
     print_call (out, op, options);
+  } else if (op->type == OP_END) {
+    print_return (out, op, options);
+  } else if (op->type == OP_PHI) {
+    print_complexop (out, op, "PHI", options);
   }
+
 
   if (!(options & OPTS_DEFERRED)) {
     if (nosemicolon) fprintf (out, "\n");

@@ -60,18 +60,13 @@ void extract_variables (struct subroutine *sub)
           mark_ssavar (var, SSAVAR_ARGUMENT, var->name.val.intval);
         } else if (var->def->type == OP_CALL && var->name.val.intval != REGISTER_GPR_V0 &&
                    var->name.val.intval != REGISTER_GPR_V1) {
-          var->type = SSAVAR_INVALID;
+          mark_ssavar (var, SSAVAR_INVALID, 0);
         } else {
           int istemp = FALSE;
 
-          if (list_size (var->uses) <= 1) {
-            struct operation *op = list_headvalue (var->uses);
-            if (op) {
-              if (op->type != OP_PHI)
-                istemp = TRUE;
-            } else {
-              istemp = TRUE;
-            }
+          if (list_size (var->uses) <= 1 &&
+              !(var->status & VAR_STAT_PHIARG)) {
+            istemp = FALSE;
           }
 
           if (var->def->type == OP_MOVE || var->def->type == OP_INSTRUCTION) {
@@ -92,7 +87,7 @@ void extract_variables (struct subroutine *sub)
           }
         }
       } else {
-        var->type = SSAVAR_ARGUMENT;
+        mark_ssavar (var, SSAVAR_ARGUMENT, var->name.val.intval);
       }
     }
     varel = element_next (varel);

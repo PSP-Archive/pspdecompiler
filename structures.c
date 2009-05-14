@@ -220,18 +220,14 @@ void structure_search (struct basicblock *block, struct ctrlstruct *parentst, in
     edge1 = list_tailvalue (block->outrefs);
     edge2 = list_headvalue (block->outrefs);
 
-    if (edge1->to != end) {
-      if (edge1->to->mark1) {
-        edge1->type = EDGE_GOTO;
-        edge1->to->status |= BLOCK_STAT_HASLABEL;
-      }
+    if (edge1->to != end && edge1->to->mark1 && edge1->type == EDGE_UNKNOWN) {
+      edge1->type = EDGE_GOTO;
+      edge1->to->status |= BLOCK_STAT_HASLABEL;
     }
 
-    if (edge2->to != end) {
-      if (edge2->to->mark1) {
-        edge2->type = EDGE_GOTO;
-        edge2->to->status |= BLOCK_STAT_HASLABEL;
-      }
+    if (edge2->to != end && edge2->to->mark1 && edge2->type == EDGE_UNKNOWN) {
+      edge2->type = EDGE_GOTO;
+      edge2->to->status |= BLOCK_STAT_HASLABEL;
     }
 
     if (edge1->type == EDGE_UNKNOWN && edge2->type == EDGE_UNKNOWN) {

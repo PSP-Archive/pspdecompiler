@@ -62,7 +62,7 @@ void print_block_phis (FILE *out, struct basicblock *block)
         struct value *val = element_getvalue (argel);
         if (val->type != VAL_CONSTANT) {
           if (count1++ == 0) fprintf (out, "<");
-          print_value (out, val);
+          print_value (out, val, 0);
           fprintf (out, " ");
         }
         argel = element_next (argel);
@@ -77,7 +77,7 @@ void print_block_phis (FILE *out, struct basicblock *block)
         struct value *val = element_getvalue (argel);
         if (val->type != VAL_CONSTANT) {
           if (count2++ == 0) fprintf (out, "<");
-          print_value (out, val);
+          print_value (out, val, 0);
           fprintf (out, " ");
         }
         argel = element_next (argel);
