@@ -207,7 +207,7 @@ void print_asm (FILE *out, struct operation *op, int identsize, int options)
       ident_line (out, identsize);
       fprintf (out, "         ");
     }
-    fprintf (out, "\"%s\"", allegrex_disassemble (loc->opc, loc->address, FALSE));
+    fprintf (out, "\"%s;\"", allegrex_disassemble (loc->opc, loc->address, FALSE));
     if (loc == op->info.asmop.end) break;
   }
   if (list_size (op->results) != 0 || list_size (op->operands) != 0) {
@@ -310,7 +310,6 @@ void print_return (FILE *out, struct operation *op, int options)
     val = element_getvalue (el);
     fprintf (out, " ");
     print_value (out, val, 0);
-    fprintf (out, "/* %d */", val->val.variable->def->block->node.dfsnum);
     el = element_next (el);
   }
 }
@@ -644,7 +643,7 @@ void print_operation (FILE *out, struct operation *op, int identsize, int option
       print_call (out, op, options);
     } else if (op->type == OP_END) {
       print_return (out, op, options);
-  /*} else if (op->type == OP_PHI) {
+    /*} else if (op->type == OP_PHI) {
       print_complexop (out, op, "PHI", options);*/
     }
   }

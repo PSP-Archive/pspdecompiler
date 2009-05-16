@@ -247,7 +247,8 @@ enum edgetype {
   EDGE_CASE,
   EDGE_NEXT,
   EDGE_IFENTER,
-  EDGE_IFEXIT
+  EDGE_IFEXIT,
+  EDGE_RETURN
 };
 
 struct basicedge {
@@ -349,12 +350,10 @@ struct ctrlstruct {
   struct basicblock *end;
   struct ctrlstruct *parent;
   int    hasendgoto;
+  int    endfollow;
   int    identsize;
 
   union {
-    struct {
-      int endfollow;
-    } ifctrl;
     struct {
       list  edges;
     } loopctrl;

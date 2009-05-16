@@ -5,7 +5,7 @@
 #include "code.h"
 #include "utils.h"
 
-const uint32 regmask_localvars[NUM_REGMASK] = { 0x43FFFFFE, 0x00000000 };
+const uint32 regmask_localvars[NUM_REGMASK] = { 0x43FFFFFE, 0x00000003 };
 
 static
 void mark_ssavar (struct ssavar *var, enum ssavartype type, int num)
@@ -67,8 +67,9 @@ void extract_variables (struct subroutine *sub)
 
           if (op->type == OP_MOVE || op->type == OP_INSTRUCTION) {
             if (!(var->status & (VAR_STAT_PHIARG | VAR_STAT_ASMARG))) {
-              if (list_size (var->uses) <= 1)
+              if (list_size (var->uses) <= 1) {
                 op->status |= OP_STAT_DEFERRED;
+              }
             }
 
             if (op->type == OP_INSTRUCTION) {

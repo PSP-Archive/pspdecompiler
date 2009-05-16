@@ -421,6 +421,25 @@ graph_for_inside_if:
 
         .end    graph_for_inside_if
 
+
+        .global var_k1
+        .ent    var_k1
+var_k1:
+        addiu   $sp, $sp, -16
+        sw      $s0, 4($sp)
+        sw      $ra, 8($sp)
+        move    $s0, $k1
+        srl     $k1, $k1, 16
+        li      $a0, 10
+        jal     graph_for_inside_if
+        li      $a1, 5
+        move    $k1, $s0
+        lw      $ra, 8($sp)
+        lw      $s0, 4($sp)
+        jr      $ra
+        addiu   $sp, $sp, 16
+        .end    var_k1
+
         .section .rodata
 switch1:
         .word   switch1_case0

@@ -16,20 +16,39 @@ void print_structures (FILE *out, struct basicblock *block)
   while (st) {
     switch (st->type) {
     case CONTROL_IF:
-      fprintf (out, "IF start %d end %d %s\\l", st->start->node.dfsnum,
-          st->end->node.dfsnum, block->blockcond ? "TRUE" : "FALSE");
+      fprintf (out, "IF");
       break;
     case CONTROL_MAIN:
-      fprintf (out, "MAIN\\l");
+      fprintf (out, "MAIN");
       break;
     case CONTROL_LOOP:
-      fprintf (out, "LOOP start %d\\l", st->start->node.dfsnum);
+      fprintf (out, "LOOP");
       break;
     case CONTROL_SWITCH:
-      fprintf (out, "SWITCH start %d end %d %d\\l", st->start->node.dfsnum,
-          st->end->node.dfsnum, block->blockcond);
+      fprintf (out, "SWITCH");
       break;
     }
+    fprintf (out, " start %d", st->start->node.dfsnum);
+    if (st->end)
+      fprintf (out, " end %d", st->end->node.dfsnum);
+    if (st->hasendgoto)
+      fprintf (out, " goto");
+    if (st->endfollow)
+      fprintf (out, " endfollow");
+
+    switch (st->type) {
+    case CONTROL_IF:
+      fprintf (out, " %s", block->blockcond ? "TRUE" : "FALSE");
+      break;
+    case CONTROL_MAIN:
+      break;
+    case CONTROL_LOOP:
+      break;
+    case CONTROL_SWITCH:
+      fprintf (out, " %d", block->blockcond);
+    }
+    fprintf (out, "\\l");
+
     st = st->parent;
     if (++count > 100) break;
   }
@@ -168,6 +187,7 @@ void print_subroutine_graph (FILE *out, struct code *c, struct subroutine *sub)
           case EDGE_CASE:     fprintf (out, "CASE");     break;
           case EDGE_IFENTER:  fprintf (out, "IFENTER");  break;
           case EDGE_IFEXIT:   fprintf (out, "IFEXIT");   break;
+          case EDGE_RETURN:   fprintf (out, "RETURN");   break;
           }
           fprintf (out, "\"]");
         }

@@ -53,12 +53,12 @@ void propagate_constants (struct subroutine *sub)
   while (varel) {
     struct ssavar *var = element_getvalue (varel);
     struct operation *op = var->def;
-    var->status = VAR_STAT_UNKCONSTANT;
+    CONST_SETTYPE (var->status, VAR_STAT_UNKCONSTANT);
     if (op->type == OP_ASM ||
         op->type == OP_CALL ||
         op->type == OP_START ||
         !(IS_BIT_SET (regmask_localvars, var->name.val.intval)))
-      var->status = VAR_STAT_NOTCONSTANT;
+      CONST_SETTYPE (var->status, VAR_STAT_NOTCONSTANT);
     else {
       var->mark = 1;
       list_inserttail (worklist, var);

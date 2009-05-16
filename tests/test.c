@@ -16,6 +16,7 @@ extern void graph_double_break (void);
 extern void graph_nested_ifs (void);
 extern void graph_for_inside_if (void);
 extern void graph_nested_loops (void);
+extern void var_k1 (void);
 
 
 int module_start (SceUInt argc, void *arg)
@@ -34,6 +35,7 @@ int module_start (SceUInt argc, void *arg)
   graph_nested_ifs ();
   graph_for_inside_if ();
   graph_nested_loops ();
+  var_k1 ();
 
   sceKernelSleepThread ();
   return 0;

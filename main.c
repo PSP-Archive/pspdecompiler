@@ -23,20 +23,20 @@ void print_help (char *prgname)
     "Usage:\n"
     "  %s [-g] [-n nidsfile] [-v] prxfile\n"
     "Where:\n"
-    "  -g    output graphviz dot\n"
-    "  -t    print depth first search number\n"
-    "  -r    print the reverse depth first search number\n"
-    "  -d    print the dominator\n"
-    "  -x    print the reverse dominator\n"
-    "  -f    print the frontier\n"
-    "  -z    print the reverse frontier\n"
-    "  -q    print code into nodes\n"
-    "  -s    print structures\n"
-    "  -e    print edge types\n"
     "  -c    output code\n"
-    "  -v    increase verbosity\n"
+    "  -d    print the dominator\n"
+    "  -e    print edge types\n"
+    "  -f    print the frontier\n"
+    "  -g    output graphviz dot\n"
+    "  -i    print prx info\n"
     "  -n    specify nids xml file\n"
-    "  -i    print prx info\n",
+    "  -q    print code into nodes\n"
+    "  -r    print the reverse depth first search number\n"
+    "  -s    print structures\n"
+    "  -t    print depth first search number\n"
+    "  -v    increase verbosity\n"
+    "  -x    print the reverse dominator\n"
+    "  -z    print the reverse frontier\n",
     prgname
   );
 }

@@ -155,22 +155,27 @@ void extract_loops (struct subroutine *sub)
 }
 
 static
-void extract_returns (struct subroutine *sub)
+void extract_returns_step (struct basicblock *block)
 {
+  element ref;
+  struct basicedge *edge;
 
+  block->status &= ~BLOCK_STAT_HASLABEL;
+  ref = list_head (block->inrefs);
+  while (ref) {
+    edge = element_getvalue (ref);
+    edge->type = EDGE_RETURN;
+    if (list_size (edge->from->outrefs) == 1) {
+      extract_returns_step (edge->from);
+    }
+    ref = element_next (ref);
+  }
 }
 
 static
-int check_nestedifs (struct basicblock *ifb, struct basicblock *end)
+void extract_returns (struct subroutine *sub)
 {
-  struct ctrlstruct *st = ifb->st;
-  struct ctrlstruct *ancestor = end->st;
-
-  if (st == end->st) return TRUE;
-  if (st->type != CONTROL_IF) return FALSE;
-  if (st->end != end) return FALSE;
-
-  return TRUE;
+  extract_returns_step (sub->endblock);
 }
 
 static
@@ -182,6 +187,18 @@ void structure_search (struct basicblock *block, struct ctrlstruct *parentst, in
 
   if (block->loopst) {
     if (block->loopst->start == block) {
+      if (block->loopst->end) {
+        if (block->loopst->end->mark1) {
+          if (parentst->end != block->loopst->end) {
+            block->loopst->hasendgoto = TRUE;
+            block->loopst->end->status |= BLOCK_STAT_HASLABEL;
+          }
+        } else {
+          block->loopst->endfollow = TRUE;
+          structure_search (block->loopst->end, parentst, blockcond);
+        }
+      }
+
       block->st = block->loopst;
       block->st->parent = parentst;
       block->st->identsize = parentst->identsize + 1;
@@ -241,10 +258,10 @@ void structure_search (struct basicblock *block, struct ctrlstruct *parentst, in
       block->ifst = nst;
 
       if (!end->mark1) {
-        nst->info.ifctrl.endfollow = TRUE;
+        nst->endfollow = TRUE;
         end->mark1 = TRUE;
       } else {
-        if (!check_nestedifs (block, end)) {
+        if (block->st->end != end) {
           nst->hasendgoto = TRUE;
           end->status |= BLOCK_STAT_HASLABEL;
         }
@@ -276,7 +293,7 @@ void structure_search (struct basicblock *block, struct ctrlstruct *parentst, in
           block->status |= BLOCK_STAT_HASELSE;
       }
 
-      if (nst->info.ifctrl.endfollow) {
+      if (nst->endfollow) {
         end->mark1 = 0;
         structure_search (end, block->st, blockcond);
       }
@@ -322,17 +339,6 @@ void structure_search (struct basicblock *block, struct ctrlstruct *parentst, in
       }
     }
   }
-
-  if (block->loopst) {
-    if (block->loopst->start == block && block->loopst->end) {
-      if (block->loopst->end->mark1) {
-        block->loopst->hasendgoto = TRUE;
-        block->loopst->end->status |= BLOCK_STAT_HASLABEL;
-      } else {
-        structure_search (block->loopst->end, parentst, blockcond);
-      }
-    }
-  }
 }
 
 void reset_marks (struct subroutine *sub)
@@ -357,7 +363,7 @@ void extract_structures (struct subroutine *sub)
   reset_marks (sub);
   extract_loops (sub);
 
-  extract_returns (sub);
+  /* extract_returns (sub); */
 
   reset_marks (sub);
   el = list_head (sub->blocks);
