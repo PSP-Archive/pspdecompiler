@@ -401,7 +401,7 @@ struct basicblocknode *dom_common (struct basicblocknode *n1, struct basicblockn
 
 
 struct operation *operation_alloc (struct basicblock *block);
-struct value *value_append (struct subroutine *sub, list l, enum valuetype type, uint32 value);
+struct value *value_append (struct subroutine *sub, list l, enum valuetype type, uint32 value, int prepend);
 void extract_operations (struct subroutine *sub);
 void fixup_call_arguments (struct subroutine *sub);
 void remove_call_arguments (struct subroutine *sub);

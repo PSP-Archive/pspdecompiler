@@ -23,18 +23,18 @@ const uint32 regmask_subend_gen[NUM_REGMASK] = { 0xF0FF0000, 0x00000000 };
   }
 
 #define ASM_GPR_KILL() \
-  BLOCK_GPR_KILL ()                                       \
-  if (!IS_BIT_SET (asm_kill, regno) && regno != 0) {      \
-    BIT_SET (asm_kill, regno);                            \
-    value_append (sub, op->results, VAL_REGISTER, regno); \
+  BLOCK_GPR_KILL ()                                              \
+  if (!IS_BIT_SET (asm_kill, regno) && regno != 0) {             \
+    BIT_SET (asm_kill, regno);                                   \
+    value_append (sub, op->results, VAL_REGISTER, regno, FALSE); \
   }
 
 #define ASM_GPR_GEN() \
-  BLOCK_GPR_GEN ()                                         \
-  if (!IS_BIT_SET (asm_kill, regno) && regno != 0 &&       \
-      !IS_BIT_SET (asm_gen, regno)) {                      \
-    BIT_SET (asm_gen, regno);                              \
-    value_append (sub, op->operands, VAL_REGISTER, regno); \
+  BLOCK_GPR_GEN ()                                                \
+  if (!IS_BIT_SET (asm_kill, regno) && regno != 0 &&              \
+      !IS_BIT_SET (asm_gen, regno)) {                             \
+    BIT_SET (asm_gen, regno);                                     \
+    value_append (sub, op->operands, VAL_REGISTER, regno, FALSE); \
   }
 
 
@@ -147,18 +147,26 @@ void simplify_operation (struct operation *op)
       op->type = OP_MOVE;
     }
     break;
-  case I_SUB:
-  case I_SUBU:
   case I_SLLV:
   case I_SRLV:
   case I_SRAV:
   case I_ROTV:
+    val = list_headvalue (op->operands);
+    if (val->val.intval == 0) {
+      val = list_removehead (op->operands);
+      fixedpool_free (c->valspool, val);
+      op->type = OP_MOVE;
+    }
+    break;
+  case I_SUB:
+  case I_SUBU:
     val = list_tailvalue (op->operands);
     if (val->val.intval == 0) {
       val = list_removetail (op->operands);
       fixedpool_free (c->valspool, val);
       op->type = OP_MOVE;
     }
+    break;
   case I_MOVN:
     val = element_getvalue (element_next (list_head (op->operands)));
     if (val->val.intval == 0) {
@@ -183,13 +191,14 @@ void simplify_operation (struct operation *op)
   return;
 }
 
-struct value *value_append (struct subroutine *sub, list l, enum valuetype type, uint32 value)
+struct value *value_append (struct subroutine *sub, list l, enum valuetype type, uint32 value, int prepend)
 {
   struct value *val;
   val = fixedpool_alloc (sub->code->valspool);
   val->type = type;
   val->val.intval = value;
-  list_inserttail (l, val);
+  if (prepend) list_inserthead (l, val);
+  else list_inserttail (l, val);
   return val;
 }
 
@@ -246,95 +255,95 @@ void extract_operations (struct subroutine *sub)
           if (loc->insn->flags & INSN_READ_GPR_S) {
             regno = RS (loc->opc);
             BLOCK_GPR_GEN ()
-            value_append (sub, op->operands, VAL_REGISTER, regno);
+            value_append (sub, op->operands, VAL_REGISTER, regno, FALSE);
           }
 
           if (loc->insn->flags & INSN_READ_GPR_T) {
             regno = RT (loc->opc);
             BLOCK_GPR_GEN ()
-            value_append (sub, op->operands, VAL_REGISTER, regno);
+            value_append (sub, op->operands, VAL_REGISTER, regno, FALSE);
           }
 
           if (loc->insn->flags & INSN_READ_GPR_D) {
             regno = RD (loc->opc);
             BLOCK_GPR_GEN ()
-            value_append (sub, op->operands, VAL_REGISTER, regno);
+            value_append (sub, op->operands, VAL_REGISTER, regno, FALSE);
           }
 
           if (loc->insn->flags & INSN_READ_LO) {
             regno = REGISTER_LO;
             BLOCK_GPR_GEN ()
-            value_append (sub, op->operands, VAL_REGISTER, regno);
+            value_append (sub, op->operands, VAL_REGISTER, regno, FALSE);
           }
 
           if (loc->insn->flags & INSN_READ_HI) {
             regno = REGISTER_HI;
             BLOCK_GPR_GEN ()
-            value_append (sub, op->operands, VAL_REGISTER, regno);
+            value_append (sub, op->operands, VAL_REGISTER, regno, FALSE);
           }
 
           if (loc->insn->flags & (INSN_LOAD | INSN_STORE)) {
-            value_append (sub, op->operands, VAL_CONSTANT, IMM (loc->opc));
+            value_append (sub, op->operands, VAL_CONSTANT, IMM (loc->opc), FALSE);
           }
 
           switch (loc->insn->insn) {
           case I_ADDI:
             insn = I_ADD;
-            value_append (sub, op->operands, VAL_CONSTANT, IMM (loc->opc));
+            value_append (sub, op->operands, VAL_CONSTANT, IMM (loc->opc), FALSE);
             break;
           case I_ADDIU:
             insn = I_ADDU;
-            value_append (sub, op->operands, VAL_CONSTANT, IMM (loc->opc));
+            value_append (sub, op->operands, VAL_CONSTANT, IMM (loc->opc), FALSE);
             break;
           case I_ORI:
             insn = I_OR;
-            value_append (sub, op->operands, VAL_CONSTANT, IMMU (loc->opc));
+            value_append (sub, op->operands, VAL_CONSTANT, IMMU (loc->opc), FALSE);
             break;
           case I_XORI:
             insn = I_XOR;
-            value_append (sub, op->operands, VAL_CONSTANT, IMMU (loc->opc));
+            value_append (sub, op->operands, VAL_CONSTANT, IMMU (loc->opc), FALSE);
             break;
           case I_ANDI:
             insn = I_AND;
-            value_append (sub, op->operands, VAL_CONSTANT, IMMU (loc->opc));
+            value_append (sub, op->operands, VAL_CONSTANT, IMMU (loc->opc), FALSE);
             break;
           case I_LUI:
             op->type = OP_MOVE;
-            value_append (sub, op->operands, VAL_CONSTANT, ((unsigned int) IMMU (loc->opc)) << 16);
+            value_append (sub, op->operands, VAL_CONSTANT, ((unsigned int) IMMU (loc->opc)) << 16, FALSE);
             break;
           case I_SLTI:
             insn = I_SLT;
-            value_append (sub, op->operands, VAL_CONSTANT, IMM (loc->opc));
+            value_append (sub, op->operands, VAL_CONSTANT, IMM (loc->opc), FALSE);
             break;
           case I_SLTIU:
             insn = I_SLTU;
-            value_append (sub, op->operands, VAL_CONSTANT, IMM (loc->opc));
+            value_append (sub, op->operands, VAL_CONSTANT, IMM (loc->opc), FALSE);
             break;
           case I_EXT:
             insn = I_EXT;
-            value_append (sub, op->operands, VAL_CONSTANT, SA (loc->opc));
-            value_append (sub, op->operands, VAL_CONSTANT, RD (loc->opc) + 1);
+            value_append (sub, op->operands, VAL_CONSTANT, SA (loc->opc), FALSE);
+            value_append (sub, op->operands, VAL_CONSTANT, RD (loc->opc) + 1, FALSE);
             break;
           case I_INS:
             insn = I_INS;
-            value_append (sub, op->operands, VAL_CONSTANT, SA (loc->opc));
-            value_append (sub, op->operands, VAL_CONSTANT, RD (loc->opc) - SA (loc->opc) + 1);
+            value_append (sub, op->operands, VAL_CONSTANT, SA (loc->opc), FALSE);
+            value_append (sub, op->operands, VAL_CONSTANT, RD (loc->opc) - SA (loc->opc) + 1, FALSE);
             break;
           case I_ROTR:
             insn = I_ROTV;
-            value_append (sub, op->operands, VAL_CONSTANT, SA (loc->opc));
+            value_append (sub, op->operands, VAL_CONSTANT, SA (loc->opc), TRUE);
             break;
           case I_SLL:
             insn = I_SLLV;
-            value_append (sub, op->operands, VAL_CONSTANT, SA (loc->opc));
+            value_append (sub, op->operands, VAL_CONSTANT, SA (loc->opc), TRUE);
             break;
           case I_SRA:
             insn = I_SRAV;
-            value_append (sub, op->operands, VAL_CONSTANT, SA (loc->opc));
+            value_append (sub, op->operands, VAL_CONSTANT, SA (loc->opc), TRUE);
             break;
           case I_SRL:
             insn = I_SRLV;
-            value_append (sub, op->operands, VAL_CONSTANT, SA (loc->opc));
+            value_append (sub, op->operands, VAL_CONSTANT, SA (loc->opc), TRUE);
             break;
           case I_BEQL:
             insn = I_BEQ;
@@ -365,31 +374,31 @@ void extract_operations (struct subroutine *sub)
           if (loc->insn->flags & INSN_WRITE_GPR_T) {
             regno = RT (loc->opc);
             BLOCK_GPR_KILL ()
-            value_append (sub, op->results, VAL_REGISTER, regno);
+            value_append (sub, op->results, VAL_REGISTER, regno, FALSE);
           }
 
           if (loc->insn->flags & INSN_WRITE_GPR_D) {
             regno = RD (loc->opc);
             BLOCK_GPR_KILL ()
-            value_append (sub, op->results, VAL_REGISTER, regno);
+            value_append (sub, op->results, VAL_REGISTER, regno, FALSE);
           }
 
           if (loc->insn->flags & INSN_WRITE_LO) {
             regno = REGISTER_LO;
             BLOCK_GPR_KILL ()
-            value_append (sub, op->results, VAL_REGISTER, regno);
+            value_append (sub, op->results, VAL_REGISTER, regno, FALSE);
           }
 
           if (loc->insn->flags & INSN_WRITE_HI) {
             regno = REGISTER_HI;
             BLOCK_GPR_KILL ()
-            value_append (sub, op->results, VAL_REGISTER, regno);
+            value_append (sub, op->results, VAL_REGISTER, regno, FALSE);
           }
 
           if (loc->insn->flags & INSN_LINK) {
             regno = REGISTER_GPR_RA;
             BLOCK_GPR_KILL ()
-            value_append (sub, op->results, VAL_REGISTER, regno);
+            value_append (sub, op->results, VAL_REGISTER, regno, FALSE);
           }
 
           simplify_operation (op);
@@ -478,11 +487,11 @@ void extract_operations (struct subroutine *sub)
       for (regno = 1; regno <= NUM_REGISTERS; regno++) {
         if (IS_BIT_SET (regmask_call_gen, regno)) {
           BLOCK_GPR_GEN ()
-          value_append (sub, op->operands, VAL_REGISTER, regno);
+          value_append (sub, op->operands, VAL_REGISTER, regno, FALSE);
         }
         if (IS_BIT_SET (regmask_call_kill, regno)) {
           BLOCK_GPR_KILL ()
-          value_append (sub, op->results, VAL_REGISTER, regno);
+          value_append (sub, op->results, VAL_REGISTER, regno, FALSE);
         }
       }
       break;
@@ -493,7 +502,7 @@ void extract_operations (struct subroutine *sub)
 
       for (regno = 1; regno < NUM_REGISTERS; regno++) {
         BLOCK_GPR_KILL ()
-        value_append (sub, op->results, VAL_REGISTER, regno);
+        value_append (sub, op->results, VAL_REGISTER, regno, FALSE);
       }
       list_inserttail (block->operations, op);
       break;
@@ -506,7 +515,7 @@ void extract_operations (struct subroutine *sub)
       for (regno = 1; regno < NUM_REGISTERS; regno++) {
         if (IS_BIT_SET (regmask_subend_gen, regno)) {
           BLOCK_GPR_GEN ()
-          value_append (sub, op->operands, VAL_REGISTER, regno);
+          value_append (sub, op->operands, VAL_REGISTER, regno, FALSE);
         }
       }
 
@@ -541,7 +550,7 @@ void fixup_call_arguments (struct subroutine *sub)
           regend = REGISTER_GPR_A0 + target->numregargs;
 
       for (regno = REGISTER_GPR_A0; regno < regend; regno++) {
-        val = value_append (sub, op->operands, VAL_REGISTER, regno);
+        val = value_append (sub, op->operands, VAL_REGISTER, regno, FALSE);
         list_inserttail (op->info.callop.arguments, val);
       }
 
@@ -549,7 +558,7 @@ void fixup_call_arguments (struct subroutine *sub)
       else regend = REGISTER_GPR_A0;
 
       for (regno = REGISTER_GPR_V0; regno < regend; regno++) {
-        val = value_append (sub, op->results, VAL_REGISTER, regno);
+        val = value_append (sub, op->results, VAL_REGISTER, regno, FALSE);
         list_inserttail (op->info.callop.retvalues, val);
       }
     } else if (block->type == BLOCK_END) {
@@ -557,7 +566,7 @@ void fixup_call_arguments (struct subroutine *sub)
       regend = REGISTER_GPR_V0 + sub->numregout;
 
       for (regno = REGISTER_GPR_V0; regno < regend; regno++) {
-        val = value_append (sub, op->operands, VAL_REGISTER, regno);
+        val = value_append (sub, op->operands, VAL_REGISTER, regno, FALSE);
         list_inserttail (op->info.endop.arguments, val);
       }
     }

@@ -233,6 +233,18 @@ void print_binaryop (FILE *out, struct operation *op, const char *opsymbol, int 
 }
 
 static
+void print_revbinaryop (FILE *out, struct operation *op, const char *opsymbol, int options)
+{
+  if (!(options & OPTS_NORESULT)) {
+    print_value (out, list_headvalue (op->results), OPTS_RESULT);
+    fprintf (out, " = ");
+  }
+  print_value (out, list_tailvalue (op->operands), 0);
+  fprintf (out, " %s ", opsymbol);
+  print_value (out, list_headvalue (op->operands), 0);
+}
+
+static
 void print_complexop (FILE *out, struct operation *op, const char *opsymbol, int options)
 {
   element el;
@@ -595,9 +607,10 @@ void print_operation (FILE *out, struct operation *op, int identsize, int option
       case I_XOR:  print_binaryop (out, op, "^", options);     break;
       case I_AND:  print_binaryop (out, op, "&", options);     break;
       case I_OR:   print_binaryop (out, op, "|", options);     break;
-      case I_SRAV: print_binaryop (out, op, ">>", options);    break;
-      case I_SRLV: print_binaryop (out, op, ">>", options);    break;
-      case I_SLLV: print_binaryop (out, op, "<<", options);    break;
+      case I_SRAV: print_revbinaryop (out, op, ">>", options); break;
+      case I_SRLV: print_revbinaryop (out, op, ">>", options); break;
+      case I_SLLV: print_revbinaryop (out, op, "<<", options); break;
+      case I_ROTV: print_complexop (out, op, "ROTV", options); break;
       case I_INS:  print_ins (out, op, options);               break;
       case I_EXT:  print_ext (out, op, options);               break;
       case I_MIN:  print_complexop (out, op, "MIN", options);  break;
