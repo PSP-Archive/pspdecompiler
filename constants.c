@@ -49,6 +49,10 @@ void propagate_constants (struct subroutine *sub)
   list worklist = list_alloc (sub->code->lstpool);
   element varel;
 
+  if (sub->begin->address == 0x42c) {
+    report ("coco");
+  }
+
   varel = list_head (sub->ssavars);
   while (varel) {
     struct ssavar *var = element_getvalue (varel);
@@ -74,9 +78,10 @@ void propagate_constants (struct subroutine *sub)
     element opel;
 
     var->mark = 0;
+    op->status &= ~OP_STAT_CONSTANT;
     if (CONST_TYPE (var->status) == VAR_STAT_NOTCONSTANT) continue;
 
-    op =  var->def;
+    op = var->def;
     if (op->type == OP_PHI) {
       temp.status = VAR_STAT_UNKCONSTANT;
 

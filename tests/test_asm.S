@@ -440,6 +440,30 @@ var_k1:
         addiu   $sp, $sp, 16
         .end    var_k1
 
+        .global hlide_constant
+        .ent    hlide_constant
+hlide_constant:
+        addiu   $sp, $sp, -16
+        sw      $s0, 4($sp)
+        sw      $ra, 8($sp)
+
+        move    $v0, $0
+        li      $s0, 0
+1:
+        addiu   $s0, $s0, 1
+        jal     var_k1
+        move    $a0, $s0
+        bgtz    $v0, 1b
+        nop
+
+
+        lw      $ra, 8($sp)
+        lw      $s0, 4($sp)
+        jr      $ra
+        addiu   $sp, $sp, 16
+
+        .end    hlide_constant
+
         .section .rodata
 switch1:
         .word   switch1_case0

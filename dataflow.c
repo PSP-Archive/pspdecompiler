@@ -46,10 +46,58 @@ void mark_ssavar (struct ssavar *var, enum ssavartype type, int num)
   }
 }
 
+
+static
+int check_regs (list l)
+{
+  struct value *val;
+  element operel;
+  int reg;
+
+  operel = list_head (l);
+  while (operel) {
+    val = element_getvalue (operel);
+    if (val->type == VAL_REGISTER) {
+      reg = val->val.intval;
+    } else if (val->type == VAL_SSAVAR) {
+      reg = val->val.variable->name.val.intval;
+    }
+    if (!IS_BIT_SET (regmask_localvars, reg)) return TRUE;
+    operel = element_next (operel);
+  }
+
+  return FALSE;
+}
+
+static
+void check_special_regs (struct subroutine *sub)
+{
+  element blockel;
+  element opel;
+
+  blockel = list_head (sub->blocks);
+  while (blockel) {
+    struct basicblock *block = element_getvalue (blockel);
+    opel = list_head (block->operations);
+    while (opel) {
+      struct operation *op = element_getvalue (opel);
+      if (op->type == OP_INSTRUCTION || op->type == OP_MOVE) {
+        if (check_regs (op->operands) || check_regs (op->results)) {
+          op->status |= OP_STAT_SPECIALREGS;
+        }
+      }
+      opel = element_next (opel);
+    }
+    blockel = element_next (blockel);
+  }
+}
+
 void extract_variables (struct subroutine *sub)
 {
   element varel;
   int count = 0;
+
+  check_special_regs (sub);
 
   varel = list_head (sub->ssavars);
   while (varel) {
@@ -79,6 +127,10 @@ void extract_variables (struct subroutine *sub)
                        !op->info.iop.loc->branchalways)
                 op->status &= ~OP_STAT_DEFERRED;
             }
+          }
+
+          if (op->status & OP_STAT_SPECIALREGS) {
+            op->status &= ~OP_STAT_DEFERRED;
           }
 
           if (op->status & OP_STAT_DEFERRED) {

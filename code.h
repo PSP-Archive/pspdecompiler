@@ -36,6 +36,7 @@
 #define OP_STAT_DEFERRED            1
 #define OP_STAT_HASRELOC            2
 #define OP_STAT_CONSTANT            4
+#define OP_STAT_SPECIALREGS         8
 
 /* Block status */
 #define BLOCK_STAT_HASLABEL         1

@@ -51,9 +51,9 @@ void ssa_place_phis (struct subroutine *sub, list *defblocks)
           bref->mark2 = regno;
           op = operation_alloc (bref);
           op->type = OP_PHI;
-          value_append (sub, op->results, VAL_REGISTER, regno);
+          value_append (sub, op->results, VAL_REGISTER, regno, FALSE);
           for (i = list_size (bref->inrefs); i > 0; i--)
-            value_append (sub, op->operands, VAL_REGISTER, regno);
+            value_append (sub, op->operands, VAL_REGISTER, regno, FALSE);
           list_inserthead (bref->operations, op);
 
           if (bref->mark1 != regno) {
@@ -93,6 +93,8 @@ void ssa_search (struct basicblock *block, list *vars)
           var = list_headvalue (vars[val->val.intval]);
           val->type = VAL_SSAVAR;
           val->val.variable = var;
+          if (op->type == OP_ASM)
+            var->status |= VAR_STAT_ASMARG;
           list_inserttail (var->uses, op);
         }
         opel = element_next (opel);
@@ -135,6 +137,7 @@ void ssa_search (struct basicblock *block, list *vars)
     phiel = list_head (ref->operations);
     while (phiel) {
       struct operation *op;
+      struct ssavar *var;
       struct value *val;
 
       op = element_getvalue (phiel);
@@ -146,9 +149,9 @@ void ssa_search (struct basicblock *block, list *vars)
 
       val = element_getvalue (opel);
       val->type = VAL_SSAVAR;
-      val->val.variable = list_headvalue (vars[val->val.intval]);
-      val->val.variable->status |= VAR_STAT_PHIARG;
-      list_inserttail (val->val.variable->uses, op);
+      var = val->val.variable = list_headvalue (vars[val->val.intval]);
+      var->status |= VAR_STAT_PHIARG;
+      list_inserttail (var->uses, op);
       phiel = element_next (phiel);
     }
     el = element_next (el);
