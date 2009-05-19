@@ -49,10 +49,6 @@ void propagate_constants (struct subroutine *sub)
   list worklist = list_alloc (sub->code->lstpool);
   element varel;
 
-  if (sub->begin->address == 0x42c) {
-    report ("coco");
-  }
-
   varel = list_head (sub->ssavars);
   while (varel) {
     struct ssavar *var = element_getvalue (varel);

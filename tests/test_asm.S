@@ -357,6 +357,11 @@ graph_double_break:
         addiu   $4,$4,1
 4:      bne     $4,$6,1b
         addiu   $5,$5,2
+        li      $9, 10
+        li      $7, 3
+        divu    $9, $7
+        mfhi    $2
+        addu    $5, $5, $2
 5:      j       $ra
         move    $2,$5
 

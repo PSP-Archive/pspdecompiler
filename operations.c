@@ -311,6 +311,12 @@ void extract_operations (struct subroutine *sub)
             op->type = OP_MOVE;
             value_append (sub, op->operands, VAL_CONSTANT, ((unsigned int) IMMU (loc->opc)) << 16, FALSE);
             break;
+          case I_MFLO:
+          case I_MFHI:
+          case I_MTLO:
+          case I_MTHI:
+            op->type = OP_MOVE;
+            break;
           case I_SLTI:
             insn = I_SLT;
             value_append (sub, op->operands, VAL_CONSTANT, IMM (loc->opc), FALSE);

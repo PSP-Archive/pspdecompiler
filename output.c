@@ -148,9 +148,12 @@ void print_value (FILE *out, struct value *val, int options)
         fprintf (out, "var%d", var->info);
         break;
       case SSAVAR_TEMP:
+        options = OPTS_NORESULT;
+        if (((struct value *) list_headvalue (var->def->results))->val.variable != var)
+          options |= OPTS_SECONDRESULT;
         if (var->def->type != OP_MOVE)
           fprintf (out, "(");
-        print_operation (out, var->def, 0, TRUE);
+        print_operation (out, var->def, 0, options);
         if (var->def->type != OP_MOVE)
           fprintf (out, ")");
         break;
@@ -437,6 +440,105 @@ void print_movnz (FILE *out, struct operation *op, int ismovn, int options)
 }
 
 static
+void print_mult (FILE *out, struct operation *op, int options)
+{
+  if (!(options & OPTS_NORESULT)) {
+    print_value (out, list_headvalue (op->results), OPTS_RESULT);
+    fprintf (out, " ");
+    print_value (out, list_tailvalue (op->results), OPTS_RESULT);
+    fprintf (out, " = ");
+  }
+  if (options & OPTS_SECONDRESULT)
+    fprintf (out, "hi (");
+
+  print_value (out, list_headvalue (op->operands), 0);
+  fprintf (out, " * ");
+  print_value (out, list_tailvalue (op->operands), 0);
+
+  if (options & OPTS_SECONDRESULT)
+    fprintf (out, ")");
+}
+
+static
+void print_madd (FILE *out, struct operation *op, int options)
+{
+  struct value *val1, *val2, *val3, *val4;
+  element el = list_head (op->operands);
+
+  val1 = element_getvalue (el); el = element_next (el);
+  val2 = element_getvalue (el); el = element_next (el);
+  val3 = element_getvalue (el); el = element_next (el);
+  val4 = element_getvalue (el);
+
+  if (!(options & OPTS_NORESULT)) {
+    print_value (out, list_headvalue (op->results), OPTS_RESULT);
+    fprintf (out, " ");
+    print_value (out, list_tailvalue (op->results), OPTS_RESULT);
+    fprintf (out, " = ");
+  }
+
+  print_value (out, val1, 0);
+  fprintf (out, " * ");
+  print_value (out, val2, 0);
+
+  fprintf (out, " + (");
+  print_value (out, val3, 0);
+  fprintf (out, " ");
+  print_value (out, val4, 0);
+  fprintf (out, ")");
+}
+
+
+static
+void print_msub (FILE *out, struct operation *op, int options)
+{
+  struct value *val1, *val2, *val3, *val4;
+  element el = list_head (op->operands);
+
+  val1 = element_getvalue (el); el = element_next (el);
+  val2 = element_getvalue (el); el = element_next (el);
+  val3 = element_getvalue (el); el = element_next (el);
+  val4 = element_getvalue (el);
+
+  if (!(options & OPTS_NORESULT)) {
+    print_value (out, list_headvalue (op->results), OPTS_RESULT);
+    fprintf (out, " ");
+    print_value (out, list_tailvalue (op->results), OPTS_RESULT);
+    fprintf (out, " = ");
+  }
+
+  fprintf (out, "(");
+  print_value (out, val3, 0);
+  fprintf (out, " ");
+  print_value (out, val4, 0);
+  fprintf (out, ") - ");
+
+  print_value (out, val1, 0);
+  fprintf (out, " * ");
+  print_value (out, val2, 0);
+
+}
+
+static
+void print_div (FILE *out, struct operation *op, int options)
+{
+  if (!(options & OPTS_NORESULT)) {
+    print_value (out, list_headvalue (op->results), OPTS_RESULT);
+    fprintf (out, " ");
+    print_value (out, list_tailvalue (op->results), OPTS_RESULT);
+    fprintf (out, " = ");
+  }
+  print_value (out, list_headvalue (op->operands), 0);
+
+  if (options & OPTS_SECONDRESULT)
+    fprintf (out, " %% ");
+  else
+    fprintf (out, " / ");
+
+  print_value (out, list_tailvalue (op->operands), 0);
+}
+
+static
 void print_slt (FILE *out, struct operation *op, int isunsigned, int options)
 {
   struct value *val1, *val2;
@@ -600,14 +702,14 @@ void print_operation (FILE *out, struct operation *op, int identsize, int option
   } else {
     if (op->type == OP_INSTRUCTION) {
       switch (op->info.iop.insn) {
-      case I_ADD:  print_binaryop (out, op, "+", options);     break;
+      case I_ADD:
       case I_ADDU: print_binaryop (out, op, "+", options);     break;
-      case I_SUB:  print_binaryop (out, op, "-", options);     break;
+      case I_SUB:
       case I_SUBU: print_binaryop (out, op, "-", options);     break;
       case I_XOR:  print_binaryop (out, op, "^", options);     break;
       case I_AND:  print_binaryop (out, op, "&", options);     break;
       case I_OR:   print_binaryop (out, op, "|", options);     break;
-      case I_SRAV: print_revbinaryop (out, op, ">>", options); break;
+      case I_SRAV:
       case I_SRLV: print_revbinaryop (out, op, ">>", options); break;
       case I_SLLV: print_revbinaryop (out, op, "<<", options); break;
       case I_ROTV: print_complexop (out, op, "ROTV", options); break;
@@ -621,6 +723,14 @@ void print_operation (FILE *out, struct operation *op, int identsize, int option
       case I_NOR:  print_nor (out, op, options);               break;
       case I_MOVN: print_movnz (out, op, TRUE, options);       break;
       case I_MOVZ: print_movnz (out, op, FALSE, options);      break;
+      case I_MULT:
+      case I_MULTU: print_mult (out, op, options);             break;
+      case I_MADD:
+      case I_MADDU: print_madd (out, op, options);             break;
+      case I_MSUB:
+      case I_MSUBU: print_msub (out, op, options);             break;
+      case I_DIV:
+      case I_DIVU: print_div (out, op, options);               break;
       case I_SLT:  print_slt (out, op, FALSE, options);        break;
       case I_SLTU: print_slt (out, op, TRUE, options);         break;
       case I_LW:   print_load (out, op, 2, FALSE, options);    break;
@@ -643,7 +753,7 @@ void print_operation (FILE *out, struct operation *op, int identsize, int option
         if (loc->insn->flags & INSN_BRANCH) {
           print_condition (out, op, options);
           nosemicolon = TRUE;
-        };
+        }
         break;
       }
     } else if (op->type == OP_MOVE) {

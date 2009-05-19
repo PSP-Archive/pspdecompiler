@@ -21,6 +21,7 @@
 #define OPTS_NORESULT           1
 #define OPTS_REVERSECOND        2
 #define OPTS_RESULT             4
+#define OPTS_SECONDRESULT       8
 
 extern int g_verbosity;
 extern int g_printoptions;
