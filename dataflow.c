@@ -57,13 +57,15 @@ int check_regs (list l)
   operel = list_head (l);
   while (operel) {
     val = element_getvalue (operel);
+    operel = element_next (operel);
+
     if (val->type == VAL_REGISTER) {
       reg = val->val.intval;
     } else if (val->type == VAL_SSAVAR) {
       reg = val->val.variable->name.val.intval;
-    }
+    } else continue;
+
     if (!IS_BIT_SET (regmask_localvars, reg)) return TRUE;
-    operel = element_next (operel);
   }
 
   return FALSE;
