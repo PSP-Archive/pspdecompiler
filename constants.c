@@ -74,10 +74,11 @@ void propagate_constants (struct subroutine *sub)
     element opel;
 
     var->mark = 0;
+    op = var->def;
     op->status &= ~OP_STAT_CONSTANT;
+
     if (CONST_TYPE (var->status) == VAR_STAT_NOTCONSTANT) continue;
 
-    op = var->def;
     if (op->type == OP_PHI) {
       temp.status = VAR_STAT_UNKCONSTANT;
 
@@ -131,7 +132,6 @@ void propagate_constants (struct subroutine *sub)
           }
         }
       }
-
     }
 
     if (temp.status != CONST_TYPE (var->status)) {

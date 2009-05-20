@@ -449,11 +449,12 @@ var_k1:
         .ent    hlide_constant
 hlide_constant:
         addiu   $sp, $sp, -16
+        lui     $v0, 0x0001
         sw      $s0, 4($sp)
+        addiu   $s0, $v0, 45
         sw      $ra, 8($sp)
 
         move    $v0, $0
-        li      $s0, 0
 1:
         addiu   $s0, $s0, 1
         jal     var_k1
